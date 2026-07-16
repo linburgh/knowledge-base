@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 from app.core.common import utils as common_utils
@@ -9,6 +7,7 @@ from app.core.common.exception import BusiException
 from app.db import knowledge_base as knowledge_base_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.schemas.knowledge_base import KnowledgeBaseDto
 
 STATUS_ACTIVE = "active"
 STATUS_DELETED = "deleted"
@@ -20,24 +19,7 @@ DEFAULT_RETRIEVAL_TOP_K = 5
 MAX_DESCRIPTION_LENGTH = 500
 
 
-@dataclass(slots=True)
-class KnowledgeDto:
-    name: str | None = None
-    description: str | None = None
-    owner_id: str | None = None
-    visibility: str | None = None
-    embedding_model: str | None = None
-    chunk_size: int | None = None
-    chunk_overlap: int | None = None
-    retrieval_top_k: int | None = None
-    status: str | None = None
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
-
-
-def validate(dto: KnowledgeDto) -> None:
+def validate(dto: KnowledgeBaseDto) -> None:
     if dto is None:
         raise BusiException("知识库参数不能为空")
     
@@ -62,7 +44,7 @@ def validate(dto: KnowledgeDto) -> None:
 
 
 @check_db_connected
-async def add(dto: KnowledgeDto) -> Any:
+async def add(dto: KnowledgeBaseDto) -> Any:
     rd = None
 
     validate(dto)
@@ -86,7 +68,7 @@ async def add(dto: KnowledgeDto) -> Any:
 
 
 @check_db_connected
-async def modify(knowledge_base_id: int, dto: KnowledgeDto) -> Any:
+async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
     rd = None
 
     if not knowledge_base_id:
@@ -103,7 +85,7 @@ async def modify(knowledge_base_id: int, dto: KnowledgeDto) -> Any:
         if old is None:
             raise BusiException("知识库不存在", status_code=404)
 
-        values["updated_at"] = _now()
+        values["updated_at"] = common_utils.utc_now()
         await knowledge_base_db.update_(db, knowledge_base_id, values)
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
     return rd
@@ -126,7 +108,7 @@ async def remove(knowledge_base_id: int) -> Any:
             knowledge_base_id,
             {
                 "status": STATUS_DELETED,
-                "updated_at": _now(),
+                "updated_at": common_utils.utc_now(),
             },
         )
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
@@ -134,15 +116,15 @@ async def remove(knowledge_base_id: int) -> Any:
 
 
 @check_db_connected
-async def get(knowledge_base_id: int) -> dict[str, Any]:
-    if not knowledge_base_id:
+async def get(id: int) -> dict[str, Any]:
+    if not id:
         raise BusiException("knowledge_base_id 不能为空")
 
     db = DB.get()
-    row = await knowledge_base_db.get(db, id=knowledge_base_id)
+    row = await knowledge_base_db.get(db, id=id)
     if row is None:
         raise BusiException("知识库不存在", status_code=404)
     return row
 
 
-__all__ = ("KnowledgeDto", "validate", "add", "modify", "remove", "get")
+__all__ = ("validate", "add", "modify", "remove", "get")

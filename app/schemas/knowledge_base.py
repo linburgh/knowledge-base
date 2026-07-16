@@ -1,6 +1,21 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
+
+
+@dataclass(slots=True)
+class KnowledgeBaseDto:
+    name: str | None = None
+    description: str | None = None
+    owner_id: str | None = None
+    visibility: str | None = None
+    embedding_model: str | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    retrieval_top_k: int | None = None
+    status: str | None = None
 
 
 class KnowledgeBaseRequest(BaseModel):
@@ -15,4 +30,4 @@ class KnowledgeBaseRequest(BaseModel):
     status: str | None = Field(default=None, description="知识库状态")
 
 
-__all__ = ("KnowledgeBaseRequest",)
+__all__ = ("KnowledgeBaseDto", "KnowledgeBaseRequest")

@@ -28,6 +28,7 @@
 - Service 层不得依赖 FastAPI 的 `Request`、`Response` 或 `HTTPException`。
 - DB 层不得拼接 Prompt、生成自然语言答案或处理 HTTP 展示文案。
 - RAG 层不得决定用户权限，权限过滤应在业务检索流程中前置处理。
+- 新增通用逻辑前先检查 `app/core/common/`、`app/db/api.py` 等已有公用方法，优先复用，避免重复实现。
 - DDL 只维护在 `scripts/db/data_table_ddl.sql`。
 - 密码、Token、API Key 和本机绝对路径不得提交到仓库。
 
