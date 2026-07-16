@@ -87,6 +87,8 @@ idna==3.18
     #   httpx
     #   requests
     #   yarl
+immutables==0.21
+    # via knowledge-base
 jiter==0.16.0
     # via openai
 jsonpatch==1.33
@@ -186,6 +188,8 @@ pydantic-settings==2.14.2
     # via langchain-community
 pyjwt==2.13.0
     # via redis
+pymysql==1.2.0
+    # via knowledge-base
 pypdf==6.14.2
     # via knowledge-base
 python-dotenv==1.2.2

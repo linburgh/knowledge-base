@@ -1,4 +1,4 @@
 from . import api
-from .base import setup, shutdown
+from .base import setup
 
-__all__ = ("setup", "shutdown", "api")
+__all__ = ("setup", "api")

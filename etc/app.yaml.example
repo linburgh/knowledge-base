@@ -4,7 +4,7 @@ default:
   log_dir: ./log
   log_file: app.log
   log_level: INFO
-  database_url: sqlite+aiosqlite:///./data/app.db
+  database_url: sqlite:///./data/app.db
   dev_user_id: dev-user
   http_trust_env: false
   request_id_header: X-Request-ID

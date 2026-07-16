@@ -1,79 +1,56 @@
+# Copyright 2021 99cloud
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
-from contextvars import ContextVar
-from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+
+from contextvars import ContextVar
 
 from databases import Database, DatabaseURL
 
 from app.config import CONF
 
+DATABASE = None
+DB: ContextVar = ContextVar("app_db")
 
-DATABASE: Database | None = None
-DB: ContextVar[Database | None] = ContextVar("app_db", default=None)
-
-
-def _ensure_sqlite_parent(database_url: str) -> None:
-    if not database_url.startswith("sqlite"):
-        return
-
-    path = urlparse(database_url).path
-    if not path or path == ":memory:":
-        return
-
-    if path.startswith("//"):
-        db_path = Path("/" + path.lstrip("/"))
-    else:
-        db_path = Path(path.lstrip("/"))
-    if not db_path.is_absolute():
-        db_path = Path.cwd() / db_path
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-
-async def setup() -> None:
+async def setup():
     db_url = DatabaseURL(CONF.default.database_url)
-    scheme = db_url.scheme
 
     global DATABASE
-    _ensure_sqlite_parent(CONF.default.database_url)
-
-    if scheme.startswith("sqlite"):
-        DATABASE = Database(db_url)
-    elif scheme in {"postgresql", "postgresql+asyncpg", "postgres"}:
-        DATABASE = Database(db_url)
-    elif scheme in {"mysql", "mysql+aiomysql"}:
+    if db_url.scheme == "mysql":
         DATABASE = Database(
             db_url,
-            minsize=5,
-            maxsize=20,
+            minsize=50,
+            maxsize=100,
             echo=CONF.default.debug,
             charset="utf8",
+            client_flag=0,
         )
+    elif db_url.scheme in {"sqlite", "sqlite+aiosqlite"}:
+        DATABASE = Database(db_url)
     else:
-        raise ValueError(f"Unsupported database backend: {scheme}")
-
-    if CONF.default.db_connect_on_startup and not DATABASE.is_connected:
-        await DATABASE.connect()
+        raise ValueError("Unsupported database backend")
+    await DATABASE.connect()
 
 
-async def shutdown() -> None:
+async def inject_db():
     global DATABASE
-    if DATABASE is not None and DATABASE.is_connected:
-        await DATABASE.disconnect()
-
-
-async def inject_db() -> None:
-    if DATABASE is None:
-        await setup()
     DB.set(DATABASE)
 
-
-def get_database() -> Database | None:
-    return DATABASE
-
-
 def get_db_name() -> str:
+    """Return database name parsed from app.yaml `default.database_url`."""
     db_url = DatabaseURL(CONF.default.database_url)
     db_name = db_url.database
     if not db_name:
@@ -81,8 +58,8 @@ def get_db_name() -> str:
     return db_name
 
 
-class PageRecord:
-    rows: Any = None
-    total: int = 0
-    page: int | None = None
-    page_size: int | None = None
+class PageRecord():
+    rows:Any=None
+    total:int=0
+    page: int = None
+    page_size: int = None

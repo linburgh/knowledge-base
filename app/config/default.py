@@ -46,7 +46,7 @@ database_url = Opt(
     name="database_url",
     description="Database URL",
     schema=StrictStr,
-    default="sqlite+aiosqlite:///./data/app.db",
+    default="sqlite:///./data/app.db",
 )
 
 dev_user_id = Opt(
