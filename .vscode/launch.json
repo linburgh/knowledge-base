@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FastAPI: uvicorn",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "28003",
+        "--reload"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "ENVIRONMENT": "development",
+        "OS_CONFIG_DIR": "${workspaceFolder}/etc",
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    }
+  ]
+}

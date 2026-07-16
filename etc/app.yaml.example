@@ -1,0 +1,40 @@
+default:
+  environment: development
+  debug: false
+  log_dir: ./log
+  log_file: app.log
+  log_level: INFO
+  database_url: sqlite+aiosqlite:///./data/app.db
+  dev_user_id: dev-user
+  http_trust_env: false
+  request_id_header: X-Request-ID
+  db_connect_on_startup: true
+
+rag:
+  chunk_size: 600
+  chunk_overlap: 100
+  retrieval_top_k: 5
+  rerank_enabled: false
+  max_context_length: 8000
+
+storage:
+  backend: local
+  local_dir: ./storage
+  minio_endpoint: http://127.0.0.1:9000
+  minio_bucket: knowledge-base
+
+model:
+  chat_model: change-me
+  embedding_model: change-me
+  base_url: http://127.0.0.1:8000/v1
+  timeout_seconds: 30
+
+security:
+  dev_user_id: dev-user
+  allowed_file_extensions:
+    - .pdf
+    - .md
+    - .markdown
+    - .txt
+    - .docx
+  max_upload_size_mb: 20
