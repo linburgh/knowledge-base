@@ -49,6 +49,14 @@ async def insert_(db, table: Any, **kwargs: Any) -> Any:
     return await db.execute(query)
 
 
+async def batch_insert(db, table: Any, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+
+    query = insert(table)
+    await db.execute_many(query, rows)
+
+
 async def update_(db, table: Any, values: dict[str, Any], **kwargs: Any) -> Any:
     conditions = _build_conditions(table, **kwargs)
     if not conditions:
@@ -77,3 +85,22 @@ async def get(db, table: Any, **kwargs: Any) -> Any:
     row = await db.fetch_one(query)
     return dict(row) if row else None
 
+
+async def list(
+    db,
+    table: Any,
+    order_by: list[Any] | None = None,
+    limit: int | None = None,
+    **kwargs: Any,
+) -> list[dict[str, Any]]:
+    conditions = _build_conditions(table, **kwargs)
+    query = select(table)
+    if conditions:
+        query = query.where(and_(*conditions))
+    if order_by:
+        query = query.order_by(*order_by)
+    if limit is not None:
+        query = query.limit(limit)
+
+    rows = await db.fetch_all(query)
+    return [dict(row) for row in rows]

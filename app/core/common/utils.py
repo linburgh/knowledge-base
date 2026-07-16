@@ -3,6 +3,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
@@ -33,6 +34,14 @@ def normalize_space(value: str) -> str:
 
 def json_dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def hash_text(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
+
+
+def hash_bytes(value: bytes) -> str:
+    return sha256(value).hexdigest()
 
 
 def clear_field_nv(value: object) -> dict[str, Any]:

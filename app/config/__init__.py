@@ -4,13 +4,14 @@ import os
 
 from app.config.base import Configuration, Group
 
-from . import default
+from . import default, storage
 
 CONF = Configuration()
 
 def configure(project: str, setup: bool = True) -> None:
     conf_modules = (
         (default.GROUP_NAME, default.ALL_OPTS),
+        (storage.GROUP_NAME, storage.ALL_OPTS),
     )
     groups = [Group(*item) for item in conf_modules]
     CONF(groups)

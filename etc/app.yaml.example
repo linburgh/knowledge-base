@@ -4,11 +4,19 @@ default:
   log_dir: ./log
   log_file: app.log
   log_level: INFO
-  database_url: sqlite:///./data/app.db
+  database_url: postgresql+asyncpg://linburgh:linburgh@127.0.0.1:5432/knowledge_base
   dev_user_id: dev-user
   http_trust_env: false
   request_id_header: X-Request-ID
   db_connect_on_startup: true
+  allowed_file_extensions:
+    - .pdf
+    - .md
+    - .markdown
+    - .txt
+    - .docx
+  max_upload_size_mb: 20
+  local_storage_dir: ./storage
 
 rag:
   chunk_size: 600
@@ -18,10 +26,13 @@ rag:
   max_context_length: 8000
 
 storage:
-  backend: local
+  backend: minio
   local_dir: ./storage
   minio_endpoint: http://127.0.0.1:9000
+  minio_access_key: linburgh
+  minio_secret_key: linburgh
   minio_bucket: knowledge-base
+  minio_secure: false
 
 model:
   chat_model: change-me
@@ -31,10 +42,3 @@ model:
 
 security:
   dev_user_id: dev-user
-  allowed_file_extensions:
-    - .pdf
-    - .md
-    - .markdown
-    - .txt
-    - .docx
-  max_upload_size_mb: 20

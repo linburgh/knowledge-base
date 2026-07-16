@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from typing import List
-
 from pydantic import StrictBool, StrictInt, StrictStr
 
 from app.config.base import Opt
-
 
 environment = Opt(
     name="environment",
@@ -80,7 +77,7 @@ db_connect_on_startup = Opt(
 allowed_file_extensions = Opt(
     name="allowed_file_extensions",
     description="Allowed upload file extensions",
-    schema=List[StrictStr],
+    schema=list[StrictStr],
     default=[".pdf", ".md", ".markdown", ".txt", ".docx"],
 )
 
@@ -89,6 +86,13 @@ max_upload_size_mb = Opt(
     description="Max upload file size in MiB",
     schema=StrictInt,
     default=20,
+)
+
+local_storage_dir = Opt(
+    name="local_storage_dir",
+    description="Local storage directory",
+    schema=StrictStr,
+    default="./storage",
 )
 
 GROUP_NAME = __name__.split(".")[-1]
@@ -105,6 +109,7 @@ ALL_OPTS = (
     db_connect_on_startup,
     allowed_file_extensions,
     max_upload_size_mb,
+    local_storage_dir,
 )
 
 __all__ = ("GROUP_NAME", "ALL_OPTS")

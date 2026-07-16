@@ -28,7 +28,7 @@
 | 关系数据库 | PostgreSQL | `16.x` | 用户、知识库、文档、任务和引用元数据 |
 | 关键词检索 | PostgreSQL FTS | 随 PostgreSQL `16.x` | 与向量检索组成混合检索；规模扩大后可换 Elasticsearch `8.x` |
 | 异步任务 | Arq + Redis | Arq `>=0.26,<1.0`；Redis `7.x` | 执行解析、切分、向量化等耗时任务 |
-| 文件存储 | MinIO | `RELEASE.2025-10-15T17-29-55Z` | 保存原始文件和解析后的中间文件；MVP 使用单节点部署 |
+| 文件存储 | MinIO | `RELEASE.2025-09-07T16-13-09Z` | 保存原始文件和解析后的中间文件；MVP 使用单节点部署 |
 | 本地编排 | Docker Compose | Docker Compose `v2.x` | 启动 PostgreSQL、pgvector、Redis、MinIO 等依赖 |
 | 生产编排 | Kubernetes（可选） | `1.30+` | 多实例部署、扩容和故障恢复 |
 
@@ -39,11 +39,11 @@ MinIO 在知识库项目中主要承担“原始文件对象存储”的职责�
 版本建议：
 
 ```text
-MinIO Server: RELEASE.2025-10-15T17-29-55Z
-镜像地址：quay.io/minio/minio:RELEASE.2025-10-15T17-29-55Z
+MinIO Server: RELEASE.2025-09-07T16-13-09Z
+镜像地址：minio/minio:RELEASE.2025-09-07T16-13-09Z
 ```
 
-版本必须固定到完整的 `RELEASE.YYYY-MM-DDTHH-MM-SSZ` 标签，不建议在生产环境使用 `latest`。MinIO 官方发行页将 `RELEASE.2025-10-15T17-29-55Z` 列为公开发行版本；后续升级时应先在测试环境验证兼容性，再同步修改 Docker 镜像、部署文档和备份恢复方案。[MinIO Releases](https://github.com/minio/minio/releases)
+版本必须固定到完整的 `RELEASE.YYYY-MM-DDTHH-MM-SSZ` 标签，不建议在生产环境使用 `latest`。当前项目根据本机已拉取的 `minio/minio:latest` 镜像确认版本为 `RELEASE.2025-09-07T16-13-09Z`；后续升级时应先在测试环境验证兼容性，再同步修改 Docker 镜像、部署文档和备份恢复方案。[MinIO Releases](https://github.com/minio/minio/releases)
 
 典型文档入库流程如下：
 

@@ -10,21 +10,12 @@ async def insert_(db, **kwargs: Any) -> Any:
     return await db_api.insert_(db, KnowledgeBase, **kwargs)
 
 
-async def update_(db, knowledge_base_id: int, values: dict[str, Any]) -> Any:
-    return await db_api.update_(
-        db,
-        KnowledgeBase,
-        values,
-        id=knowledge_base_id,
-    )
+async def update_(db, values: dict[str, Any], **kwargs: Any) -> Any:
+    return await db_api.update_(db, KnowledgeBase, values, **kwargs)
 
 
-async def delete_(db, knowledge_base_id: int) -> Any:
-    return await db_api.delete_(
-        db,
-        KnowledgeBase,
-        id=knowledge_base_id,
-    )
+async def delete_(db, **kwargs: Any) -> Any:
+    return await db_api.delete_(db, KnowledgeBase, **kwargs)
 
 
 async def get(db, **kwargs: Any) -> dict[str, Any] | None:

@@ -86,7 +86,7 @@ async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
             raise BusiException("知识库不存在", status_code=404)
 
         values["updated_at"] = common_utils.utc_now()
-        await knowledge_base_db.update_(db, knowledge_base_id, values)
+        await knowledge_base_db.update_(db, values, id=knowledge_base_id)
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
     return rd
 
@@ -105,11 +105,11 @@ async def remove(knowledge_base_id: int) -> Any:
 
         await knowledge_base_db.update_(
             db,
-            knowledge_base_id,
             {
                 "status": STATUS_DELETED,
                 "updated_at": common_utils.utc_now(),
             },
+            id=knowledge_base_id,
         )
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
     return rd
