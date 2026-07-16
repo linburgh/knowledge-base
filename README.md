@@ -48,10 +48,10 @@ uv sync
 uv add <package>
 ```
 
-运行命令：
+基础校验：
 
 ```bash
-uv run python -m unittest discover -s tests
+uv run python -m compileall -q app tests
 ```
 
 `pyproject.toml` 是依赖声明源，`uv.lock` 是锁定文件；`requirements.txt` 仅作为兼容导出文件。

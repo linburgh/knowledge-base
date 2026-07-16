@@ -3,12 +3,17 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: knowledge_base
-      POSTGRES_USER: kb_user
-      POSTGRES_PASSWORD: change-me
+      POSTGRES_USER: linburgh
+      POSTGRES_PASSWORD: linburgh
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linburgh -d knowledge_base"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7
@@ -30,4 +35,3 @@ services:
 volumes:
   postgres_data:
   minio_data:
-

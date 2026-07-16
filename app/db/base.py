@@ -40,6 +40,8 @@ async def setup():
         )
     elif db_url.scheme in {"sqlite", "sqlite+aiosqlite"}:
         DATABASE = Database(db_url)
+    elif db_url.scheme in {"postgresql", "postgresql+asyncpg"}:
+        DATABASE = Database(db_url)
     else:
         raise ValueError("Unsupported database backend")
     await DATABASE.connect()
