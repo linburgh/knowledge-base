@@ -17,11 +17,11 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any
 
-from sqlalchemy import and_, delete, insert, select, update
+from sqlalchemy import and_, delete, func, insert, select, update
 
 from app.types import Fn
 
-from .base import DB, inject_db
+from .base import DB, PageRecord, inject_db
 
 
 def check_db_connected(fn: Fn) -> Any:
@@ -86,11 +86,21 @@ async def get(db, table: Any, **kwargs: Any) -> Any:
     return dict(row) if row else None
 
 
+async def count(db, table: Any, **kwargs: Any) -> int:
+    conditions = _build_conditions(table, **kwargs)
+    query = select(func.count()).select_from(table)
+    if conditions:
+        query = query.where(and_(*conditions))
+
+    return int(await db.fetch_val(query))
+
+
 async def list(
     db,
     table: Any,
     order_by: list[Any] | None = None,
     limit: int | None = None,
+    offset: int | None = None,
     **kwargs: Any,
 ) -> list[dict[str, Any]]:
     conditions = _build_conditions(table, **kwargs)
@@ -101,6 +111,32 @@ async def list(
         query = query.order_by(*order_by)
     if limit is not None:
         query = query.limit(limit)
+    if offset is not None:
+        query = query.offset(offset)
 
     rows = await db.fetch_all(query)
     return [dict(row) for row in rows]
+
+
+async def page(
+    db,
+    table: Any,
+    page: int = 1,
+    page_size: int = 20,
+    order_by: list[Any] | None = None,
+    **kwargs: Any,
+) -> PageRecord:
+    record = PageRecord(rows=[], total=0, page=page, page_size=page_size)
+    record.total = await count(db, table, **kwargs)
+    record.rows = await list(
+        db,
+        table,
+        order_by=order_by,
+        limit=page_size,
+        offset=(page - 1) * page_size,
+        **kwargs,
+    )
+    record.page = page
+    record.page_size = page_size
+    return record
+    return record

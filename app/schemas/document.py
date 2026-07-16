@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 @dataclass(slots=True)
 class DocumentCreateDto:
-    knowledge_base_id: int | None = None
+    kb_id: int | None = None
     source_type: str | None = None
     source_name: str | None = None
     source_uri: str | None = None
@@ -44,7 +44,7 @@ class DocumentIndexDto:
 
 @dataclass(slots=True)
 class DocumentChunkDto:
-    knowledge_base_id: int | None = None
+    kb_id: int | None = None
     document_id: int | None = None
     parent_id: int | None = None
     chunk_index: int | None = None
@@ -61,7 +61,7 @@ class DocumentChunkDto:
 
 
 class DocumentCreateRequest(BaseModel):
-    knowledge_base_id: int = Field(..., description="知识库 ID")
+    kb_id: int = Field(..., description="知识库 ID")
     source_type: str = Field(..., description="来源类型")
     source_name: str = Field(..., description="来源名称")
     source_uri: str | None = Field(default=None, description="原始来源 URI")

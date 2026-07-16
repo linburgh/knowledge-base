@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload(
-    knowledge_base_id: Annotated[int, Form(...)],
+    kb_id: Annotated[int, Form(...)],
     created_by: Annotated[str, Form(...)],
     file: Annotated[UploadFile, File(...)],
     source_type: Annotated[str, Form()] = "upload",
@@ -30,10 +30,10 @@ async def upload(
     try:
         object_path, file_size, content_hash = await document_service.upload(
             file,
-            knowledge_base_id,
+            kb_id,
         )
         dto = DocumentCreateDto(
-            knowledge_base_id=knowledge_base_id,
+            kb_id=kb_id,
             source_type=source_type,
             source_name=Path(file.filename or object_path).name,
             source_uri=None,
@@ -85,11 +85,11 @@ async def get(id: int) -> Any:
 
 @router.get("")
 async def list(
-    knowledge_base_id: int,
+    kb_id: int,
     status: str | None = None,
 ) -> Any:
     try:
-        return await document_service.list(knowledge_base_id, status=status)
+        return await document_service.list(kb_id, status=status)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

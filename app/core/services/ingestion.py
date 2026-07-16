@@ -49,7 +49,7 @@ async def create_index_task(document_id: int) -> Any:
         task_id = await indexing_task_db.insert_(
             db,
             document_id=document_id,
-            knowledge_base_id=document["knowledge_base_id"],
+            kb_id=document["kb_id"],
             task_type=TASK_TYPE_INDEX,
             status=TASK_STATUS_PENDING,
         )
@@ -115,7 +115,7 @@ async def _run_task_body(task_id: int) -> Any:
         if document is None:
             raise BusiException("文档不存在", status_code=404)
 
-        knowledge_base = await knowledge_base_db.get(db, id=document["knowledge_base_id"])
+        knowledge_base = await knowledge_base_db.get(db, id=document["kb_id"])
         if knowledge_base is None:
             raise BusiException("知识库不存在", status_code=404)
 
@@ -148,7 +148,7 @@ async def save_chunks(
         content = chunk.get("content") or ""
         rows.append(
             {
-                "knowledge_base_id": document["knowledge_base_id"],
+                "kb_id": document["kb_id"],
                 "document_id": document["id"],
                 "parent_id": chunk.get("parent_id"),
                 "chunk_index": chunk.get("chunk_index", index),

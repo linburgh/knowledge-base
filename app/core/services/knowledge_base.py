@@ -6,7 +6,7 @@ from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.db import knowledge_base as knowledge_base_db
 from app.db.api import check_db_connected
-from app.db.base import DB
+from app.db.base import DB, PageRecord
 from app.schemas.knowledge_base import KnowledgeBaseDto
 
 STATUS_ACTIVE = "active"
@@ -127,4 +127,41 @@ async def get(id: int) -> dict[str, Any]:
     return row
 
 
-__all__ = ("validate", "add", "modify", "remove", "get")
+@check_db_connected
+async def list(
+    owner_id: str | None = None,
+    status: str | None = None,
+    visibility: str | None = None,
+) -> list[dict[str, Any]]:
+    return await knowledge_base_db.list(
+        DB.get(),
+        owner_id=owner_id,
+        status=status,
+        visibility=visibility,
+    )
+
+
+@check_db_connected
+async def page(
+    owner_id: str | None = None,
+    status: str | None = None,
+    visibility: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PageRecord:
+    if page <= 0:
+        raise BusiException("page 必须大于 0")
+    if page_size <= 0:
+        raise BusiException("page_size 必须大于 0")
+
+    return await knowledge_base_db.page(
+        DB.get(),
+        owner_id=owner_id,
+        status=status,
+        visibility=visibility,
+        page=page,
+        page_size=page_size,
+    )
+
+
+__all__ = ("validate", "add", "modify", "remove", "get", "list", "page")

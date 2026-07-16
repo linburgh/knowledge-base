@@ -22,4 +22,36 @@ async def get(db, **kwargs: Any) -> dict[str, Any] | None:
     return await db_api.get(db, KnowledgeBase, **kwargs)
 
 
-__all__ = ("insert_", "update_", "delete_", "get")
+async def count(db, **kwargs: Any) -> int:
+    return await db_api.count(db, KnowledgeBase, **kwargs)
+
+
+async def list(
+    db,
+    **kwargs: Any,
+) -> list[dict[str, Any]]:
+    return await db_api.list(
+        db,
+        KnowledgeBase,
+        order_by=[KnowledgeBase.c.created_at.desc(), KnowledgeBase.c.id.desc()],
+        **kwargs,
+    )
+
+
+async def page(
+    db,
+    page: int = 1,
+    page_size: int = 20,
+    **kwargs: Any,
+):
+    return await db_api.page(
+        db,
+        KnowledgeBase,
+        page=page,
+        page_size=page_size,
+        order_by=[KnowledgeBase.c.created_at.desc(), KnowledgeBase.c.id.desc()],
+        **kwargs,
+    )
+
+
+__all__ = ("insert_", "update_", "delete_", "get", "count", "list", "page")

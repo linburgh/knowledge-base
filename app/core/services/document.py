@@ -32,8 +32,8 @@ def validate(dto: DocumentCreateDto | DocumentModifyDto, is_create: bool = False
     if dto is None:
         raise BusiException("文档参数不能为空")
     if is_create:
-        if not dto.knowledge_base_id:
-            raise BusiException("knowledge_base_id 不能为空")
+        if not dto.kb_id:
+            raise BusiException("kb_id 不能为空")
         if not dto.source_type:
             raise BusiException("source_type 不能为空")
         if not dto.source_name:
@@ -52,7 +52,7 @@ def validate(dto: DocumentCreateDto | DocumentModifyDto, is_create: bool = False
 
 async def upload(
     file: UploadFileLike,
-    knowledge_base_id: int,
+    kb_id: int,
 ) -> tuple[str, int, str]:
     # 只保留文件名，避免用户传入带目录的路径影响保存位置。
     filename = Path(file.filename or "").name
@@ -67,8 +67,8 @@ async def upload(
 
     # 当前阶段先落本地文件，后续接入 MinIO 时可替换为对象存储写入。
     storage_dir = Path(CONF.default.local_storage_dir or "./storage")
-    # 示例：knowledge_base_id=1 时，target_dir 为 ./storage/documents/1。
-    target_dir = storage_dir.joinpath("documents", str(knowledge_base_id))
+    # 示例：kb_id=1 时，target_dir 为 ./storage/documents/1。
+    target_dir = storage_dir.joinpath("documents", str(kb_id))
     target_dir.mkdir(parents=True, exist_ok=True)
 
     max_size = int(CONF.default.max_upload_size_mb or 100) * 1024 * 1024
@@ -108,7 +108,7 @@ async def add(dto: DocumentCreateDto) -> Any:
 
     db = DB.get()
     async with db.transaction():
-        knowledge_base = await knowledge_base_db.get(db, id=dto.knowledge_base_id)
+        knowledge_base = await knowledge_base_db.get(db, id=dto.kb_id)
         if knowledge_base is None:
             raise BusiException("知识库不存在", status_code=404)
 
@@ -116,7 +116,7 @@ async def add(dto: DocumentCreateDto) -> Any:
         await indexing_task_db.insert_(
             db,
             document_id=id,
-            knowledge_base_id=dto.knowledge_base_id,
+            kb_id=dto.kb_id,
             task_type=TASK_TYPE_INDEX,
             status=TASK_STATUS_PENDING,
         )
@@ -188,15 +188,15 @@ async def get(id: int) -> dict[str, Any]:
 
 @check_db_connected
 async def list(
-    knowledge_base_id: int,
+    kb_id: int,
     status: str | None = None,
 ) -> list[dict[str, Any]]:
-    if not knowledge_base_id:
-        raise BusiException("knowledge_base_id 不能为空")
+    if not kb_id:
+        raise BusiException("kb_id 不能为空")
 
     return await document_db.list(
         DB.get(),
-        knowledge_base_id=knowledge_base_id,
+        kb_id=kb_id,
         status=status,
     )
 

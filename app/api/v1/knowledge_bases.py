@@ -21,6 +21,42 @@ async def add(payload: KnowledgeBaseRequest) -> Any:
         common_utils.raise_http_exception(exc)
 
 
+@router.get("")
+async def list(
+    owner_id: str | None = None,
+    status: str | None = None,
+    visibility: str | None = None,
+) -> Any:
+    try:
+        return await knowledge_base_service.list(
+            owner_id=owner_id,
+            status=status,
+            visibility=visibility,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/page")
+async def page(
+    owner_id: str | None = None,
+    status: str | None = None,
+    visibility: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> Any:
+    try:
+        return await knowledge_base_service.page(
+            owner_id=owner_id,
+            status=status,
+            visibility=visibility,
+            page=page,
+            page_size=page_size,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 @router.put("/{id}")
 async def modify(id: int, payload: KnowledgeBaseRequest) -> Any:
     try:

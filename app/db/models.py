@@ -33,7 +33,7 @@ Document = sa.Table(
     "t_document",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
-    sa.Column("knowledge_base_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("source_type", sa.String(32), nullable=False),
     sa.Column("source_name", sa.String(512), nullable=False),
     sa.Column("source_uri", sa.Text),
@@ -51,7 +51,7 @@ Document = sa.Table(
     sa.Column(
         "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),
-    sa.Index("idx_t_document_kb_status", "knowledge_base_id", "status"),
+    sa.Index("idx_t_document_kb_status", "kb_id", "status"),
     sa.Index("idx_t_document_content_hash", "content_hash"),
     sa.Index("idx_t_document_created_by", "created_by"),
 )
@@ -61,7 +61,7 @@ DocumentChunk = sa.Table(
     "t_document_chunk",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
-    sa.Column("knowledge_base_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("document_id", sa.BigInteger, nullable=False),
     sa.Column("parent_id", sa.BigInteger),
     sa.Column("chunk_index", sa.Integer, nullable=False),
@@ -78,8 +78,8 @@ DocumentChunk = sa.Table(
     sa.Column(
         "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),
-    sa.Index("idx_t_document_chunk_kb_doc", "knowledge_base_id", "document_id"),
-    sa.Index("idx_t_document_chunk_kb_index", "knowledge_base_id", "chunk_index"),
+    sa.Index("idx_t_document_chunk_kb_doc", "kb_id", "document_id"),
+    sa.Index("idx_t_document_chunk_kb_index", "kb_id", "chunk_index"),
     sa.Index("idx_t_document_chunk_content_hash", "content_hash"),
     sa.Index("idx_t_document_chunk_metadata_gin", "metadata", postgresql_using="gin"),
 )
@@ -90,7 +90,7 @@ IndexingTask = sa.Table(
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("document_id", sa.BigInteger, nullable=False),
-    sa.Column("knowledge_base_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("task_type", sa.String(32), nullable=False),
     sa.Column("status", sa.String(32), nullable=False),
     sa.Column("attempts", sa.Integer, nullable=False, server_default=sa.text("0")),
@@ -106,7 +106,7 @@ IndexingTask = sa.Table(
     ),
     sa.Index("idx_t_indexing_task_document_id", "document_id"),
     sa.Index("idx_t_indexing_task_status", "status"),
-    sa.Index("idx_t_indexing_task_kb_status", "knowledge_base_id", "status"),
+    sa.Index("idx_t_indexing_task_kb_status", "kb_id", "status"),
 )
 
 
@@ -114,7 +114,7 @@ Conversation = sa.Table(
     "t_conversation",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
-    sa.Column("knowledge_base_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("user_id", sa.String(128), nullable=False),
     sa.Column("title", sa.String(255)),
     sa.Column("status", sa.String(32), nullable=False),
@@ -125,7 +125,7 @@ Conversation = sa.Table(
         "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),
     sa.Index("idx_t_conversation_user_id", "user_id"),
-    sa.Index("idx_t_conversation_kb_user", "knowledge_base_id", "user_id"),
+    sa.Index("idx_t_conversation_kb_user", "kb_id", "user_id"),
 )
 
 
@@ -134,7 +134,7 @@ ConversationMessage = sa.Table(
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("conversation_id", sa.BigInteger, nullable=False),
-    sa.Column("knowledge_base_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("user_id", sa.String(128), nullable=False),
     sa.Column("role", sa.String(32), nullable=False),
     sa.Column("content", sa.Text, nullable=False),
@@ -143,7 +143,7 @@ ConversationMessage = sa.Table(
         "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),
     sa.Index("idx_t_conversation_message_conversation_id", "conversation_id"),
-    sa.Index("idx_t_conversation_message_kb_user", "knowledge_base_id", "user_id"),
+    sa.Index("idx_t_conversation_message_kb_user", "kb_id", "user_id"),
     sa.Index("idx_t_conversation_message_created_at", "created_at"),
 )
 
@@ -153,7 +153,7 @@ MessageCitation = sa.Table(
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("message_id", sa.BigInteger, nullable=False),
-    sa.Column("knowledge_base_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("document_id", sa.BigInteger, nullable=False),
     sa.Column("chunk_id", sa.BigInteger, nullable=False),
     sa.Column("source_name", sa.String(512), nullable=False),
@@ -174,7 +174,7 @@ EvaluationFeedback = sa.Table(
     "t_evaluation_feedback",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
-    sa.Column("knowledge_base_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("conversation_id", sa.BigInteger),
     sa.Column("message_id", sa.BigInteger),
     sa.Column("question", sa.Text, nullable=False),
@@ -188,7 +188,7 @@ EvaluationFeedback = sa.Table(
     sa.Column(
         "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),
-    sa.Index("idx_t_evaluation_feedback_kb_created", "knowledge_base_id", "created_at"),
+    sa.Index("idx_t_evaluation_feedback_kb_created", "kb_id", "created_at"),
     sa.Index("idx_t_evaluation_feedback_message_id", "message_id"),
 )
 

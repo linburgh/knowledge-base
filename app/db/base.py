@@ -14,9 +14,9 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import Any
 
 from databases import Database, DatabaseURL
 
@@ -60,8 +60,9 @@ def get_db_name() -> str:
     return db_name
 
 
-class PageRecord():
-    rows:Any=None
-    total:int=0
-    page: int = None
-    page_size: int = None
+@dataclass(slots=True)
+class PageRecord:
+    rows: list[dict[str, Any]]
+    total: int
+    page: int
+    page_size: int
