@@ -5,7 +5,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, UploadFile, status
 
-from app.config import CONF
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import document as document_service
@@ -20,39 +19,6 @@ from app.schemas.document import (
 router = APIRouter()
 
 
-def _validate_upload_file(filename: str, size: int) -> None:
-    suffix = Path(filename).suffix.lower()
-    allowed_extensions = set(CONF.default.allowed_file_extensions or [])
-    if suffix not in allowed_extensions:
-        raise BusiException("不支持的文件类型")
-
-    max_size = int(CONF.default.max_upload_size_mb or 20) * 1024 * 1024
-    if size > max_size:
-        raise BusiException("上传文件超过大小限制")
-
-
-async def _save_upload_file(
-    file: UploadFile,
-    knowledge_base_id: int,
-) -> tuple[str, int, str]:
-    filename = Path(file.filename or "").name
-    if not filename:
-        raise BusiException("上传文件名不能为空")
-
-    content = await file.read()
-    size = len(content)
-    _validate_upload_file(filename, size)
-
-    content_hash = common_utils.hash_bytes(content)
-    storage_dir = Path(CONF.default.local_storage_dir or "./storage")
-    target_dir = storage_dir.joinpath("documents", str(knowledge_base_id))
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    object_path = target_dir.joinpath(f"{content_hash}_{filename}")
-    object_path.write_bytes(content)
-    return object_path.as_posix(), size, content_hash
-
-
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload(
     knowledge_base_id: Annotated[int, Form(...)],
@@ -62,7 +28,10 @@ async def upload(
     parser: Annotated[str | None, Form()] = None,
 ) -> Any:
     try:
-        object_path, file_size, content_hash = await _save_upload_file(file, knowledge_base_id)
+        object_path, file_size, content_hash = await document_service.upload(
+            file,
+            knowledge_base_id,
+        )
         dto = DocumentCreateDto(
             knowledge_base_id=knowledge_base_id,
             source_type=source_type,

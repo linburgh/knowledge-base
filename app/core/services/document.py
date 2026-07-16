@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from hashlib import sha256
+from pathlib import Path
+from typing import Any, Protocol
 
+from app.config import CONF
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.db import document as document_db
@@ -15,6 +18,14 @@ STATUS_PENDING = "pending"
 STATUS_DELETED = "deleted"
 TASK_TYPE_INDEX = "index"
 TASK_STATUS_PENDING = "pending"
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+
+
+class UploadFileLike(Protocol):
+    filename: str | None
+
+    async def read(self, size: int = -1) -> bytes:
+        ...
 
 
 def validate(dto: DocumentCreateDto | DocumentModifyDto, is_create: bool = False) -> None:
@@ -37,6 +48,53 @@ def validate(dto: DocumentCreateDto | DocumentModifyDto, is_create: bool = False
             raise BusiException("created_by 不能为空")
     if dto.file_size is not None and dto.file_size < 0:
         raise BusiException("file_size 不能小于 0")
+
+
+async def upload(
+    file: UploadFileLike,
+    knowledge_base_id: int,
+) -> tuple[str, int, str]:
+    # 只保留文件名，避免用户传入带目录的路径影响保存位置。
+    filename = Path(file.filename or "").name
+    if not filename:
+        raise BusiException("上传文件名不能为空")
+    
+    suffix = Path(filename).suffix.lower()
+    
+    allowed_extensions = set(CONF.default.allowed_file_extensions or [])
+    if suffix not in allowed_extensions:
+        raise BusiException("不支持的文件类型")
+
+    # 当前阶段先落本地文件，后续接入 MinIO 时可替换为对象存储写入。
+    storage_dir = Path(CONF.default.local_storage_dir or "./storage")
+    # 示例：knowledge_base_id=1 时，target_dir 为 ./storage/documents/1。
+    target_dir = storage_dir.joinpath("documents", str(knowledge_base_id))
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    max_size = int(CONF.default.max_upload_size_mb or 100) * 1024 * 1024
+    hasher = sha256()
+    size = 0
+    # 最终文件名依赖内容 hash，上传完成前先写入临时文件。
+    temp_path = target_dir.joinpath(f".upload_{common_utils.new_request_id()}.tmp")
+    try:
+        with temp_path.open("wb") as target_file:
+            # 分块读取避免把完整文件一次性加载到内存，同时可以边读边校验大小和计算 hash。
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                size += len(chunk)
+                if size > max_size:
+                    raise BusiException("上传文件超过大小限制")
+                hasher.update(chunk)
+                target_file.write(chunk)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+    content_hash = hasher.hexdigest()
+    object_path = target_dir.joinpath(f"{content_hash}_{filename}")
+    temp_path.replace(object_path)
+    # 转成 POSIX 风格字符串保存到数据库，例如 storage/documents/1/xxx.pdf。
+    object_path = object_path.as_posix()
+    return object_path, size, content_hash
 
 
 @check_db_connected
@@ -145,6 +203,7 @@ async def list(
 
 __all__ = (
     "validate",
+    "upload",
     "add",
     "modify",
     "remove",

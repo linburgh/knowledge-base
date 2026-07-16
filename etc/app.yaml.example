@@ -15,7 +15,7 @@ default:
     - .markdown
     - .txt
     - .docx
-  max_upload_size_mb: 20
+  max_upload_size_mb: 100
   local_storage_dir: ./storage
 
 rag:

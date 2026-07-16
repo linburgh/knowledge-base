@@ -13,6 +13,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(CONF.default.environment, "development")
         self.assertTrue(CONF.default.database_url.startswith("postgresql+asyncpg://"))
         self.assertEqual(CONF.default.request_id_header, "X-Request-ID")
+        self.assertEqual(CONF.default.max_upload_size_mb, 100)
         self.assertEqual(CONF.storage.backend, "minio")
         self.assertEqual(CONF.storage.minio_endpoint, "http://127.0.0.1:9000")
         self.assertEqual(CONF.storage.minio_access_key, "linburgh")

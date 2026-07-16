@@ -85,7 +85,7 @@ max_upload_size_mb = Opt(
     name="max_upload_size_mb",
     description="Max upload file size in MiB",
     schema=StrictInt,
-    default=20,
+    default=100,
 )
 
 local_storage_dir = Opt(
