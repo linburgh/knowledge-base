@@ -30,6 +30,7 @@
 - RAG 层不得决定用户权限，权限过滤应在业务检索流程中前置处理。
 - 新增通用逻辑前先检查 `app/core/common/`、`app/db/api.py` 等已有公用方法，优先复用，避免重复实现。
 - DDL 只维护在 `scripts/db/data_table_ddl.sql`。
+- DDL 中 `create index` 语句保持单行书写，例如 `create index if not exists idx_x on t_x (field);`。
 - 密码、Token、API Key 和本机绝对路径不得提交到仓库。
 
 ## 后续落地顺序

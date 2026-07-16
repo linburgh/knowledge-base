@@ -18,11 +18,9 @@ create table if not exists t_knowledge_base (
     updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_knowledge_base_owner_id
-    on t_knowledge_base (owner_id);
+create index if not exists idx_t_knowledge_base_owner_id on t_knowledge_base (owner_id);
 
-create index if not exists idx_t_knowledge_base_status
-    on t_knowledge_base (status);
+create index if not exists idx_t_knowledge_base_status on t_knowledge_base (status);
 
 
 create table if not exists t_document (
@@ -43,14 +41,11 @@ create table if not exists t_document (
     updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_document_kb_status
-    on t_document (knowledge_base_id, status);
+create index if not exists idx_t_document_kb_status on t_document (knowledge_base_id, status);
 
-create index if not exists idx_t_document_content_hash
-    on t_document (content_hash);
+create index if not exists idx_t_document_content_hash on t_document (content_hash);
 
-create index if not exists idx_t_document_created_by
-    on t_document (created_by);
+create index if not exists idx_t_document_created_by on t_document (created_by);
 
 
 create table if not exists t_document_chunk (
@@ -72,22 +67,17 @@ create table if not exists t_document_chunk (
     created_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_document_chunk_kb_doc
-    on t_document_chunk (knowledge_base_id, document_id);
+create index if not exists idx_t_document_chunk_kb_doc on t_document_chunk (knowledge_base_id, document_id);
 
-create index if not exists idx_t_document_chunk_kb_index
-    on t_document_chunk (knowledge_base_id, chunk_index);
+create index if not exists idx_t_document_chunk_kb_index on t_document_chunk (knowledge_base_id, chunk_index);
 
-create index if not exists idx_t_document_chunk_content_hash
-    on t_document_chunk (content_hash);
+create index if not exists idx_t_document_chunk_content_hash on t_document_chunk (content_hash);
 
-create index if not exists idx_t_document_chunk_metadata_gin
-    on t_document_chunk using gin (metadata);
+create index if not exists idx_t_document_chunk_metadata_gin on t_document_chunk using gin (metadata);
 
 -- Create the vector index after the embedding dimension and distance metric are finalized.
 -- Example for cosine distance with HNSW:
--- create index if not exists idx_t_document_chunk_embedding_hnsw
---     on t_document_chunk using hnsw (embedding vector_cosine_ops);
+-- create index if not exists idx_t_document_chunk_embedding_hnsw on t_document_chunk using hnsw (embedding vector_cosine_ops);
 
 
 create table if not exists t_indexing_task (
@@ -105,14 +95,11 @@ create table if not exists t_indexing_task (
     updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_indexing_task_document_id
-    on t_indexing_task (document_id);
+create index if not exists idx_t_indexing_task_document_id on t_indexing_task (document_id);
 
-create index if not exists idx_t_indexing_task_status
-    on t_indexing_task (status);
+create index if not exists idx_t_indexing_task_status on t_indexing_task (status);
 
-create index if not exists idx_t_indexing_task_kb_status
-    on t_indexing_task (knowledge_base_id, status);
+create index if not exists idx_t_indexing_task_kb_status on t_indexing_task (knowledge_base_id, status);
 
 
 create table if not exists t_conversation (
@@ -125,11 +112,9 @@ create table if not exists t_conversation (
     updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_conversation_user_id
-    on t_conversation (user_id);
+create index if not exists idx_t_conversation_user_id on t_conversation (user_id);
 
-create index if not exists idx_t_conversation_kb_user
-    on t_conversation (knowledge_base_id, user_id);
+create index if not exists idx_t_conversation_kb_user on t_conversation (knowledge_base_id, user_id);
 
 
 create table if not exists t_conversation_message (
@@ -143,14 +128,11 @@ create table if not exists t_conversation_message (
     created_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_conversation_message_conversation_id
-    on t_conversation_message (conversation_id);
+create index if not exists idx_t_conversation_message_conversation_id on t_conversation_message (conversation_id);
 
-create index if not exists idx_t_conversation_message_kb_user
-    on t_conversation_message (knowledge_base_id, user_id);
+create index if not exists idx_t_conversation_message_kb_user on t_conversation_message (knowledge_base_id, user_id);
 
-create index if not exists idx_t_conversation_message_created_at
-    on t_conversation_message (created_at);
+create index if not exists idx_t_conversation_message_created_at on t_conversation_message (created_at);
 
 
 create table if not exists t_message_citation (
@@ -167,14 +149,11 @@ create table if not exists t_message_citation (
     created_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_message_citation_message_id
-    on t_message_citation (message_id);
+create index if not exists idx_t_message_citation_message_id on t_message_citation (message_id);
 
-create index if not exists idx_t_message_citation_document_id
-    on t_message_citation (document_id);
+create index if not exists idx_t_message_citation_document_id on t_message_citation (document_id);
 
-create index if not exists idx_t_message_citation_chunk_id
-    on t_message_citation (chunk_id);
+create index if not exists idx_t_message_citation_chunk_id on t_message_citation (chunk_id);
 
 
 create table if not exists t_evaluation_feedback (
@@ -193,11 +172,9 @@ create table if not exists t_evaluation_feedback (
     created_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_evaluation_feedback_kb_created
-    on t_evaluation_feedback (knowledge_base_id, created_at);
+create index if not exists idx_t_evaluation_feedback_kb_created on t_evaluation_feedback (knowledge_base_id, created_at);
 
-create index if not exists idx_t_evaluation_feedback_message_id
-    on t_evaluation_feedback (message_id);
+create index if not exists idx_t_evaluation_feedback_message_id on t_evaluation_feedback (message_id);
 
 
 create table if not exists t_audit_log (
@@ -213,11 +190,8 @@ create table if not exists t_audit_log (
     created_at timestamptz not null default now()
 );
 
-create index if not exists idx_t_audit_log_actor_id
-    on t_audit_log (actor_id);
+create index if not exists idx_t_audit_log_actor_id on t_audit_log (actor_id);
 
-create index if not exists idx_t_audit_log_target
-    on t_audit_log (target_type, target_id);
+create index if not exists idx_t_audit_log_target on t_audit_log (target_type, target_id);
 
-create index if not exists idx_t_audit_log_created_at
-    on t_audit_log (created_at);
+create index if not exists idx_t_audit_log_created_at on t_audit_log (created_at);
