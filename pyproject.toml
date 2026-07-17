@@ -33,6 +33,7 @@ dependencies = [
     "loguru>=0.7.3",
     "immutables>=0.21",
     "pymysql>=1.2.0",
+    "minio>=7.2,<8.0",
 ]
 
 [dependency-groups]

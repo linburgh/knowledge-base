@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
+from app.core import storage as object_storage
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.db import document as document_db
@@ -119,7 +122,14 @@ async def _run_task_body(task_id: int) -> Any:
         if knowledge_base is None:
             raise BusiException("知识库不存在", status_code=404)
 
-        parsed_documents = loaders.load_document(document)
+        # document.object_path 保存的是 MinIO object key，解析前先下载到本地临时文件。
+        suffix = Path(document["object_path"]).suffix
+        with TemporaryDirectory() as temp_dir:
+            local_path = Path(temp_dir).joinpath(f"document_{document['id']}{suffix}")
+            await object_storage.download_file(document["object_path"], local_path)
+            local_document = dict(document)
+            local_document["object_path"] = local_path.as_posix()
+            parsed_documents = loaders.load_document(local_document)
         if not parsed_documents:
             raise BusiException("文档解析结果为空")
 

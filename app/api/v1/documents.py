@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, UploadFile, status
@@ -28,23 +27,13 @@ async def upload(
     parser: Annotated[str | None, Form()] = None,
 ) -> Any:
     try:
-        object_path, file_size, content_hash = await document_service.upload(
+        return await document_service.upload(
             file,
             kb_id,
-        )
-        dto = DocumentCreateDto(
-            kb_id=kb_id,
+            created_by,
             source_type=source_type,
-            source_name=Path(file.filename or object_path).name,
-            source_uri=None,
-            content_type=file.content_type or "application/octet-stream",
-            object_path=object_path,
-            file_size=file_size,
-            content_hash=content_hash,
             parser=parser,
-            created_by=created_by,
         )
-        return await document_service.add(dto)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

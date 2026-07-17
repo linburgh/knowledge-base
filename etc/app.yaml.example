@@ -16,7 +16,6 @@ default:
     - .txt
     - .docx
   max_upload_size_mb: 100
-  local_storage_dir: ./storage
 
 rag:
   chunk_size: 600

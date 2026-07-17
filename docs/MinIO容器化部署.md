@@ -165,29 +165,31 @@ mc mb --ignore-existing local/knowledge-base
 
 ## 8. 应用配置示例
 
-项目配置可以增加对象存储相关配置：
+项目配置中的 `storage` 是文档接入流程的必需配置：
 
 ```yaml
-default:
-  object_storage_endpoint: http://127.0.0.1:9000
-  object_storage_access_key: linburgh
-  object_storage_secret_key: linburgh
-  object_storage_bucket: knowledge-base
-  object_storage_secure: false
+storage:
+  backend: minio
+  local_dir: ./storage
+  minio_endpoint: http://127.0.0.1:9000
+  minio_access_key: linburgh
+  minio_secret_key: linburgh
+  minio_bucket: knowledge-base
+  minio_secure: false
 ```
 
 如果应用运行在 Docker Compose 网络内部，endpoint 应改为服务名：
 
 ```yaml
-default:
-  object_storage_endpoint: http://minio:9000
+storage:
+  minio_endpoint: http://minio:9000
 ```
 
 说明：
 
 - 宿主机运行应用：使用 `http://127.0.0.1:9000`。
 - 容器内运行应用：使用 `http://minio:9000`。
-- 生产环境应使用 HTTPS，并将 `object_storage_secure` 设置为 `true`。
+- 生产环境应使用 HTTPS，并将 `minio_secure` 设置为 `true`。
 
 ## 9. 验证上传和下载
 
@@ -306,7 +308,7 @@ http://127.0.0.1:19001
 检查：
 
 - 应用使用的是 API 端口 `9000`，不是 Console 端口 `9001`。
-- `object_storage_endpoint` 是否与应用运行位置匹配。
+- `minio_endpoint` 是否与应用运行位置匹配。
 - bucket 是否已经创建。
 - access key 和 secret key 是否正确。
 - 容器内应用是否能解析 `minio` 服务名。

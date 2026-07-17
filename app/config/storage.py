@@ -8,7 +8,7 @@ backend = Opt(
     name="backend",
     description="Storage backend",
     schema=StrictStr,
-    default="local",
+    default="minio",
 )
 
 local_dir = Opt(

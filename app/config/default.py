@@ -88,13 +88,6 @@ max_upload_size_mb = Opt(
     default=100,
 )
 
-local_storage_dir = Opt(
-    name="local_storage_dir",
-    description="Local storage directory",
-    schema=StrictStr,
-    default="./storage",
-)
-
 GROUP_NAME = __name__.split(".")[-1]
 ALL_OPTS = (
     environment,
@@ -109,7 +102,6 @@ ALL_OPTS = (
     db_connect_on_startup,
     allowed_file_extensions,
     max_upload_size_mb,
-    local_storage_dir,
 )
 
 __all__ = ("GROUP_NAME", "ALL_OPTS")

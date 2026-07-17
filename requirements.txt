@@ -19,6 +19,10 @@ anyio==4.14.2
     #   openai
     #   starlette
     #   watchfiles
+argon2-cffi==25.1.0
+    # via minio
+argon2-cffi-bindings==25.1.0
+    # via argon2-cffi
 arq==0.28.0
     # via knowledge-base
 asyncpg==0.31.0
@@ -33,7 +37,10 @@ certifi==2026.6.17
     # via
     #   httpcore
     #   httpx
+    #   minio
     #   requests
+cffi==2.1.0
+    # via argon2-cffi-bindings
 charset-normalizer==3.4.9
     # via requests
 click==8.4.2
@@ -142,6 +149,8 @@ loguru==0.7.3
     # via knowledge-base
 lxml==6.1.1
     # via knowledge-base
+minio==7.2.20
+    # via knowledge-base
 multidict==6.7.1
     # via
     #   aiohttp
@@ -171,6 +180,10 @@ psycopg==3.3.4
     # via knowledge-base
 psycopg-binary==3.3.4 ; implementation_name != 'pypy'
     # via psycopg
+pycparser==3.0 ; implementation_name != 'PyPy'
+    # via cffi
+pycryptodome==3.23.0
+    # via minio
 pydantic==2.13.4
     # via
     #   fastapi
@@ -255,6 +268,7 @@ typing-extensions==4.16.0
     #   langchain-core
     #   langchain-protocol
     #   langsmith
+    #   minio
     #   openai
     #   psycopg
     #   pydantic
@@ -270,7 +284,9 @@ typing-inspection==0.4.2
 tzdata==2026.3 ; sys_platform == 'win32'
     # via psycopg
 urllib3==2.7.0
-    # via requests
+    # via
+    #   minio
+    #   requests
 uuid-utils==0.17.0
     # via
     #   langchain-core
