@@ -11,6 +11,7 @@ from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import ingestion as ingestion_service
 from app.db import document as document_db
+from app.db import document_chunk as document_chunk_db
 from app.db import indexing_task as indexing_task_db
 from app.db import knowledge_base as knowledge_base_db
 from app.db.api import check_db_connected
@@ -237,6 +238,17 @@ async def list(
     )
 
 
+@check_db_connected
+async def list_chunks(document_id: int) -> list[dict[str, Any]]:
+    if not document_id:
+        raise BusiException("document_id 不能为空")
+    db = DB.get()
+    document = await document_db.get(db, id=document_id)
+    if document is None:
+        raise BusiException("文档不存在", status_code=404)
+    return await document_chunk_db.list(db, document_id=document_id)
+
+
 __all__ = (
     "validate",
     "upload",
@@ -245,4 +257,5 @@ __all__ = (
     "remove",
     "get",
     "list",
+    "list_chunks",
 )

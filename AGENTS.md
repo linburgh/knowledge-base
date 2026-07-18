@@ -46,7 +46,7 @@
 
 - 前端项目目录为 `/home/linburgh/workspace/ai-llm/knowledge-base-web`，与本后端项目同级。
 - 前端项目名称固定为 `knowledge-base-web`。
-- 前端技术栈固定为 Vue 3 + TypeScript + Vite + Element Plus（Vue 3 对应的 Element UI 组件库）+ Vue Router + Pinia + Axios。
+- 前端技术栈固定为 Vue 3 + TypeScript + Vite + Bootstrap + Vue Router + Pinia + Axios；不使用 Element UI/Element Plus。
 - 原型和前端页面中的所有列表必须同时提供查询条件和分页，不得只实现静态列表。
 - 列表操作列统一使用文本按钮，分页的上一页、下一页、页码和每页条数控件也统一使用文本按钮或文本样式，不使用带背景色的按钮。
 - 列表的查询条件、分页和操作按钮属于统一 UI 设计原则，新增列表页面时必须同步设计并实现。

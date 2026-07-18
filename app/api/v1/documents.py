@@ -72,6 +72,14 @@ async def get(id: int) -> Any:
         common_utils.raise_http_exception(exc)
 
 
+@router.get("/{id}/chunks")
+async def chunks(id: int) -> Any:
+    try:
+        return await document_service.list_chunks(id)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 @router.get("")
 async def list(
     kb_id: int,
