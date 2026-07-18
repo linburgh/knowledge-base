@@ -36,6 +36,18 @@
 - DDL 中 `create index` 语句保持单行书写，例如 `create index if not exists idx_x on t_x (field);`。
 - 密码、Token、API Key 和本机绝对路径不得提交到仓库。
 
+## 方案设计约束
+
+- 在用户没有明确要求缩小范围时，方案按完整目标设计和实现，不默认采用 MVP、最小可行版本、第一阶段裁剪或“先做简化版”的思路。
+- 只有用户明确提出 MVP、分阶段交付、范围裁剪或简化实现时，才可以按这些限制设计方案。
+- 方案文档应覆盖完整业务流程、页面/模块、接口、状态、异常、权限、扩展性和实施计划；不能擅自用 MVP 代替完整方案。
+
+## 前端项目约束
+
+- 前端项目目录为 `/home/linburgh/workspace/ai-llm/knowledge-base-web`，与本后端项目同级。
+- 前端项目名称固定为 `knowledge-base-web`。
+- 前端技术栈固定为 Vue 3 + TypeScript + Vite + Element Plus（Vue 3 对应的 Element UI 组件库）+ Vue Router + Pinia + Axios。
+
 ## 后续落地顺序
 
 1. 配置系统与启动入口。

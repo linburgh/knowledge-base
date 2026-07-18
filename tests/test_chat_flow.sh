@@ -11,12 +11,27 @@ TOP_K="${TOP_K:-5}"
 POLL_INTERVAL="${POLL_INTERVAL:-2}"
 POLL_ATTEMPTS="${POLL_ATTEMPTS:-60}"
 CLEANUP="${CLEANUP:-true}"
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-}"
+CONFIG_FILE="${CONFIG_FILE:-etc/app.yaml}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-120}"
 
 ts="$(date +%Y%m%d%H%M%S)"
 tmp_dir="$(mktemp -d)"
 created_kb="false"
+
+if [[ -z "${EMBEDDING_MODEL}" && -f "${CONFIG_FILE}" ]]; then
+  EMBEDDING_MODEL="$(python3 - "${CONFIG_FILE}" <<'PY'
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+print((config.get("embedding") or {}).get("model") or "")
+PY
+)"
+fi
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-text-embedding-3-small}"
 
 cleanup() {
   if [[ "${CLEANUP}" == "true" && "${created_kb}" == "true" && -n "${KB_ID}" ]]; then
@@ -40,6 +55,8 @@ Environment:
   CREATED_BY     document creator, default: chat-test-user
   QUESTION       question, default: 报销流程需要哪些材料？
   TOP_K          retrieval top-k, default: 5
+  EMBEDDING_MODEL vector model for the temporary KB, default: read from etc/app.yaml
+  CONFIG_FILE    config file used to read embedding.model, default: etc/app.yaml
   POLL_INTERVAL  document status polling interval seconds, default: 2
   POLL_ATTEMPTS  document status polling attempts, default: 60
   CLEANUP        soft-delete an automatically created KB after test, default: true
@@ -104,7 +121,7 @@ PY
 }
 
 build_kb_body() {
-  python3 - "$ts" <<'PY'
+  python3 - "$ts" "$EMBEDDING_MODEL" <<'PY'
 import json
 import sys
 
@@ -113,7 +130,7 @@ print(json.dumps({
     "owner_id": "chat-test-owner",
     "description": "chat flow integration test",
     "visibility": "private",
-    "embedding_model": "text-embedding-3-small",
+    "embedding_model": sys.argv[2],
     "chunk_size": 600,
     "chunk_overlap": 100,
     "retrieval_top_k": 5,

@@ -12,12 +12,29 @@ DOC_ID="${DOC_ID:-}"
 FILE_PATH="${FILE_PATH:-}"
 FILE_SIZE_MB="${FILE_SIZE_MB:-1}"
 FILE_EXT="${FILE_EXT:-.md}"
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-}"
+CONFIG_FILE="${CONFIG_FILE:-etc/app.yaml}"
+POLL_INTERVAL="${POLL_INTERVAL:-2}"
+POLL_ATTEMPTS="${POLL_ATTEMPTS:-60}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-120}"
 
 ts="$(date +%Y%m%d%H%M%S)"
 kb_name="${NAME_PREFIX}-${ts}"
 tmp_dir="$(mktemp -d)"
+
+if [[ -z "${EMBEDDING_MODEL}" && -f "${CONFIG_FILE}" ]]; then
+  EMBEDDING_MODEL="$(python3 - "${CONFIG_FILE}" <<'PY'
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+print((config.get("embedding") or {}).get("model") or "")
+PY
+)"
+fi
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-text-embedding-3-small}"
 
 cleanup() {
   rm -rf "${tmp_dir}"
@@ -38,8 +55,12 @@ Environment:
   FILE_PATH  upload file path, default: generated markdown file
   FILE_SIZE_MB generated file size in MiB when FILE_PATH is empty, default: 1
   FILE_EXT   generated file extension when FILE_PATH is empty, default: .md
+  EMBEDDING_MODEL vector model for the test knowledge base, default: read from etc/app.yaml
+  CONFIG_FILE    config file used to read embedding.model, default: etc/app.yaml
   CURL_CONNECT_TIMEOUT  curl connect timeout seconds, default: 5
   CURL_MAX_TIME         curl max request seconds, default: 120
+  POLL_INTERVAL         indexing status poll interval seconds, default: 2
+  POLL_ATTEMPTS         maximum indexing status polls, default: 60
 
 Examples:
   $0 all
@@ -227,17 +248,17 @@ PY
 }
 
 build_kb_body() {
-  python3 - "$kb_name" "$OWNER_ID" <<'PY'
+  python3 - "$kb_name" "$OWNER_ID" "$EMBEDDING_MODEL" <<'PY'
 import json
 import sys
 
-name, owner_id = sys.argv[1], sys.argv[2]
+name, owner_id, embedding_model = sys.argv[1], sys.argv[2], sys.argv[3]
 print(json.dumps({
     "name": name,
     "owner_id": owner_id,
     "description": "document ingestion shell test",
     "visibility": "private",
-    "embedding_model": "text-embedding-3-small",
+    "embedding_model": embedding_model,
     "chunk_size": 600,
     "chunk_overlap": 100,
     "retrieval_top_k": 5,
@@ -279,6 +300,34 @@ run_get() {
   echo "get passed, DOC_ID=${DOC_ID}"
 }
 
+run_wait_ready() {
+  local output
+  local status
+  local attempt
+
+  require_doc_id
+  for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
+    output="${tmp_dir}/wait_document.json"
+    request_json GET "/documents/${DOC_ID}" "" "${output}"
+    status="$(json_get "${output}" status)"
+    echo "document status: ${status} (${attempt}/${POLL_ATTEMPTS})"
+    if [[ "${status}" == "ready" ]]; then
+      print_response "ready" "${output}"
+      echo "indexing passed, DOC_ID=${DOC_ID}"
+      return
+    fi
+    if [[ "${status}" == "failed" ]]; then
+      print_response "failed" "${output}" >&2
+      exit 1
+    fi
+    sleep "${POLL_INTERVAL}"
+  done
+
+  echo "indexing timeout, DOC_ID=${DOC_ID}" >&2
+  cat "${output}" >&2
+  exit 1
+}
+
 run_list() {
   local output
 
@@ -307,6 +356,7 @@ case "${ACTION}" in
       run_create_kb
     fi
     run_upload
+    run_wait_ready
     run_get
     run_list
     echo "document ingestion test passed, KB_ID=${KB_ID}, DOC_ID=${DOC_ID}"
@@ -319,6 +369,9 @@ case "${ACTION}" in
     ;;
   get)
     run_get
+    ;;
+  wait)
+    run_wait_ready
     ;;
   list)
     run_list

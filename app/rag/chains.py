@@ -47,7 +47,7 @@ async def generate_answer(question: str, chunks: list[dict[str, Any]]) -> str:
     """将检索分块组装成上下文并调用聊天模型生成答案。"""
     if not chunks:
         return "当前知识库暂无可用内容，暂时无法回答这个问题。"
-    if not CONF.model.chat_model or CONF.model.chat_model == "change-me":
+    if not CONF.chat.model:
         raise BusiException("Chat 模型未配置")
 
     context = _format_context(chunks)
@@ -59,10 +59,10 @@ async def generate_answer(question: str, chunks: list[dict[str, Any]]) -> str:
     )
     try:
         model = ChatOpenAI(
-            model=CONF.model.chat_model,
-            api_key=CONF.model.api_key,
-            base_url=CONF.model.base_url,
-            timeout=CONF.model.timeout_seconds,
+            model=CONF.chat.model,
+            api_key=CONF.chat.api_key,
+            base_url=CONF.chat.base_url,
+            timeout=CONF.chat.timeout_seconds,
         )
         result = await model.ainvoke(prompt)
         answer = _message_content(result)

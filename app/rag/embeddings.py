@@ -7,6 +7,8 @@ from langchain_openai import OpenAIEmbeddings
 from app.config import CONF
 from app.core.common.exception import BusiException
 
+EMBEDDING_BATCH_SIZE = 10
+
 
 def _get_embeddings(model: str) -> OpenAIEmbeddings:
     """根据模型名称创建 Embedding 客户端。
@@ -19,9 +21,13 @@ def _get_embeddings(model: str) -> OpenAIEmbeddings:
 
     return OpenAIEmbeddings(
         model=model,
-        api_key=CONF.model.api_key,
-        base_url=CONF.model.base_url,
-        timeout=CONF.model.timeout_seconds,
+        api_key=CONF.embedding.api_key,
+        base_url=CONF.embedding.base_url,
+        timeout=CONF.embedding.timeout_seconds,
+        # DashScope Qwen Embedding 单次最多接收 10 条文本，避免大文档批量请求失败。
+        chunk_size=EMBEDDING_BATCH_SIZE,
+        # DashScope 兼容接口要求 input 为文本，不能接收 LangChain 默认生成的 token ID。
+        check_embedding_ctx_length=False,
     )
 
 

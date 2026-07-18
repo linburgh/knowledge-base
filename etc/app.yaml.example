@@ -33,9 +33,14 @@ storage:
   minio_bucket: knowledge-base
   minio_secure: false
 
-model:
-  chat_model: change-me
-  embedding_model: change-me
+chat:
+  model: change-me
+  api_key: change-me
+  base_url: http://127.0.0.1:8000/v1
+  timeout_seconds: 30
+
+embedding:
+  model: text-embedding-3-small
   api_key: change-me
   base_url: http://127.0.0.1:8000/v1
   timeout_seconds: 30

@@ -19,6 +19,10 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(CONF.storage.minio_access_key, "linburgh")
         self.assertEqual(CONF.storage.minio_secret_key, "linburgh")
         self.assertEqual(CONF.storage.minio_bucket, "knowledge-base")
-        self.assertEqual(CONF.model.embedding_model, "change-me")
-        self.assertEqual(CONF.model.api_key, "change-me")
-        self.assertEqual(CONF.model.base_url, "http://127.0.0.1:8000/v1")
+        # 模型、API Key 和地址允许按部署环境配置，不固定断言某一套本地配置。
+        self.assertTrue(CONF.embedding.model)
+        self.assertTrue(CONF.embedding.api_key)
+        self.assertTrue(CONF.embedding.base_url.startswith("http"))
+        self.assertTrue(CONF.chat.model)
+        self.assertTrue(CONF.chat.api_key)
+        self.assertTrue(CONF.chat.base_url.startswith("http"))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config import CONF
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.db import knowledge_base as knowledge_base_db
@@ -52,7 +53,10 @@ async def add(dto: KnowledgeBaseDto) -> Any:
     values = common_utils.clear_field_nv(dto)
     values.setdefault("description", "")
     values.setdefault("visibility", DEFAULT_VISIBILITY)
-    values.setdefault("embedding_model", DEFAULT_EMBEDDING_MODEL)
+    values.setdefault(
+        "embedding_model",
+        CONF.embedding.model or DEFAULT_EMBEDDING_MODEL,
+    )
     values.setdefault("chunk_size", DEFAULT_CHUNK_SIZE)
     values.setdefault("chunk_overlap", DEFAULT_CHUNK_OVERLAP)
     values.setdefault("retrieval_top_k", DEFAULT_RETRIEVAL_TOP_K)
