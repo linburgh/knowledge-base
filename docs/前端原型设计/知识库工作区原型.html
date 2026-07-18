@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>知识库工作区原型</title>
+  <style>
+    :root { --navy:#172033; --ink:#25304a; --muted:#8490a5; --line:#e8ecf3; --blue:#5d6cf0; --mint:#8ce3c3; --bg:#f5f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:14px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    button { border:0; border-radius:9px; padding:10px 15px; color:#fff; background:var(--blue); cursor:pointer; font:inherit; }
+    button.ghost { color:#53617b; background:#eef1f7; }
+    .shell { display:grid; min-height:100vh; grid-template-columns:230px 1fr; }
+    aside { padding:25px 18px; color:#dce5f5; background:var(--navy); }
+    .brand { display:flex; gap:10px; align-items:center; margin:0 8px 35px; }
+    .brand-mark { display:grid; width:34px; height:34px; place-items:center; border-radius:10px; color:var(--navy); background:var(--mint); font-weight:800; }
+    .brand small { display:block; margin-top:3px; color:#8d9bb4; }
+    nav a { display:block; margin:5px 0; padding:12px; border-radius:9px; color:#9ba9c0; text-decoration:none; cursor:pointer; }
+    nav a.active, nav a:hover { color:#fff; background:#273653; }
+    main { padding:30px 42px; }
+    .topbar, .heading, .workspace-tabs, .toolbar, .row { display:flex; align-items:center; justify-content:space-between; }
+    .topbar { padding-bottom:25px; border-bottom:1px solid var(--line); color:var(--muted); }
+    .heading { margin:30px 0 24px; align-items:flex-end; }
+    h1 { margin:7px 0; font-size:30px; letter-spacing:-.04em; }
+    h2 { margin:0; font-size:18px; }
+    p { margin:7px 0 0; color:var(--muted); }
+    .eyebrow { color:#6e7df4; font-size:11px; font-weight:800; letter-spacing:.14em; }
+    .card { border:1px solid var(--line); border-radius:15px; background:#fff; overflow:hidden; }
+    .card + .card { margin-top:18px; }
+    .filter-bar { display:flex; align-items:center; gap:10px; margin-bottom:16px; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+    .filter-bar input, .filter-bar select { min-width:150px; padding:10px 11px; border:1px solid #dce2ed; border-radius:8px; color:var(--ink); background:#fff; font:inherit; }
+    .filter-label { color:var(--muted); font-size:12px; }
+    .pagination { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:16px 20px; color:var(--muted); font-size:12px; }
+    .pagination button { padding:7px 10px; color:#53617b; background:transparent; }
+    .pagination button:hover { color:var(--blue); }
+    .pagination button.active { color:var(--blue); font-weight:700; }
+    .table-head, .row { display:grid; grid-template-columns:2fr 1.4fr 1fr 1.2fr; gap:15px; align-items:center; padding:17px 20px; }
+    .kb-list-card .table-head, .kb-list-card .row { grid-template-columns:1.8fr 1.1fr 1.8fr 1.2fr 2.2fr; }
+    .docs-select-card .table-head, .docs-select-card .row { grid-template-columns:2fr 1fr 1.5fr; }
+    .table-head { color:#9aa4b5; background:#fbfcfe; font-size:12px; }
+    .row { border-top:1px solid #eef1f5; }
+    .row:hover { background:#fafbff; }
+    .muted { color:var(--muted); font-size:12px; }
+    .tag { display:inline-block; color:#2b946e; font-size:12px; font-weight:600; }
+    .tag.warn { color:#aa7417; }
+    .tag.fail { color:#c14b58; }
+    .status-text { font-size:12px; font-weight:600; }
+    .status-success { color:#2b946e; }
+    .workspace-tabs { justify-content:flex-start; gap:25px; margin:0 0 25px; border-bottom:1px solid var(--line); }
+    .workspace-tabs a { padding:0 3px 13px; color:var(--muted); text-decoration:none; cursor:pointer; }
+    .workspace-tabs a.active { border-bottom:2px solid var(--blue); color:var(--blue); font-weight:700; }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:15px; margin-bottom:20px; }
+    .stat { padding:18px 20px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+    .stat strong { display:block; margin-top:8px; font-size:24px; }
+    .chat { display:grid; min-height:510px; grid-template-columns:1fr 290px; gap:18px; }
+    .messages { padding:20px; }
+    .bubble { max-width:78%; margin:13px 0; padding:13px 16px; border-radius:13px; background:#f0f3f8; line-height:1.7; }
+    .bubble.user { margin-left:auto; color:#fff; background:var(--blue); }
+    .composer { margin-top:160px; padding-top:15px; border-top:1px solid var(--line); }
+    .composer textarea { width:100%; min-height:75px; padding:12px; border:1px solid #dce2ed; border-radius:9px; resize:none; font:inherit; }
+    .composer .row { display:flex; padding:10px 0 0; }
+    .citations { padding:20px; border-left:1px solid var(--line); }
+    .citation { padding:13px 0; border-bottom:1px solid var(--line); }
+    .link-button, .link-danger { margin-right:14px; padding:0; background:transparent; font-size:13px; }
+    .link-button { color:var(--blue); }
+    .link-danger { color:#c14b58; }
+    .action-links { white-space:nowrap; }
+    .drawer { position:fixed; inset:0; display:none; background:rgba(23,32,51,.25); }
+    .drawer.open { display:block; }
+    .drawer-panel { position:absolute; top:0; right:0; width:410px; height:100%; padding:27px; background:#fff; box-shadow:-12px 0 30px rgba(23,32,51,.12); }
+    .drawer.detail-mode .drawer-panel { width:760px; overflow:auto; }
+    .drawer-panel input, .drawer-panel textarea { width:100%; margin:9px 0 18px; padding:11px; border:1px solid #dce2ed; border-radius:8px; font:inherit; }
+    .drawer-footer { position:absolute; right:27px; bottom:25px; left:27px; display:flex; justify-content:flex-end; gap:9px; }
+    .hidden { display:none; }
+    .detail-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:18px 0; }
+    .detail-summary div { padding:13px; border:1px solid var(--line); border-radius:10px; }
+    .detail-summary strong { display:block; margin-top:6px; font-size:18px; }
+    .chunk-list { border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    .chunk-filter { display:flex; align-items:center; gap:9px; margin:18px 0 12px; }
+    .chunk-filter input { flex:1; padding:10px 11px; border:1px solid #dce2ed; border-radius:8px; font:inherit; }
+    .chunk-item { padding:15px 17px; border-bottom:1px solid var(--line); }
+    .chunk-item:last-child { border-bottom:0; }
+    .chunk-head { display:flex; align-items:center; justify-content:space-between; }
+    .chunk-content { margin:10px 0 7px; color:#53617b; line-height:1.65; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand"><div class="brand-mark">K</div><div><strong>Knowledge Base</strong><small>企业知识中枢</small></div></div>
+      <nav>
+        <a id="nav-kbs" class="active" onclick="showPage('kbs')">知识库管理</a>
+      </nav>
+    </aside>
+    <main>
+      <div class="topbar"><span>企业知识库</span><span>dev-user</span></div>
+
+      <section id="page-kbs">
+        <div class="heading"><div><span class="eyebrow">KNOWLEDGE BASE MANAGEMENT</span><h1>知识库管理</h1><p>创建和管理知识库，进入后处理该知识库自己的文档与问答。</p></div><button onclick="openDrawer('kb')">＋ 新建知识库</button></div>
+        <div class="filter-bar"><span class="filter-label">名称</span><input placeholder="搜索知识库名称" /><span class="filter-label">状态</span><select><option>全部状态</option><option>正常</option><option>处理中</option><option>已删除</option></select><span class="filter-label">创建人</span><input placeholder="输入创建人" /><button>查询</button><button class="ghost">重置</button></div>
+        <div class="card kb-list-card">
+          <div class="table-head"><span>知识库</span><span>状态</span><span>创建时间</span><span>创建人</span><span>操作</span></div>
+          <div class="row"><div><strong>企业制度库</strong><div class="muted">制度、流程与员工手册</div></div><span class="tag">正常</span><span class="muted">2026年07月18日 12:00:00</span><span class="muted">linburgh</span><span class="action-links"><button class="link-button" onclick="selectKb('企业制度库')">进入工作区</button><button class="link-button" onclick="selectKb('企业制度库'); showWorkspaceTab('docs')">管理文档</button><button class="link-button" onclick="editKb('企业制度库')">修改</button><button class="link-danger" onclick="deleteKb('企业制度库')">删除</button></span></div>
+          <div class="row"><div><strong>产品资料库</strong><div class="muted">产品说明与技术资料</div></div><span class="tag">正常</span><span class="muted">2026年07月18日 13:30:00</span><span class="muted">linburgh</span><span class="action-links"><button class="link-button" onclick="selectKb('产品资料库')">进入工作区</button><button class="link-button" onclick="selectKb('产品资料库'); showWorkspaceTab('docs')">管理文档</button><button class="link-button" onclick="editKb('产品资料库')">修改</button><button class="link-danger" onclick="deleteKb('产品资料库')">删除</button></span></div>
+          <div class="pagination"><span>共 12 条</span><button>上一页</button><button class="active">1</button><button>2</button><button>下一页</button><select><option>10 条/页</option><option>20 条/页</option><option>50 条/页</option></select></div>
+        </div>
+      </section>
+
+      <section id="page-workspace" class="hidden">
+        <div class="heading"><div><span class="eyebrow">KNOWLEDGE BASE / <span id="kb-id">1</span></span><h1 id="kb-name">企业制度库</h1><p>当前页面只操作这个知识库的数据。</p></div><button class="ghost" onclick="showPage('kbs')">← 返回知识库</button></div>
+        <div class="workspace-tabs"><a id="tab-overview" onclick="showWorkspaceTab('overview')">概览</a><a id="tab-docs" onclick="showWorkspaceTab('docs')">文档</a><a id="tab-chat" onclick="showWorkspaceTab('chat')">问答</a></div>
+
+        <div id="workspace-overview">
+          <div class="stats"><div class="stat"><span class="muted">文档总数</span><strong>12</strong></div><div class="stat"><span class="muted">索引完成</span><strong>10</strong></div><div class="stat"><span class="muted">处理中</span><strong>1</strong></div><div class="stat"><span class="muted">索引失败</span><strong>1</strong></div></div>
+          <div class="card" style="padding:22px"><h2>知识库配置</h2><p>Embedding：qwen3.7-text-embedding　·　分块：600　·　Top-K：5</p></div>
+        </div>
+
+        <div id="workspace-docs" class="hidden"><div class="toolbar" style="margin-bottom:16px"><div><h2>当前知识库文档</h2><p>这里只显示“<span class="kb-label">企业制度库</span>”中的文档。</p></div><button onclick="openDrawer('upload')">＋ 上传文档</button></div><div class="filter-bar"><span class="filter-label">文件名</span><input placeholder="搜索文件名" /><span class="filter-label">状态</span><select><option>全部状态</option><option>待处理</option><option>处理中</option><option>已完成</option><option>失败</option></select><button>查询</button><button class="ghost">重置</button></div><div class="card"><div class="table-head"><span>文件名</span><span>类型 / 大小</span><span>状态</span><span>操作</span></div><div class="row"><div><strong>员工手册.pdf</strong></div><span class="muted">PDF · 2.4 MB</span><span class="tag">ready</span><span><button class="link-button" onclick="viewDocument('员工手册.pdf')">查看</button> <button class="link-danger" onclick="deleteDocument('员工手册.pdf')">删除</button></span></div><div class="row"><div><strong>报销制度.md</strong></div><span class="muted">Markdown · 18 KB</span><span class="tag warn">processing</span><span><button class="link-button" onclick="viewDocument('报销制度.md')">查看</button> <button class="link-danger" onclick="deleteDocument('报销制度.md')">删除</button></span></div><div class="row"><div><strong>旧版报销制度.pdf</strong></div><span class="muted">PDF · 1.1 MB</span><span class="tag fail">failed</span><span><button class="link-button" onclick="viewDocument('旧版报销制度.pdf')">查看</button> <button class="link-button" onclick="reindexDocument('旧版报销制度.pdf')">重新索引</button> <button class="link-danger" onclick="deleteDocument('旧版报销制度.pdf')">删除</button></span></div><div class="pagination"><span>共 18 条</span><button>上一页</button><button class="active">1</button><button>2</button><button>下一页</button><select><option>10 条/页</option><option>20 条/页</option><option>50 条/页</option></select></div></div></div>
+
+        <div id="workspace-chat" class="hidden"><div class="toolbar" style="margin-bottom:16px"><div><h2>当前知识库问答</h2><p>回答只基于“<span class="kb-label">企业制度库</span>”中已完成索引的文档。</p></div></div><div class="card chat"><div class="messages"><div class="bubble user">报销流程需要哪些材料？</div><div class="bubble">根据当前知识库资料，报销需要准备发票、费用明细和直属负责人审批单。</div><div class="composer"><textarea placeholder="输入问题，开始问答"></textarea><div class="row"><span class="muted">检索模式：vector</span><button>发送问题</button></div></div></div><div class="citations"><h2>引用来源</h2><div class="citation"><strong>[1] 报销制度.md</strong><p class="muted">员工提交报销时，需要准备发票、费用明细和直属负责人审批单。</p><span class="muted">相似度 0.749</span></div></div></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="drawer" class="drawer" onclick="if(event.target===this)toggleDrawer(false)"><div class="drawer-panel"><div class="toolbar"><h2 id="drawer-title">新建知识库</h2><button class="ghost" onclick="toggleDrawer(false)">关闭</button></div><div id="kb-form"><label>名称<input id="drawer-name" placeholder="例如：企业制度库" /></label><label>描述<textarea id="drawer-description" rows="5" placeholder="描述知识库内容范围"></textarea></label></div><div id="upload-form" class="hidden"><label>选择文件<input id="drawer-file" type="file" /></label><p class="muted">支持后端配置允许的文件类型，上传后会进入索引流程。</p></div><div id="detail-form" class="hidden"><p class="muted">文档：员工手册.pdf　·　状态：ready</p><div class="detail-summary"><div><span class="muted">分片总数</span><strong>8</strong></div><div><span class="muted">已生成向量</span><strong>8</strong></div><div><span class="muted">向量维度</span><strong>1024</strong></div></div><p class="muted">上传时间：2026年07月18日 12:00:00</p><div class="chunk-filter"><input placeholder="搜索分片内容" /><button class="link-button">查询</button><button class="link-button">重置</button></div><div class="chunk-list"><div class="chunk-item"><div class="chunk-head"><strong>分片 #1</strong><span class="status-text status-success">向量已生成</span></div><div class="chunk-content">员工提交报销时，需要准备发票、费用明细和直属负责人审批单。</div><span class="muted">Token 数：32　·　页码：1　·　章节：报销流程</span></div><div class="chunk-item"><div class="chunk-head"><strong>分片 #2</strong><span class="status-text status-success">向量已生成</span></div><div class="chunk-content">财务审核通过后，报销款会按照公司付款周期发放。</div><span class="muted">Token 数：21　·　页码：1　·　章节：报销流程</span></div></div><div class="pagination"><span>共 8 个分片</span><button>上一页</button><button class="active">1</button><button>下一页</button><select><option>10 条/页</option><option>20 条/页</option></select></div></div><div class="drawer-footer"><button class="ghost" onclick="toggleDrawer(false)">关闭</button><button id="drawer-submit" onclick="toggleDrawer(false)">保存</button></div></div></div>
+
+  <script>
+    let selectedKnowledgeBase = '企业制度库';
+    function toggleDrawer(open) { document.getElementById('drawer').classList.toggle('open', open); }
+    function openDrawer(mode) { toggleDrawer(true); const drawer = document.getElementById('drawer'); drawer.classList.toggle('detail-mode', mode === 'detail'); document.getElementById('kb-form').classList.toggle('hidden', mode !== 'kb'); document.getElementById('upload-form').classList.toggle('hidden', mode !== 'upload'); document.getElementById('detail-form').classList.toggle('hidden', mode !== 'detail'); document.getElementById('drawer-title').textContent = mode === 'upload' ? '上传文档' : mode === 'detail' ? '文档分片信息' : '新建知识库'; document.getElementById('drawer-submit').classList.toggle('hidden', mode === 'detail'); document.getElementById('drawer-submit').textContent = mode === 'upload' ? '开始上传' : '保存'; }
+    function editKb(name) { openDrawer('kb'); document.getElementById('drawer-title').textContent = '修改知识库'; document.getElementById('drawer-name').value = name; document.getElementById('drawer-description').value = '当前知识库描述'; }
+    function deleteKb(name) { if (window.confirm('确认删除“' + name + '”吗？')) window.alert('原型：已提交删除操作'); }
+    function viewDocument(name) { openDrawer('detail'); document.querySelector('#detail-form > p').textContent = '文档：' + name + '　·　状态：ready'; }
+    function reindexDocument(name) { window.alert('原型：重新索引“' + name + '”'); }
+    function deleteDocument(name) { if (window.confirm('确认删除“' + name + '”吗？')) window.alert('原型：已提交删除操作'); }
+    function selectKb(name) { selectedKnowledgeBase = name; document.getElementById('kb-name').textContent = name; document.querySelectorAll('.kb-label').forEach(el => el.textContent = name); showPage('workspace'); showWorkspaceTab('overview'); }
+    function showPage(page) { ['kbs','workspace'].forEach(name => document.getElementById('page-' + name).classList.toggle('hidden', name !== page)); document.getElementById('nav-kbs').classList.toggle('active', page === 'kbs'); }
+    function openWorkspace(tab) { showPage('workspace'); showWorkspaceTab(tab); }
+    function showWorkspaceTab(tab) { ['overview','docs','chat'].forEach(name => { document.getElementById('workspace-' + name).classList.toggle('hidden', name !== tab); document.getElementById('tab-' + name).classList.toggle('active', name === tab); }); document.getElementById('nav-kbs').classList.remove('active'); }
+  </script>
+</body>
+</html>
