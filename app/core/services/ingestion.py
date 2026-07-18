@@ -13,7 +13,7 @@ from app.db import indexing_task as indexing_task_db
 from app.db import knowledge_base as knowledge_base_db
 from app.db.api import check_db_connected
 from app.db.base import DB
-from app.rag import loaders, splitters
+from app.rag import embeddings, loaders, splitters
 
 DOCUMENT_STATUS_PROCESSING = "processing"
 DOCUMENT_STATUS_READY = "ready"
@@ -27,7 +27,7 @@ RUNNING_TASK_STATUSES = {TASK_STATUS_PENDING, TASK_STATUS_RUNNING}
 
 
 @check_db_connected
-async def create_index_task(document_id: int) -> Any:
+async def create_task(document_id: int) -> Any:
     rd = None
 
     if not document_id:
@@ -95,7 +95,7 @@ async def run_task(task_id: int) -> Any:
         )
 
     try:
-        return await _run_task_body(task_id)
+        return await exc_task_body(task_id)
     except BusiException as exc:
         await mark_failed(task_id, exc.message)
         raise
@@ -105,7 +105,7 @@ async def run_task(task_id: int) -> Any:
 
 
 @check_db_connected
-async def _run_task_body(task_id: int) -> Any:
+async def exc_task_body(task_id: int) -> Any:
     rd = None
 
     db = DB.get()
@@ -141,6 +141,10 @@ async def _run_task_body(task_id: int) -> Any:
         if not chunks:
             raise BusiException("文档切片结果为空")
 
+        chunks = await embeddings.embed_chunks(
+            chunks,
+            model=knowledge_base["embedding_model"],
+        )
         await save_chunks(db, document, knowledge_base, chunks)
         rd = await mark_ready(db, task, document)
     return rd
@@ -170,7 +174,9 @@ async def save_chunks(
                 "start_index": chunk.get("start_index"),
                 "token_count": chunk.get("token_count"),
                 "metadata": chunk.get("metadata") or {},
-                "embedding_model": knowledge_base["embedding_model"],
+                "embedding_model": (
+                    chunk.get("embedding_model") or knowledge_base["embedding_model"]
+                ),
                 "embedding": chunk.get("embedding"),
             }
         )
@@ -242,8 +248,9 @@ async def mark_failed(task_id: int, error_message: str) -> Any:
 
 
 __all__ = (
-    "create_index_task",
+    "create_task",
     "run_task",
+    "exc_task_body",
     "save_chunks",
     "mark_ready",
     "mark_failed",

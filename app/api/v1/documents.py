@@ -86,7 +86,7 @@ async def list(
 @router.post("/{id}/index")
 async def index(id: int) -> Any:
     try:
-        task = await ingestion_service.create_index_task(id)
+        task = await ingestion_service.create_task(id)
         return await ingestion_service.run_task(task["id"])
     except BusiException as exc:
         common_utils.raise_http_exception(exc)

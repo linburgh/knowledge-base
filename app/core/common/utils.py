@@ -7,7 +7,7 @@ from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 from app.core.common.exception import BusiException
 
@@ -73,4 +73,4 @@ def parse_dataclass(value: object, cls: type) -> Any:
 
 
 def raise_http_exception(exc: BusiException) -> None:
-    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message)
+    raise HTTPException(status_code=exc.status_code, detail=exc.message)

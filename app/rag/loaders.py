@@ -10,19 +10,29 @@ from app.core.common.exception import BusiException
 
 
 def _load_text(path: Path) -> list[dict[str, Any]]:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise BusiException("文件内容不合法") from exc
     return [
         {
-            "content": path.read_text(encoding="utf-8"),
+            "content": content,
             "metadata": {"source": path.as_posix()},
         }
     ]
 
 
 def _load_pdf(path: Path) -> list[dict[str, Any]]:
-    reader = PdfReader(path.as_posix())
+    try:
+        reader = PdfReader(path.as_posix())
+    except Exception as exc:
+        raise BusiException("文件内容不合法") from exc
     docs = []
     for index, page in enumerate(reader.pages, start=1):
-        content = page.extract_text() or ""
+        try:
+            content = page.extract_text() or ""
+        except Exception as exc:
+            raise BusiException("文件内容不合法") from exc
         if not content.strip():
             continue
         docs.append(
@@ -39,7 +49,10 @@ def _load_pdf(path: Path) -> list[dict[str, Any]]:
 
 
 def _load_docx(path: Path) -> list[dict[str, Any]]:
-    content = docx2txt.process(path.as_posix()) or ""
+    try:
+        content = docx2txt.process(path.as_posix()) or ""
+    except Exception as exc:
+        raise BusiException("文件内容不合法") from exc
     return [
         {
             "content": content,

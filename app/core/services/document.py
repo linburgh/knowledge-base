@@ -128,7 +128,7 @@ async def upload(
         created_by=created_by,
     )
     document = await add(dto)
-    task = await ingestion_service.create_index_task(document["id"])
+    task = await ingestion_service.create_task(document["id"])
     asyncio.create_task(ingestion_service.run_task(task["id"]))
     return document
 

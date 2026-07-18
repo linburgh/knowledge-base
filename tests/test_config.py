@@ -19,3 +19,6 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(CONF.storage.minio_access_key, "linburgh")
         self.assertEqual(CONF.storage.minio_secret_key, "linburgh")
         self.assertEqual(CONF.storage.minio_bucket, "knowledge-base")
+        self.assertEqual(CONF.model.embedding_model, "change-me")
+        self.assertEqual(CONF.model.api_key, "change-me")
+        self.assertEqual(CONF.model.base_url, "http://127.0.0.1:8000/v1")
