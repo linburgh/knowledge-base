@@ -34,7 +34,7 @@ async def search_by_query(
     kb_id: int,
     query: str,
     top_k: int | None = None,
-    mode: str = "keyword",
+    mode: str = "vector",
 ) -> Any:
     return await _search(
         RetrievalRequest(kb_id=kb_id, query=query, top_k=top_k, mode=mode),
