@@ -6,7 +6,15 @@ import sqlalchemy as sa
 
 from app.db import api as db_api
 from app.db.base import PageRecord
-from app.db.models import OrganizationMember, TenantMember, User
+from app.db.models import (
+    Organization,
+    OrganizationMember,
+    PlatformRole,
+    PlatformUserRole,
+    Tenant,
+    TenantMember,
+    User,
+)
 
 STATUS_DELETED = "deleted"
 
@@ -61,6 +69,98 @@ async def get(db, **kwargs: Any) -> dict[str, Any] | None:
     return await db_api.get(db, User, **kwargs)
 
 
+async def get_with_context(db, user_id: int) -> dict[str, Any] | None:
+    user = await get(db, id=user_id)
+    if user is None:
+        return None
+
+    tenant_rows = await db.fetch_all(
+        sa.select(
+            Tenant.c.id.label("tenant_id"),
+            Tenant.c.name.label("tenant_name"),
+            TenantMember.c.role_code.label("tenant_role"),
+        )
+        .select_from(TenantMember.join(Tenant, Tenant.c.id == TenantMember.c.tenant_id))
+        .where(TenantMember.c.user_id == user_id, TenantMember.c.status == "active")
+        .order_by(TenantMember.c.is_primary.desc(), TenantMember.c.created_at.asc())
+    )
+    tenant = dict(tenant_rows[0]) if tenant_rows else None
+
+    organization_query = (
+        sa.select(
+            Organization.c.id.label("organization_id"),
+            Organization.c.tenant_id,
+            Organization.c.parent_id,
+            Organization.c.name.label("organization_name"),
+            OrganizationMember.c.role_code.label("organization_role"),
+        )
+        .select_from(
+            OrganizationMember.join(
+                Organization,
+                Organization.c.id == OrganizationMember.c.organization_id,
+            )
+        )
+        .where(OrganizationMember.c.user_id == user_id, OrganizationMember.c.status == "active")
+        .order_by(OrganizationMember.c.is_primary.desc(), OrganizationMember.c.created_at.asc())
+    )
+    organization_rows = await db.fetch_all(organization_query)
+    organization = None
+    if tenant:
+        organization = next(
+            (dict(row) for row in organization_rows if row["tenant_id"] == tenant["tenant_id"]),
+            None,
+        )
+    if organization is None and organization_rows:
+        organization = dict(organization_rows[0])
+
+    organization_path = None
+    if organization:
+        organization_rows = await db.fetch_all(
+            sa.select(
+                Organization.c.id,
+                Organization.c.parent_id,
+                Organization.c.name,
+            ).where(
+                Organization.c.tenant_id == organization["tenant_id"],
+                Organization.c.status != "deleted",
+            )
+        )
+        by_id = {row["id"]: dict(row) for row in organization_rows}
+        names = []
+        current_id = organization["organization_id"]
+        while current_id in by_id and current_id not in {item["id"] for item in names}:
+            current = by_id[current_id]
+            names.append(current)
+            current_id = current["parent_id"]
+        organization_path = " / ".join(item["name"] for item in reversed(names))
+
+    platform_role = await db.fetch_one(
+        sa.select(PlatformRole.c.code)
+        .select_from(
+            PlatformUserRole.join(
+                PlatformRole,
+                PlatformRole.c.id == PlatformUserRole.c.role_id,
+            )
+        )
+        .where(PlatformUserRole.c.user_id == user_id, PlatformRole.c.status == "active")
+        .order_by(PlatformRole.c.id.asc())
+        .limit(1)
+    )
+    user.update(
+        {
+            "tenant_id": tenant["tenant_id"] if tenant else None,
+            "tenant_name": tenant["tenant_name"] if tenant else None,
+            "tenant_role": tenant["tenant_role"] if tenant else "member",
+            "organization_id": organization["organization_id"] if organization else None,
+            "organization_name": organization["organization_name"] if organization else None,
+            "organization_path": organization_path,
+            "organization_role": organization["organization_role"] if organization else "member",
+            "platform_role": platform_role["code"] if platform_role else "none",
+        }
+    )
+    return user
+
+
 async def get_by_account(db, account: str) -> dict[str, Any] | None:
     query = sa.select(User).where(
         sa.or_(User.c.username == account, User.c.email == account)
@@ -113,4 +213,12 @@ async def page(
     return record
 
 
-__all__ = ("insert_", "update_", "get", "get_by_account", "list", "page")
+__all__ = (
+    "insert_",
+    "update_",
+    "get",
+    "get_with_context",
+    "get_by_account",
+    "list",
+    "page",
+)

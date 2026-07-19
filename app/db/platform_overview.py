@@ -161,7 +161,7 @@ async def document_status(db) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-async def recent_activities(db, limit: int = 20) -> list[dict[str, Any]]:
+async def recent_activities(db, limit: int = 5) -> list[dict[str, Any]]:
     query = (
         sa.select(
             AuditLog.c.id,

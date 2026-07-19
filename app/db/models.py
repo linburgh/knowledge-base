@@ -11,6 +11,7 @@ Tenant = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("code", sa.String(64), nullable=False),
     sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("description", sa.String(500), nullable=False, server_default=sa.text("''")),
     sa.Column("logo", sa.String(1024)),
     sa.Column("contact_name", sa.String(128)),
     sa.Column("contact_email", sa.String(255)),
@@ -66,6 +67,26 @@ LoginLog = sa.Table(
     sa.Index("idx_t_login_log_user_created", "user_id", "created_at"),
     sa.Index("idx_t_login_log_account_created", "login_account", "created_at"),
     sa.Index("idx_t_login_log_result_created", "result", "created_at"),
+)
+
+
+PlatformRole = sa.Table(
+    "t_platform_role",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("code", sa.String(64), nullable=False),
+    sa.Column("name", sa.String(128), nullable=False),
+    sa.Column("description", sa.String(500), nullable=False, server_default=sa.text("''")),
+    sa.Column("status", sa.String(32), nullable=False),
+)
+
+
+PlatformUserRole = sa.Table(
+    "t_platform_user_role",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("user_id", sa.BigInteger, nullable=False),
+    sa.Column("role_id", sa.BigInteger, nullable=False),
 )
 
 

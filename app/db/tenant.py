@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import sqlalchemy as sa
+
 from app.db import api as db_api
-from app.db.models import Tenant
+from app.db.models import KnowledgeBase, Tenant, TenantMember
 
 
 async def insert_(db, **kwargs: Any) -> Any:
@@ -16,6 +18,35 @@ async def update_(db, values: dict[str, Any], **kwargs: Any) -> Any:
 
 async def get(db, **kwargs: Any) -> dict[str, Any] | None:
     return await db_api.get(db, Tenant, **kwargs)
+
+
+async def get_with_stats(db, tenant_id: int) -> dict[str, Any] | None:
+    query = (
+        sa.select(
+            Tenant,
+            sa.func.count(sa.distinct(TenantMember.c.user_id)).label("member_count"),
+            sa.func.count(sa.distinct(KnowledgeBase.c.id)).label("knowledge_base_count"),
+        )
+        .select_from(Tenant)
+        .outerjoin(
+            TenantMember,
+            sa.and_(
+                TenantMember.c.tenant_id == Tenant.c.id,
+                TenantMember.c.status == "active",
+            ),
+        )
+        .outerjoin(
+            KnowledgeBase,
+            sa.and_(
+                KnowledgeBase.c.tenant_id == Tenant.c.id,
+                KnowledgeBase.c.status != "deleted",
+            ),
+        )
+        .where(Tenant.c.id == tenant_id)
+        .group_by(*Tenant.c)
+    )
+    row = await db.fetch_one(query)
+    return dict(row) if row else None
 
 
 async def list(db, **kwargs: Any) -> list[dict[str, Any]]:
@@ -38,4 +69,4 @@ async def page(db, page: int = 1, page_size: int = 20, **kwargs: Any):
     )
 
 
-__all__ = ("insert_", "update_", "get", "list", "page")
+__all__ = ("insert_", "update_", "get", "get_with_stats", "list", "page")

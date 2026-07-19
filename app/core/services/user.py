@@ -119,7 +119,7 @@ async def remove(user_id: int) -> dict[str, Any]:
 async def get(user_id: int) -> dict[str, Any]:
     if not user_id:
         raise BusiException("user_id 不能为空")
-    user = _safe(await user_db.get(DB.get(), id=user_id))
+    user = _safe(await user_db.get_with_context(DB.get(), user_id))
     if user is None:
         raise BusiException("用户不存在", status_code=404)
     return user

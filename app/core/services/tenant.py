@@ -92,7 +92,7 @@ async def remove(tenant_id: int) -> dict[str, Any]:
 async def get(tenant_id: int) -> dict[str, Any]:
     if not tenant_id:
         raise BusiException("tenant_id 不能为空")
-    tenant = await tenant_db.get(DB.get(), id=tenant_id)
+    tenant = await tenant_db.get_with_stats(DB.get(), tenant_id)
     if tenant is None:
         raise BusiException("租户不存在", status_code=404)
     return tenant

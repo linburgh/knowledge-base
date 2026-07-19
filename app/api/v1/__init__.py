@@ -7,6 +7,7 @@ from app.api.v1 import (
     documents,
     health,
     knowledge_bases,
+    knowledge_base_overview,
     organizations,
     platform_overview,
     search,
@@ -18,6 +19,7 @@ api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(health.router, prefix="/health", tags=["Health"])
 api_router.include_router(knowledge_bases.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])
+api_router.include_router(knowledge_base_overview.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])
 api_router.include_router(tenants.router, prefix="/tenants", tags=["Tenant"])
 api_router.include_router(users.router, prefix="/users", tags=["User"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["Organization"])
