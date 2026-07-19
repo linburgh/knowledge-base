@@ -137,12 +137,12 @@ async def list(
     status: str | None = None,
     visibility: str | None = None,
 ) -> list[dict[str, Any]]:
-    return await knowledge_base_db.list(
-        DB.get(),
-        owner_id=owner_id,
-        status=status,
-        visibility=visibility,
-    )
+    filters: dict[str, Any] = {"owner_id": owner_id, "visibility": visibility}
+    if status is None:
+        filters["status__ne"] = STATUS_DELETED
+    else:
+        filters["status"] = status
+    return await knowledge_base_db.list(DB.get(), **filters)
 
 
 @check_db_connected
@@ -158,14 +158,12 @@ async def page(
     if page_size <= 0:
         raise BusiException("page_size 必须大于 0")
 
-    return await knowledge_base_db.page(
-        DB.get(),
-        owner_id=owner_id,
-        status=status,
-        visibility=visibility,
-        page=page,
-        page_size=page_size,
-    )
+    filters: dict[str, Any] = {"owner_id": owner_id, "visibility": visibility}
+    if status is None:
+        filters["status__ne"] = STATUS_DELETED
+    else:
+        filters["status"] = status
+    return await knowledge_base_db.page(DB.get(), page=page, page_size=page_size, **filters)
 
 
 __all__ = ("validate", "add", "modify", "remove", "get", "list", "page")

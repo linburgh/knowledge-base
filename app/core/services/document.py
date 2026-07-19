@@ -231,11 +231,12 @@ async def list(
     if not kb_id:
         raise BusiException("kb_id 不能为空")
 
-    return await document_db.list(
-        DB.get(),
-        kb_id=kb_id,
-        status=status,
-    )
+    filters: dict[str, Any] = {"kb_id": kb_id}
+    if status is None:
+        filters["status__ne"] = STATUS_DELETED
+    else:
+        filters["status"] = status
+    return await document_db.list(DB.get(), **filters)
 
 
 @check_db_connected

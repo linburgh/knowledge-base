@@ -177,12 +177,12 @@ async def list(
     if status is not None and status not in ALLOWED_STATUSES:
         raise BusiException("status 不合法")
 
-    return await conversation_db.list(
-        DB.get(),
-        kb_id=kb_id,
-        user_id=user_id,
-        status=status,
-    )
+    filters: dict[str, Any] = {"kb_id": kb_id, "user_id": user_id}
+    if status is None:
+        filters["status__ne"] = STATUS_DELETED
+    else:
+        filters["status"] = status
+    return await conversation_db.list(DB.get(), **filters)
 
 
 @check_db_connected

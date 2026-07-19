@@ -40,7 +40,11 @@ def _build_conditions(table: Any, **kwargs: Any) -> list[Any]:
     for key, value in kwargs.items():
         if value is None:
             continue
-        conditions.append(getattr(table.c, key) == value)
+        # 支持 status__ne 这类通用排除条件，供列表默认隐藏逻辑删除数据。
+        if key.endswith("__ne"):
+            conditions.append(getattr(table.c, key[:-4]) != value)
+        else:
+            conditions.append(getattr(table.c, key) == value)
     return conditions
 
 
