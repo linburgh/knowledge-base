@@ -33,6 +33,14 @@ def normalize_space(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+def normalize_optional_filter(value: str | None) -> str | None:
+    """Treat empty query-string filters as omitted filters."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 def json_dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 

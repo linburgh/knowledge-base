@@ -139,11 +139,7 @@ def _validate_filters(
 
 
 def _normalize_filter(value: str | None) -> str | None:
-    """Treat empty query-string filters as an omitted filter."""
-    if value is None:
-        return None
-    normalized = value.strip()
-    return normalized or None
+    return common_utils.normalize_optional_filter(value)
 
 
 @check_db_connected
