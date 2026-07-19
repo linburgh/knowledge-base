@@ -10,6 +10,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.core.common.exception import BusiException
+from app.core.common.log import LOG
 
 
 def utc_now() -> datetime:
@@ -73,4 +74,5 @@ def parse_dataclass(value: object, cls: type) -> Any:
 
 
 def raise_http_exception(exc: BusiException) -> None:
+    LOG.warning("business exception status={} message={}", exc.status_code, exc.message)
     raise HTTPException(status_code=exc.status_code, detail=exc.message)
