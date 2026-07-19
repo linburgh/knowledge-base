@@ -68,6 +68,15 @@
     .citation { padding:13px 0; border-bottom:1px solid var(--line); }
     .link-button, .link-danger { margin-right:14px; padding:0; background:transparent; font-size:13px; }
     .refresh-button { margin-left:8px; }
+    .line-chart { width:100%; height:190px; overflow:visible; }
+    .line-chart .grid-line { stroke:#eef1f5; stroke-width:1; }
+    .line-chart .trend-line { fill:none; stroke:#6d7af5; stroke-linecap:round; stroke-linejoin:round; stroke-width:3; }
+    .line-chart .trend-area { fill:rgba(109,122,245,.1); }
+    .line-chart .trend-point { fill:#fff; stroke:#6d7af5; stroke-width:2; }
+    .line-chart text { fill:#9aa4b5; font-size:10px; }
+    .line-chart-legend { display:flex; justify-content:flex-end; gap:14px; margin-bottom:4px; color:var(--muted); font-size:11px; }
+    .line-legend-item { display:inline-flex; align-items:center; gap:5px; }
+    .line-legend-item i { width:8px; height:8px; border-radius:50%; }
     .link-button { color:var(--blue); }
     .link-danger { color:#c14b58; }
     .action-links { white-space:nowrap; }
@@ -223,6 +232,31 @@
     function showRefreshNotice(message) { let notice = document.getElementById('prototype-notice'); if (!notice) { notice = document.createElement('div'); notice.id = 'prototype-notice'; notice.className = 'app-notice notice-success'; document.body.appendChild(notice); } notice.textContent = message; notice.classList.remove('hidden'); clearTimeout(window.prototypeNoticeTimer); window.prototypeNoticeTimer = setTimeout(() => notice.classList.add('hidden'), 2200); }
     function addListRefreshButton(targetSelector, message) { const target = document.querySelector(targetSelector); if (!target || target.querySelector('.refresh-button')) return; const button = document.createElement('button'); button.className = 'ghost refresh-button'; button.type = 'button'; button.title = '刷新列表'; button.setAttribute('aria-label', '刷新列表'); button.textContent = '刷新'; button.onclick = () => showRefreshNotice(message); target.appendChild(button); }
     function addRefreshButtons() { addListRefreshButton('#page-kbs .filter-bar', '知识库列表已刷新'); addListRefreshButton('#workspace-docs .filter-bar', '文档列表已刷新'); addListRefreshButton('#platform-users .filter-bar', '用户列表已刷新'); addListRefreshButton('#platform-tenants .filter-bar', '租户列表已刷新'); addListRefreshButton('#platform-org-tree .filter-bar', '组织树已刷新'); addListRefreshButton('#platform-org-members .filter-bar', '组织成员列表已刷新'); }
+    function renderLineChart(cardTitle, values) { const heading = [...document.querySelectorAll('.chart-card h2')].find(el => el.textContent.trim() === cardTitle); const bars = heading?.parentElement?.querySelector('.chart-bars'); if (!bars) return; const labels = [...bars.querySelectorAll('.bar-group span')].map(el => el.textContent.trim()); const width = 620; const height = 190; const left = 28; const right = 12; const top = 14; const bottom = 28; const max = Math.max(...values, 1); const step = (width - left - right) / Math.max(values.length - 1, 1); const points = values.map((value, index) => `${left + index * step},${top + (height - top - bottom) * (1 - value / max)}`); const area = `${left},${height - bottom} ${points.join(' ')} ${left + (values.length - 1) * step},${height - bottom}`; const dots = values.map((value, index) => `<circle class="trend-point" cx="${left + index * step}" cy="${top + (height - top - bottom) * (1 - value / max)}" r="4" />`).join(''); const xLabels = labels.map((label, index) => `<text x="${left + index * step}" y="${height - 7}" text-anchor="middle">${label}</text>`).join(''); bars.outerHTML = `<svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${cardTitle}"><line class="grid-line" x1="${left}" y1="${top}" x2="${width - right}" y2="${top}" /><line class="grid-line" x1="${left}" y1="${(height - bottom + top) / 2}" x2="${width - right}" y2="${(height - bottom + top) / 2}" /><line class="grid-line" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" /><polygon class="trend-area" points="${area}" /><polyline class="trend-line" points="${points.join(' ')}" />${dots}${xLabels}</svg>`; }
+    function renderMultiLineChart(cardTitle, series) {
+      const heading = [...document.querySelectorAll('.chart-card h2')].find(el => el.textContent.trim() === cardTitle);
+      const bars = heading?.parentElement?.querySelector('.chart-bars');
+      if (!bars) return;
+      const labels = [...bars.querySelectorAll('.bar-group span')].map(el => el.textContent.trim());
+      const width = 620;
+      const height = 190;
+      const left = 28;
+      const right = 12;
+      const top = 14;
+      const bottom = 28;
+      const max = Math.max(...series.flatMap(item => item.values), 1);
+      const step = (width - left - right) / Math.max(labels.length - 1, 1);
+      const y = value => top + (height - top - bottom) * (1 - value / max);
+      const lines = series.map(item => {
+        const points = item.values.map((value, index) => `${left + index * step},${y(value)}`);
+        const dots = item.values.map((value, index) => `<circle class="trend-point" style="stroke:${item.color}" cx="${left + index * step}" cy="${y(value)}" r="4" />`).join('');
+        return `<polyline class="trend-line" style="stroke:${item.color}" points="${points.join(' ')}" />${dots}`;
+      }).join('');
+      const xLabels = labels.map((label, index) => `<text x="${left + index * step}" y="${height - 7}" text-anchor="middle">${label}</text>`).join('');
+      const legend = series.map(item => `<span class="line-legend-item"><i style="background:${item.color}"></i>${item.name}</span>`).join('');
+      bars.outerHTML = `<div class="line-chart-wrap"><div class="line-chart-legend">${legend}</div><svg class="line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${cardTitle}"><line class="grid-line" x1="${left}" y1="${top}" x2="${width - right}" y2="${top}" /><line class="grid-line" x1="${left}" y1="${(height - bottom + top) / 2}" x2="${width - right}" y2="${(height - bottom + top) / 2}" /><line class="grid-line" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" />${lines}${xLabels}</svg></div>`;
+    }
+    function renderTrendCharts() { renderLineChart('用户增长趋势', [30, 44, 62, 50, 78, 92, 68]); renderLineChart('文档处理趋势', [42, 58, 35, 76, 52, 88, 64]); renderMultiLineChart('问答趋势', [{ name: '问答次数', color: '#5969d8', values: [30, 48, 42, 70, 56, 84, 66] }, { name: '活跃会话数', color: '#f0b957', values: [18, 28, 24, 38, 31, 46, 36] }]); }
     function deleteOrg(name) { let notice = document.getElementById('prototype-notice'); if (!notice) { notice = document.createElement('div'); notice.id = 'prototype-notice'; notice.className = 'app-notice notice-success'; document.body.appendChild(notice); } notice.textContent = '原型：已提交删除“' + name + '”操作'; notice.classList.remove('hidden'); clearTimeout(window.prototypeNoticeTimer); window.prototypeNoticeTimer = setTimeout(() => notice.classList.add('hidden'), 2200); }
     function showOrgTree() { const tree = document.getElementById('platform-org-tree'); tree.classList.remove('hidden'); document.getElementById('platform-org-members').classList.add('hidden'); if (!window.orgDeleteBound) { document.addEventListener('click', event => { const button = event.target.closest('#platform-org-tree button'); if (!button || button.textContent.trim() !== '删除') return; event.preventDefault(); event.stopPropagation(); const name = button.closest('.row')?.querySelector('strong')?.textContent.trim() || '当前组织'; deleteOrg(name); }); window.orgDeleteBound = true; } document.querySelectorAll('#platform-org-tree strong').forEach(el => { el.textContent = el.textContent.replace(/[├└─]/g, '').trim(); }); const tableHead = tree.querySelector('.table-head'); if (tableHead && tableHead.children[1]?.textContent === '组织编码') { tableHead.children[1].remove(); tree.querySelectorAll('.card > .row').forEach(row => row.children[1]?.remove()); } if (tableHead && tableHead.lastElementChild?.textContent === '删除') { tableHead.lastElementChild.remove(); tree.querySelectorAll('.card > .row').forEach(row => { const actionCell = row.children[row.children.length - 2]; const deleteCell = row.lastElementChild; while (deleteCell?.firstChild) actionCell.appendChild(deleteCell.firstChild); deleteCell?.remove(); }); } tree.querySelectorAll('.table-head,.card > .row').forEach(row => { row.style.gridTemplateColumns = '2fr 1.4fr .9fr 1.2fr 2.5fr'; }); tree.querySelectorAll('.card > .row').forEach((row, index) => { row.classList.add(index === 0 ? 'org-level-0' : index === 2 ? 'org-level-2' : 'org-level-1'); row.querySelectorAll('button').forEach(button => { if (button.textContent.trim() === '删除') { button.onclick = null; button.classList.add('org-delete-button'); } }); }); tree.querySelector('.pagination')?.classList.add('hidden'); }
     function openPlatformDrawer(title) { document.getElementById('platform-drawer-title').textContent = title; document.getElementById('tenant-detail').classList.add('hidden'); document.getElementById('user-detail')?.classList.add('hidden'); document.getElementById('platform-form').classList.remove('hidden'); document.getElementById('platform-drawer-submit').classList.remove('hidden'); addRoleFields(title); document.getElementById('platform-drawer').classList.add('open'); }
@@ -233,6 +267,7 @@
     function openWorkspace(tab) { showPage('workspace'); showWorkspaceTab(tab); }
     function showWorkspaceTab(tab) { ['overview','docs','chat'].forEach(name => { document.getElementById('workspace-' + name).classList.toggle('hidden', name !== tab); document.getElementById('tab-' + name).classList.toggle('active', name === tab); }); document.getElementById('nav-kbs').classList.remove('active'); }
     addRefreshButtons();
+    renderTrendCharts();
   </script>
 </body>
 </html>

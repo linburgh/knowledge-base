@@ -132,6 +132,8 @@ KnowledgeBase = sa.Table(
     "t_knowledge_base",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("tenant_id", sa.BigInteger, nullable=False),
+    sa.Column("organization_id", sa.BigInteger),
     sa.Column("name", sa.String(255), nullable=False),
     sa.Column("description", sa.String(500), nullable=False, server_default=sa.text("''")),
     sa.Column("owner_id", sa.String(128), nullable=False),
@@ -149,6 +151,7 @@ KnowledgeBase = sa.Table(
         server_default=sa.func.now(),
     ),
     sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("created_by", sa.BigInteger, nullable=False),
     sa.Column(
         "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),
