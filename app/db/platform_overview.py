@@ -96,7 +96,7 @@ async def knowledge_base_trend(
     ]
 
 
-async def tenant_resources(db) -> list[dict[str, Any]]:
+async def tenant_resources(db, limit: int = 5) -> list[dict[str, Any]]:
     user_count = sa.func.count(sa.distinct(TenantMember.c.user_id)).label("user_total")
     organization_count = sa.func.count(sa.distinct(Organization.c.id)).label(
         "organization_total"
@@ -137,7 +137,14 @@ async def tenant_resources(db) -> list[dict[str, Any]]:
         )
         .where(Tenant.c.status != "deleted")
         .group_by(Tenant.c.id, Tenant.c.code, Tenant.c.name)
-        .order_by(Tenant.c.created_at.desc(), Tenant.c.id.desc())
+        .order_by(
+            user_count.desc(),
+            organization_count.desc(),
+            knowledge_base_count.desc(),
+            Tenant.c.created_at.desc(),
+            Tenant.c.id.desc(),
+        )
+        .limit(limit)
     )
     rows = await db.fetch_all(query)
     return [dict(row) for row in rows]

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
@@ -18,12 +18,14 @@ async def overview(
     range: str = "7d",
     start_at: datetime | None = None,
     end_at: datetime | None = None,
+    tenant_limit: int = Query(default=5, ge=1, le=20),
 ) -> Any:
     try:
         return await platform_overview_service.get_overview(
             range_name=range,
             start_at=start_at,
             end_at=end_at,
+            tenant_limit=tenant_limit,
         )
     except BusiException as exc:
         common_utils.raise_http_exception(exc)

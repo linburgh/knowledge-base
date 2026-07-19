@@ -40,6 +40,7 @@ async def get_overview(
     range_name: str = "7d",
     start_at: datetime | None = None,
     end_at: datetime | None = None,
+    tenant_limit: int = 5,
 ) -> dict[str, Any]:
     start_at, end_at = _resolve_range(range_name, start_at, end_at)
     db = DB.get()
@@ -47,7 +48,7 @@ async def get_overview(
         platform_overview_db.metrics(db),
         platform_overview_db.user_trend(db, start_at, end_at),
         platform_overview_db.knowledge_base_trend(db, start_at, end_at),
-        platform_overview_db.tenant_resources(db),
+        platform_overview_db.tenant_resources(db, limit=tenant_limit),
         platform_overview_db.document_status(db),
         platform_overview_db.recent_activities(db),
     )

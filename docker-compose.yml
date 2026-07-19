@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: linburgh
       POSTGRES_PASSWORD: linburgh
     ports:
-      - "5432:5432"
+      - "5436:5436"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
