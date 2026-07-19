@@ -26,6 +26,7 @@
 - `pyproject.toml` 是依赖声明源，`requirements.txt` 仅作为兼容导出文件。
 - API 层不得直接访问数据库、向量库或 LLM。
 - Service 层不得依赖 FastAPI 的 `Request`、`Response` 或 `HTTPException`。
+- Service 层的新增、修改、删除等数据库写操作必须显式包裹在 `async with db.transaction():` 事务中；涉及多步数据库写入或读写组合时也必须使用同一事务，确保异常时能够完整回滚。纯查询方法无需额外开启事务。
 - Service 层调用 DB 时优先调用对应表模块，例如 `app/db/document.py`；已有表模块时不要直接操作 `app/db/models.py` 或通用 `app/db/api.py`。
 - DB 层不得拼接 Prompt、生成自然语言答案或处理 HTTP 展示文案。
 - DB 层按表封装 `insert_`、`batch_insert`、`update_`、`delete_`、`get`、`list` 等通用方法，内部复用 `app/db/api.py`；过滤条件统一使用关键字参数传入。

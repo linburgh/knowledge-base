@@ -5,6 +5,129 @@ from sqlalchemy.dialects.postgresql import JSONB
 metadata = sa.MetaData()
 
 
+Tenant = sa.Table(
+    "t_tenant",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("code", sa.String(64), nullable=False),
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("logo", sa.String(1024)),
+    sa.Column("contact_name", sa.String(128)),
+    sa.Column("contact_email", sa.String(255)),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_tenant_status", "status"),
+)
+
+
+User = sa.Table(
+    "t_user",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("username", sa.String(128), nullable=False),
+    sa.Column("email", sa.String(255)),
+    sa.Column("phone", sa.String(32)),
+    sa.Column("display_name", sa.String(128), nullable=False),
+    sa.Column("avatar", sa.String(1024)),
+    sa.Column("password_hash", sa.String(255)),
+    sa.Column("external_subject", sa.String(255)),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("last_login_at", sa.DateTime(timezone=True)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_user_status", "status"),
+)
+
+
+LoginLog = sa.Table(
+    "t_login_log",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("user_id", sa.BigInteger),
+    sa.Column("login_account", sa.String(255), nullable=False),
+    sa.Column("login_type", sa.String(32), nullable=False),
+    sa.Column("result", sa.String(32), nullable=False),
+    sa.Column("failure_reason", sa.String(64)),
+    sa.Column("ip_address", sa.String(64)),
+    sa.Column("user_agent", sa.String(1024)),
+    sa.Column("request_id", sa.String(128)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_login_log_user_created", "user_id", "created_at"),
+    sa.Index("idx_t_login_log_account_created", "login_account", "created_at"),
+    sa.Index("idx_t_login_log_result_created", "result", "created_at"),
+)
+
+
+TenantMember = sa.Table(
+    "t_tenant_member",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("tenant_id", sa.BigInteger, nullable=False),
+    sa.Column("user_id", sa.BigInteger, nullable=False),
+    sa.Column("role_code", sa.String(64), nullable=False),
+    sa.Column("is_primary", sa.Boolean, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("joined_at", sa.DateTime(timezone=True)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+)
+
+
+OrganizationMember = sa.Table(
+    "t_organization_member",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("organization_id", sa.BigInteger, nullable=False),
+    sa.Column("user_id", sa.BigInteger, nullable=False),
+    sa.Column("role_code", sa.String(64), nullable=False),
+    sa.Column("is_primary", sa.Boolean, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("joined_at", sa.DateTime(timezone=True)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+)
+
+
+Organization = sa.Table(
+    "t_organization",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("tenant_id", sa.BigInteger, nullable=False),
+    sa.Column("parent_id", sa.BigInteger),
+    sa.Column("code", sa.String(64), nullable=False),
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("leader_user_id", sa.BigInteger),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_organization_tenant_parent", "tenant_id", "parent_id"),
+    sa.Index("idx_t_organization_tenant_status", "tenant_id", "status"),
+)
+
+
 KnowledgeBase = sa.Table(
     "t_knowledge_base",
     metadata,

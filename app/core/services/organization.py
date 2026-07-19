@@ -1,0 +1,337 @@
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from app.core.common import utils as common_utils
+from app.core.common.exception import BusiException
+from app.db import organization as organization_db
+from app.db import tenant as tenant_db
+from app.db import user as user_db
+from app.db.api import check_db_connected
+from app.db.base import DB, PageRecord
+from app.schemas.organization import OrganizationDto, OrganizationMemberDto
+
+STATUS_ACTIVE = "active"
+STATUS_DISABLED = "disabled"
+STATUS_DELETED = "deleted"
+VALID_STATUSES = {STATUS_ACTIVE, STATUS_DISABLED, STATUS_DELETED}
+MEMBER_ACTIVE = "active"
+MEMBER_DISABLED = "disabled"
+MEMBER_LEFT = "left"
+VALID_MEMBER_STATUSES = {MEMBER_ACTIVE, MEMBER_DISABLED, MEMBER_LEFT}
+VALID_ROLES = {"org_admin", "org_member"}
+CODE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def validate(dto: OrganizationDto, *, creating: bool = False) -> None:
+    if dto is None:
+        raise BusiException("组织参数不能为空")
+    if creating and not dto.tenant_id:
+        raise BusiException("tenant_id 不能为空")
+    if dto.tenant_id is not None and dto.tenant_id <= 0:
+        raise BusiException("tenant_id 必须大于 0")
+    if creating and not dto.code:
+        raise BusiException("code 不能为空")
+    if dto.code is not None and not CODE_PATTERN.fullmatch(dto.code):
+        raise BusiException("code 只能包含小写字母、数字、下划线和短横线")
+    if creating and not dto.name:
+        raise BusiException("name 不能为空")
+    if dto.name is not None and not dto.name.strip():
+        raise BusiException("name 不能为空")
+    if dto.status is not None and dto.status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+
+
+def validate_member(dto: OrganizationMemberDto, *, creating: bool = False) -> None:
+    if dto is None:
+        raise BusiException("组织成员参数不能为空")
+    if creating and not dto.user_id:
+        raise BusiException("user_id 不能为空")
+    if dto.user_id is not None and dto.user_id <= 0:
+        raise BusiException("user_id 必须大于 0")
+    if dto.role_code is not None and dto.role_code not in VALID_ROLES:
+        raise BusiException("role_code 不合法")
+    if dto.status is not None and dto.status not in VALID_MEMBER_STATUSES:
+        raise BusiException("成员 status 不合法")
+
+
+async def _require_tenant(db, tenant_id: int) -> dict[str, Any]:
+    tenant = await tenant_db.get(db, id=tenant_id)
+    if tenant is None or tenant.get("status") == "deleted":
+        raise BusiException("租户不存在", status_code=404)
+    return tenant
+
+
+async def _require_user(db, user_id: int) -> dict[str, Any]:
+    user = await user_db.get(db, id=user_id)
+    if user is None or user.get("status") == "deleted":
+        raise BusiException("用户不存在", status_code=404)
+    return user
+
+
+async def _validate_parent(
+    db,
+    tenant_id: int,
+    organization_id: int | None,
+    parent_id: int | None,
+) -> None:
+    if parent_id is None:
+        return
+    if organization_id is not None and parent_id == organization_id:
+        raise BusiException("组织不能将自身设置为父组织")
+    parent = await organization_db.get(db, id=parent_id)
+    if parent is None or parent.get("tenant_id") != tenant_id:
+        raise BusiException("父组织不存在或不属于当前租户", status_code=400)
+    if parent.get("status") == STATUS_DELETED:
+        raise BusiException("父组织已删除")
+
+    visited: set[int] = set()
+    current_id = parent_id
+    while current_id is not None:
+        if current_id in visited:
+            raise BusiException("组织层级存在循环引用")
+        visited.add(current_id)
+        current = await organization_db.get(db, id=current_id)
+        if current is None:
+            break
+        current_id = current.get("parent_id")
+        if organization_id is not None and current_id == organization_id:
+            raise BusiException("不能将组织移动到自己的子组织下")
+
+
+async def _validate_leader(db, tenant_id: int, leader_user_id: int | None) -> None:
+    if leader_user_id is None:
+        return
+    await _require_user(db, leader_user_id)
+    member = await organization_db.get_tenant_member(db, tenant_id, leader_user_id)
+    if member is None:
+        raise BusiException("负责人必须是当前租户的有效成员")
+
+
+def _tree(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    nodes: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        node = dict(row)
+        node["children"] = []
+        nodes[node["id"]] = node
+    roots: list[dict[str, Any]] = []
+    for node in nodes.values():
+        parent_id = node.get("parent_id")
+        parent = nodes.get(parent_id)
+        if parent is None:
+            roots.append(node)
+        else:
+            parent["children"].append(node)
+    return roots
+
+
+@check_db_connected
+async def add(dto: OrganizationDto) -> dict[str, Any]:
+    validate(dto, creating=True)
+    values = common_utils.clear_field_nv(dto)
+    values.setdefault("status", STATUS_ACTIVE)
+    db = DB.get()
+    async with db.transaction():
+        await _require_tenant(db, dto.tenant_id)
+        await _validate_parent(db, dto.tenant_id, None, dto.parent_id)
+        await _validate_leader(db, dto.tenant_id, dto.leader_user_id)
+        try:
+            organization_id = await organization_db.insert_(db, **values)
+        except Exception as exc:
+            if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+                raise BusiException("当前租户下组织编码已存在", status_code=409) from exc
+            raise
+        organization = await organization_db.get(db, id=organization_id)
+    if organization is None:
+        raise BusiException("组织创建失败")
+    organization["member_count"] = 0
+    return organization
+
+
+@check_db_connected
+async def modify(organization_id: int, dto: OrganizationDto) -> dict[str, Any]:
+    if not organization_id:
+        raise BusiException("organization_id 不能为空")
+    validate(dto)
+    values = common_utils.clear_field_nv(dto)
+    if not values:
+        raise BusiException("修改内容不能为空")
+    values.pop("tenant_id", None)
+    values.pop("code", None)
+    db = DB.get()
+    async with db.transaction():
+        old = await organization_db.get(db, id=organization_id)
+        if old is None:
+            raise BusiException("组织不存在", status_code=404)
+        if "parent_id" in values:
+            await _validate_parent(db, old["tenant_id"], organization_id, values["parent_id"])
+        if "leader_user_id" in values:
+            await _validate_leader(db, old["tenant_id"], values["leader_user_id"])
+        values["updated_at"] = common_utils.utc_now()
+        await organization_db.update_(db, values, id=organization_id)
+        organization = await organization_db.get(db, id=organization_id)
+    return organization
+
+
+@check_db_connected
+async def remove(organization_id: int) -> dict[str, Any]:
+    if not organization_id:
+        raise BusiException("organization_id 不能为空")
+    db = DB.get()
+    async with db.transaction():
+        organization = await organization_db.get(db, id=organization_id)
+        if organization is None:
+            raise BusiException("组织不存在", status_code=404)
+        if await organization_db.count_children(db, organization["tenant_id"], organization_id):
+            raise BusiException("请先删除或调整子组织")
+        await organization_db.update_(
+            db,
+            {"status": STATUS_DELETED, "updated_at": common_utils.utc_now()},
+            id=organization_id,
+        )
+        await organization_db.update_member(
+            db,
+            {"status": MEMBER_LEFT, "updated_at": common_utils.utc_now()},
+            organization_id=organization_id,
+        )
+        organization = await organization_db.get(db, id=organization_id)
+    return organization
+
+
+@check_db_connected
+async def get(organization_id: int) -> dict[str, Any]:
+    if not organization_id:
+        raise BusiException("organization_id 不能为空")
+    organization = await organization_db.get(DB.get(), id=organization_id)
+    if organization is None:
+        raise BusiException("组织不存在", status_code=404)
+    return organization
+
+
+@check_db_connected
+async def tree(
+    tenant_id: int,
+    keyword: str | None = None,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    if tenant_id <= 0:
+        raise BusiException("tenant_id 必须大于 0")
+    if status is not None and status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+    await _require_tenant(DB.get(), tenant_id)
+    return _tree(await organization_db.list(DB.get(), tenant_id, keyword, status))
+
+
+@check_db_connected
+async def add_member(organization_id: int, dto: OrganizationMemberDto) -> dict[str, Any]:
+    validate_member(dto, creating=True)
+    values = common_utils.clear_field_nv(dto)
+    values.setdefault("role_code", "org_member")
+    values.setdefault("status", MEMBER_ACTIVE)
+    db = DB.get()
+    async with db.transaction():
+        organization = await organization_db.get(db, id=organization_id)
+        if organization is None or organization.get("status") == STATUS_DELETED:
+            raise BusiException("组织不存在", status_code=404)
+        await _require_user(db, dto.user_id)
+        if (
+            await organization_db.get_tenant_member(
+                db,
+                organization["tenant_id"],
+                dto.user_id,
+            )
+            is None
+        ):
+            raise BusiException("用户必须先加入当前租户")
+        if await organization_db.get_member(
+            db,
+            organization_id=organization_id,
+            user_id=dto.user_id,
+        ):
+            raise BusiException("用户已经是该组织成员", status_code=409)
+        try:
+            member_id = await organization_db.insert_member(
+                db,
+                organization_id=organization_id,
+                **values,
+            )
+        except Exception as exc:
+            if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+                raise BusiException("用户已经是该组织成员", status_code=409) from exc
+            raise
+        member = await organization_db.get_member(db, id=member_id)
+    return member
+
+
+@check_db_connected
+async def modify_member(member_id: int, dto: OrganizationMemberDto) -> dict[str, Any]:
+    if not member_id:
+        raise BusiException("member_id 不能为空")
+    validate_member(dto)
+    values = common_utils.clear_field_nv(dto)
+    values.pop("organization_id", None)
+    values.pop("user_id", None)
+    if not values:
+        raise BusiException("修改内容不能为空")
+    db = DB.get()
+    async with db.transaction():
+        if await organization_db.get_member(db, id=member_id) is None:
+            raise BusiException("组织成员不存在", status_code=404)
+        values["updated_at"] = common_utils.utc_now()
+        await organization_db.update_member(db, values, id=member_id)
+        member = await organization_db.get_member(db, id=member_id)
+    return member
+
+
+@check_db_connected
+async def remove_member(member_id: int) -> dict[str, Any]:
+    if not member_id:
+        raise BusiException("member_id 不能为空")
+    db = DB.get()
+    async with db.transaction():
+        if await organization_db.get_member(db, id=member_id) is None:
+            raise BusiException("组织成员不存在", status_code=404)
+        await organization_db.update_member(
+            db,
+            {"status": MEMBER_LEFT, "updated_at": common_utils.utc_now()},
+            id=member_id,
+        )
+        member = await organization_db.get_member(db, id=member_id)
+    return member
+
+
+@check_db_connected
+async def member_page(
+    organization_id: int,
+    keyword: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PageRecord:
+    if page <= 0:
+        raise BusiException("page 必须大于 0")
+    if page_size <= 0 or page_size > 100:
+        raise BusiException("page_size 必须在 1 到 100 之间")
+    if status is not None and status not in VALID_MEMBER_STATUSES:
+        raise BusiException("成员 status 不合法")
+    if await organization_db.get(DB.get(), id=organization_id) is None:
+        raise BusiException("组织不存在", status_code=404)
+    return await organization_db.member_page(
+        DB.get(), organization_id, page, page_size, keyword, status
+    )
+
+
+__all__ = (
+    "validate",
+    "validate_member",
+    "add",
+    "modify",
+    "remove",
+    "get",
+    "tree",
+    "add_member",
+    "modify_member",
+    "remove_member",
+    "member_page",
+)
