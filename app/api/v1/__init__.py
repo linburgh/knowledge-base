@@ -6,10 +6,11 @@ from app.api.v1 import (
     conversations,
     documents,
     health,
-    knowledge_bases,
     knowledge_base_overview,
+    knowledge_bases,
     organizations,
     platform_overview,
+    platform_roles,
     search,
     tenants,
     users,
@@ -24,6 +25,7 @@ api_router.include_router(tenants.router, prefix="/tenants", tags=["Tenant"])
 api_router.include_router(users.router, prefix="/users", tags=["User"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["Organization"])
 api_router.include_router(platform_overview.router, prefix="/platform", tags=["Platform"])
+api_router.include_router(platform_roles.router, prefix="/platform", tags=["PlatformRole"])
 api_router.include_router(documents.router, prefix="/documents", tags=["Document"])
 api_router.include_router(conversations.router, prefix="/conversations", tags=["Conversation"])
 api_router.include_router(search.router, prefix="/search", tags=["Search"])

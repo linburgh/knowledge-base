@@ -162,6 +162,44 @@ async def member_page(
     return record
 
 
+async def list_member_candidates(
+    db,
+    organization_id: int,
+    tenant_id: int,
+    keyword: str | None = None,
+) -> list[dict[str, Any]]:
+    query = (
+        sa.select(User.c.id, User.c.username, User.c.email, User.c.display_name, User.c.avatar)
+        .select_from(
+            User.join(
+                TenantMember,
+                sa.and_(
+                    TenantMember.c.user_id == User.c.id,
+                    TenantMember.c.tenant_id == tenant_id,
+                    TenantMember.c.status == "active",
+                ),
+            ).outerjoin(
+                OrganizationMember,
+                sa.and_(
+                    OrganizationMember.c.user_id == User.c.id,
+                    OrganizationMember.c.organization_id == organization_id,
+                ),
+            )
+        )
+        .where(User.c.status == "active", OrganizationMember.c.id.is_(None))
+        .order_by(User.c.display_name.asc(), User.c.id.asc())
+    )
+    if keyword:
+        pattern = f"%{keyword}%"
+        query = query.where(
+            User.c.username.ilike(pattern)
+            | User.c.email.ilike(pattern)
+            | User.c.display_name.ilike(pattern)
+        )
+    rows = await db.fetch_all(query)
+    return [dict(row) for row in rows]
+
+
 __all__ = (
     "insert_",
     "update_",
@@ -173,4 +211,5 @@ __all__ = (
     "get_member",
     "get_tenant_member",
     "member_page",
+    "list_member_candidates",
 )

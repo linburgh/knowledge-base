@@ -70,6 +70,23 @@ LoginLog = sa.Table(
 )
 
 
+AuthSession = sa.Table(
+    "t_auth_session",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("user_id", sa.BigInteger, nullable=False),
+    sa.Column("jti", sa.String(64), nullable=False),
+    sa.Column("token_type", sa.String(32), nullable=False),
+    sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("revoked_at", sa.DateTime(timezone=True)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_auth_session_user_id", "user_id"),
+    sa.Index("idx_t_auth_session_active", "jti", "revoked_at", "expires_at"),
+)
+
+
 PlatformRole = sa.Table(
     "t_platform_role",
     metadata,
@@ -87,6 +104,10 @@ PlatformUserRole = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("user_id", sa.BigInteger, nullable=False),
     sa.Column("role_id", sa.BigInteger, nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column("created_by", sa.BigInteger),
 )
 
 

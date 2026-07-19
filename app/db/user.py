@@ -161,6 +161,74 @@ async def get_with_context(db, user_id: int) -> dict[str, Any] | None:
     return user
 
 
+async def get_auth_context(db, user_id: int) -> dict[str, Any] | None:
+    user = await get(db, id=user_id)
+    if user is None:
+        return None
+
+    platform_rows = await db.fetch_all(
+        sa.select(PlatformRole.c.code, PlatformRole.c.name, PlatformRole.c.description)
+        .select_from(
+            PlatformUserRole.join(PlatformRole, PlatformRole.c.id == PlatformUserRole.c.role_id)
+        )
+        .where(
+            PlatformUserRole.c.user_id == user_id,
+            PlatformRole.c.status == "active",
+        )
+        .order_by(PlatformRole.c.id.asc())
+    )
+    tenant_rows = await db.fetch_all(
+        sa.select(
+            Tenant.c.id,
+            Tenant.c.code,
+            Tenant.c.name,
+            Tenant.c.status,
+            TenantMember.c.role_code,
+            TenantMember.c.is_primary,
+        )
+        .select_from(TenantMember.join(Tenant, Tenant.c.id == TenantMember.c.tenant_id))
+        .where(
+            TenantMember.c.user_id == user_id,
+            TenantMember.c.status == "active",
+            Tenant.c.status != "deleted",
+        )
+        .order_by(TenantMember.c.is_primary.desc(), TenantMember.c.created_at.asc())
+    )
+    organization_rows = await db.fetch_all(
+        sa.select(
+            Organization.c.id,
+            Organization.c.tenant_id,
+            Organization.c.parent_id,
+            Organization.c.code,
+            Organization.c.name,
+            OrganizationMember.c.role_code,
+            OrganizationMember.c.is_primary,
+        )
+        .select_from(
+            OrganizationMember.join(
+                Organization,
+                Organization.c.id == OrganizationMember.c.organization_id,
+            )
+        )
+        .where(
+            OrganizationMember.c.user_id == user_id,
+            OrganizationMember.c.status == "active",
+            Organization.c.status != "deleted",
+        )
+        .order_by(OrganizationMember.c.is_primary.desc(), OrganizationMember.c.created_at.asc())
+    )
+    tenants = [dict(row) for row in tenant_rows]
+    organizations = [dict(row) for row in organization_rows]
+    current_tenant = tenants[0] if tenants else None
+    return {
+        "user": user,
+        "platform_roles": [dict(row) for row in platform_rows],
+        "current_tenant": current_tenant,
+        "tenant_role": current_tenant.get("role_code") if current_tenant else None,
+        "organizations": organizations,
+    }
+
+
 async def get_by_account(db, account: str) -> dict[str, Any] | None:
     query = sa.select(User).where(
         sa.or_(User.c.username == account, User.c.email == account)

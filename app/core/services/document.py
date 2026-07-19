@@ -9,6 +9,7 @@ from app.config import CONF
 from app.core import storage as object_storage
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
+from app.core.services import audit as audit_service
 from app.core.services import ingestion as ingestion_service
 from app.db import document as document_db
 from app.db import document_chunk as document_chunk_db
@@ -158,6 +159,10 @@ async def add(dto: DocumentCreateDto) -> Any:
             status=TASK_STATUS_PENDING,
         )
         rd = await document_db.get(db, id=id)
+        await audit_service.record(
+            db, action="create_document", target_type="document", target_id=id,
+            summary={"after": rd},
+        )
     if rd is None:
         raise BusiException("文档创建失败")
     return rd
@@ -184,6 +189,10 @@ async def modify(id: int, dto: DocumentModifyDto) -> Any:
         values["updated_at"] = common_utils.utc_now()
         await document_db.update_(db, values, id=id)
         rd = await document_db.get(db, id=id)
+        await audit_service.record(
+            db, action="update_document", target_type="document", target_id=id,
+            summary={"changed_fields": list(values), "before": old, "after": rd},
+        )
     return rd
 
 
@@ -209,6 +218,10 @@ async def remove(id: int) -> Any:
             id=id,
         )
         rd = await document_db.get(db, id=id)
+        await audit_service.record(
+            db, action="delete_document", target_type="document", target_id=id,
+            summary={"before": old, "after": rd},
+        )
     return rd
 
 

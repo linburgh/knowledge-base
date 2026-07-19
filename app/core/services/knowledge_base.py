@@ -5,6 +5,7 @@ from typing import Any
 from app.config import CONF
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
+from app.core.services import audit as audit_service
 from app.db import knowledge_base as knowledge_base_db
 from app.db import knowledge_base_prompt as knowledge_base_prompt_db
 from app.db.api import check_db_connected
@@ -79,6 +80,13 @@ async def add(dto: KnowledgeBaseDto) -> Any:
             created_by=dto.owner_id,
         )
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
+        await audit_service.record(
+            db,
+            action="create_knowledge_base",
+            target_type="knowledge_base",
+            target_id=knowledge_base_id,
+            summary={"after": rd},
+        )
     if rd is None:
         raise BusiException("知识库创建失败")
     return rd
@@ -115,6 +123,13 @@ async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
             )
         await knowledge_base_db.update_(db, values, id=knowledge_base_id)
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
+        await audit_service.record(
+            db,
+            action="update_knowledge_base",
+            target_type="knowledge_base",
+            target_id=knowledge_base_id,
+            summary={"changed_fields": list(values), "before": old, "after": rd},
+        )
     return rd
 
 
@@ -139,6 +154,13 @@ async def remove(knowledge_base_id: int) -> Any:
             id=knowledge_base_id,
         )
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
+        await audit_service.record(
+            db,
+            action="delete_knowledge_base",
+            target_type="knowledge_base",
+            target_id=knowledge_base_id,
+            summary={"before": old, "after": rd},
+        )
     return rd
 
 

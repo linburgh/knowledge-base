@@ -15,6 +15,7 @@ from app.schemas.organization import (
     OrganizationMemberRequest,
     OrganizationModifyRequest,
 )
+from app.schemas.organization_member import OrganizationMemberBatchRequest
 
 router = APIRouter()
 
@@ -85,6 +86,22 @@ async def add_member(id: int, payload: OrganizationMemberRequest) -> Any:
             id,
             common_utils.parse_dataclass(payload, OrganizationMemberDto),
         )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/{id}/member-candidates")
+async def member_candidates(id: int, keyword: str | None = None) -> Any:
+    try:
+        return await organization_service.member_candidates(id, keyword)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.put("/{id}/members/batch")
+async def batch_members(id: int, payload: OrganizationMemberBatchRequest) -> Any:
+    try:
+        return await organization_service.batch_members(id, payload.members)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

@@ -5,6 +5,7 @@ from typing import Any
 
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
+from app.core.services import audit as audit_service
 from app.db import tenant as tenant_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
@@ -48,6 +49,10 @@ async def add(dto: TenantDto) -> dict[str, Any]:
                 raise BusiException("租户编码已存在", status_code=409) from exc
             raise
         tenant = await tenant_db.get(db, id=tenant_id)
+        await audit_service.record(
+            db, action="create_tenant", target_type="tenant", target_id=tenant_id,
+            summary={"after": tenant},
+        )
     if tenant is None:
         raise BusiException("租户创建失败")
     return tenant
@@ -68,6 +73,10 @@ async def modify(tenant_id: int, dto: TenantDto) -> dict[str, Any]:
         values["updated_at"] = common_utils.utc_now()
         await tenant_db.update_(db, values, id=tenant_id)
         tenant = await tenant_db.get(db, id=tenant_id)
+        await audit_service.record(
+            db, action="update_tenant", target_type="tenant", target_id=tenant_id,
+            summary={"changed_fields": list(values), "after": tenant},
+        )
     return tenant
 
 
@@ -85,6 +94,10 @@ async def remove(tenant_id: int) -> dict[str, Any]:
             id=tenant_id,
         )
         tenant = await tenant_db.get(db, id=tenant_id)
+        await audit_service.record(
+            db, action="delete_tenant", target_type="tenant", target_id=tenant_id,
+            summary={"before": tenant},
+        )
     return tenant
 
 

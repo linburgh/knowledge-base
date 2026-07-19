@@ -6,6 +6,7 @@ from typing import Any
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
+from app.core.services import audit as audit_service
 from app.db import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
@@ -68,6 +69,10 @@ async def add(dto: UserDto) -> dict[str, Any]:
         except Exception as exc:
             _handle_unique_error(exc)
         user = await user_db.get(db, id=user_id)
+        await audit_service.record(
+            db, action="create_user", target_type="user", target_id=user_id,
+            summary={"after": user},
+        )
     user = _safe(user)
     if user is None:
         raise BusiException("用户创建失败")
@@ -95,6 +100,10 @@ async def modify(user_id: int, dto: UserDto) -> dict[str, Any]:
         except Exception as exc:
             _handle_unique_error(exc)
         user = await user_db.get(db, id=user_id)
+        await audit_service.record(
+            db, action="update_user", target_type="user", target_id=user_id,
+            summary={"changed_fields": list(values), "after": user},
+        )
     return _safe(user)
 
 
@@ -112,6 +121,10 @@ async def remove(user_id: int) -> dict[str, Any]:
             id=user_id,
         )
         user = await user_db.get(db, id=user_id)
+        await audit_service.record(
+            db, action="delete_user", target_type="user", target_id=user_id,
+            summary={"before": user},
+        )
     return _safe(user)
 
 

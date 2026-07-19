@@ -5,12 +5,14 @@ from typing import Any
 
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
+from app.core.services import audit as audit_service
 from app.db import organization as organization_db
 from app.db import tenant as tenant_db
 from app.db import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.organization import OrganizationDto, OrganizationMemberDto
+from app.schemas.organization_member import OrganizationMemberBatchItem
 
 STATUS_ACTIVE = "active"
 STATUS_DISABLED = "disabled"
@@ -143,6 +145,10 @@ async def add(dto: OrganizationDto) -> dict[str, Any]:
                 raise BusiException("当前租户下组织编码已存在", status_code=409) from exc
             raise
         organization = await organization_db.get(db, id=organization_id)
+        await audit_service.record(
+            db, action="create_organization", target_type="organization", target_id=organization_id,
+            summary={"after": organization},
+        )
     if organization is None:
         raise BusiException("组织创建失败")
     organization["member_count"] = 0
@@ -171,6 +177,10 @@ async def modify(organization_id: int, dto: OrganizationDto) -> dict[str, Any]:
         values["updated_at"] = common_utils.utc_now()
         await organization_db.update_(db, values, id=organization_id)
         organization = await organization_db.get(db, id=organization_id)
+        await audit_service.record(
+            db, action="update_organization", target_type="organization", target_id=organization_id,
+            summary={"changed_fields": list(values), "after": organization},
+        )
     return organization
 
 
@@ -181,6 +191,10 @@ async def remove(organization_id: int) -> dict[str, Any]:
     db = DB.get()
     async with db.transaction():
         organization = await organization_db.get(db, id=organization_id)
+        await audit_service.record(
+            db, action="delete_organization", target_type="organization", target_id=organization_id,
+            summary={"before": organization},
+        )
         if organization is None:
             raise BusiException("组织不存在", status_code=404)
         if await organization_db.count_children(db, organization["tenant_id"], organization_id):
@@ -261,6 +275,13 @@ async def add_member(organization_id: int, dto: OrganizationMemberDto) -> dict[s
                 raise BusiException("用户已经是该组织成员", status_code=409) from exc
             raise
         member = await organization_db.get_member(db, id=member_id)
+        await audit_service.record(
+            db,
+            action="add_organization_member",
+            target_type="organization_member",
+            target_id=member_id,
+            summary={"organization_id": organization_id, "after": member},
+        )
     return member
 
 
@@ -281,6 +302,13 @@ async def modify_member(member_id: int, dto: OrganizationMemberDto) -> dict[str,
         values["updated_at"] = common_utils.utc_now()
         await organization_db.update_member(db, values, id=member_id)
         member = await organization_db.get_member(db, id=member_id)
+        await audit_service.record(
+            db,
+            action="update_organization_member",
+            target_type="organization_member",
+            target_id=member_id,
+            summary={"changed_fields": list(values), "after": member},
+        )
     return member
 
 
@@ -298,6 +326,13 @@ async def remove_member(member_id: int) -> dict[str, Any]:
             id=member_id,
         )
         member = await organization_db.get_member(db, id=member_id)
+        await audit_service.record(
+            db,
+            action="remove_organization_member",
+            target_type="organization_member",
+            target_id=member_id,
+            summary={"before": member},
+        )
     return member
 
 
@@ -322,6 +357,88 @@ async def member_page(
     )
 
 
+@check_db_connected
+async def member_candidates(
+    organization_id: int,
+    keyword: str | None = None,
+) -> list[dict[str, Any]]:
+    if organization_id <= 0:
+        raise BusiException("organization_id 必须大于 0")
+    db = DB.get()
+    organization = await organization_db.get(db, id=organization_id)
+    if organization is None or organization.get("status") == STATUS_DELETED:
+        raise BusiException("组织不存在", status_code=404)
+    return await organization_db.list_member_candidates(
+        db,
+        organization_id,
+        organization["tenant_id"],
+        common_utils.normalize_optional_filter(keyword),
+    )
+
+
+@check_db_connected
+async def batch_members(
+    organization_id: int,
+    members: list[OrganizationMemberBatchItem],
+) -> list[dict[str, Any]]:
+    if organization_id <= 0:
+        raise BusiException("organization_id 必须大于 0")
+    user_ids = [item.user_id for item in members]
+    if len(user_ids) != len(set(user_ids)):
+        raise BusiException("批量成员中不能包含重复用户")
+    db = DB.get()
+    async with db.transaction():
+        organization = await organization_db.get(db, id=organization_id)
+        if organization is None or organization.get("status") == STATUS_DELETED:
+            raise BusiException("组织不存在", status_code=404)
+        changed: list[dict[str, Any]] = []
+        for item in members:
+            validate_member(
+                OrganizationMemberDto(
+                    user_id=item.user_id,
+                    role_code=item.role_code,
+                    status=item.status,
+                    is_primary=item.is_primary,
+                ),
+                creating=True,
+            )
+            await _require_user(db, item.user_id)
+            if await organization_db.get_tenant_member(
+                db, organization["tenant_id"], item.user_id
+            ) is None:
+                raise BusiException(f"用户 {item.user_id} 必须先加入当前租户")
+            values = {
+                "role_code": item.role_code,
+                "is_primary": item.is_primary,
+                "status": item.status,
+                "updated_at": common_utils.utc_now(),
+            }
+            old = await organization_db.get_member(
+                db, organization_id=organization_id, user_id=item.user_id
+            )
+            if old is None:
+                member_id = await organization_db.insert_member(
+                    db,
+                    organization_id=organization_id,
+                    user_id=item.user_id,
+                    joined_at=common_utils.utc_now(),
+                    **values,
+                )
+            else:
+                member_id = old["id"]
+                await organization_db.update_member(db, values, id=member_id)
+            member = await organization_db.get_member(db, id=member_id)
+            changed.append(member)
+        await audit_service.record(
+            db,
+            action="batch_update_organization_members",
+            target_type="organization",
+            target_id=organization_id,
+            summary={"member_ids": [member["id"] for member in changed]},
+        )
+    return changed
+
+
 __all__ = (
     "validate",
     "validate_member",
@@ -334,4 +451,6 @@ __all__ = (
     "modify_member",
     "remove_member",
     "member_page",
+    "member_candidates",
+    "batch_members",
 )
