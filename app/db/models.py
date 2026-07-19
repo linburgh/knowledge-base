@@ -17,6 +17,14 @@ KnowledgeBase = sa.Table(
     sa.Column("chunk_size", sa.Integer, nullable=False),
     sa.Column("chunk_overlap", sa.Integer, nullable=False),
     sa.Column("retrieval_top_k", sa.Integer, nullable=False),
+    sa.Column("system_prompt", sa.Text, nullable=False, server_default=sa.text("''")),
+    sa.Column("system_prompt_version", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column(
+        "system_prompt_updated_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
     sa.Column("status", sa.String(32), nullable=False),
     sa.Column(
         "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
@@ -26,6 +34,22 @@ KnowledgeBase = sa.Table(
     ),
     sa.Index("idx_t_knowledge_base_owner_id", "owner_id"),
     sa.Index("idx_t_knowledge_base_status", "status"),
+)
+
+
+KnowledgeBasePrompt = sa.Table(
+    "t_knowledge_base_prompt",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),
+    sa.Column("system_prompt", sa.Text, nullable=False),
+    sa.Column("created_by", sa.String(128), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("kb_id", "version", name="uq_t_knowledge_base_prompt_kb_version"),
+    sa.Index("idx_t_knowledge_base_prompt_kb_version", "kb_id", "version"),
 )
 
 

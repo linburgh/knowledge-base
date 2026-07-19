@@ -15,6 +15,7 @@ class KnowledgeBaseDto:
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     retrieval_top_k: int | None = None
+    system_prompt: str | None = None
     status: str | None = None
 
 
@@ -27,6 +28,7 @@ class KnowledgeBaseRequest(BaseModel):
     chunk_size: int | None = Field(default=None, description="默认切片大小")
     chunk_overlap: int | None = Field(default=None, description="默认切片重叠")
     retrieval_top_k: int | None = Field(default=None, description="默认召回数量")
+    system_prompt: str | None = Field(default=None, description="知识库独立系统提示词")
     status: str | None = Field(default=None, description="知识库状态")
 
 

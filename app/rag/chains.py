@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI
 from app.config import CONF
 from app.core.common.exception import BusiException
 
-SYSTEM_PROMPT = """你是企业知识库问答助手。
+DEFAULT_SYSTEM_PROMPT = """你是企业知识库问答助手。
 请只根据给定的知识库上下文回答问题，不要补充上下文中没有依据的事实。
 如果上下文不足以回答问题，请明确说明当前资料不足。
 回答应简洁、准确，必要时引用文档名称和页码。
@@ -43,8 +43,12 @@ def _message_content(result: Any) -> str:
     return str(content).strip()
 
 
-async def generate_answer(question: str, chunks: list[dict[str, Any]]) -> str:
-    """将检索分块组装成上下文并调用聊天模型生成答案。"""
+async def generate_answer(
+    question: str,
+    chunks: list[dict[str, Any]],
+    system_prompt: str | None = None,
+) -> str:
+    """将知识库提示词、检索分块组装成上下文并调用聊天模型生成答案。"""
     if not chunks:
         return "当前知识库暂无可用内容，暂时无法回答这个问题。"
     if not CONF.chat.model:
@@ -52,7 +56,8 @@ async def generate_answer(question: str, chunks: list[dict[str, Any]]) -> str:
 
     context = _format_context(chunks)
     prompt = (
-        f"{SYSTEM_PROMPT}\n\n"
+        f"{DEFAULT_SYSTEM_PROMPT}\n\n"
+        f"知识库补充指令：\n{system_prompt.strip() if system_prompt and system_prompt.strip() else '无'}\n\n"
         f"知识库上下文：\n{context}\n\n"
         f"用户问题：{question}\n\n"
         "请基于上述上下文回答用户问题。"

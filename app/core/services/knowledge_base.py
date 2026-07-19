@@ -6,6 +6,7 @@ from app.config import CONF
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.db import knowledge_base as knowledge_base_db
+from app.db import knowledge_base_prompt as knowledge_base_prompt_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.knowledge_base import KnowledgeBaseDto
@@ -18,6 +19,7 @@ DEFAULT_CHUNK_SIZE = 600
 DEFAULT_CHUNK_OVERLAP = 100
 DEFAULT_RETRIEVAL_TOP_K = 5
 MAX_DESCRIPTION_LENGTH = 500
+MAX_SYSTEM_PROMPT_LENGTH = 10000
 
 
 def validate(dto: KnowledgeBaseDto) -> None:
@@ -30,6 +32,8 @@ def validate(dto: KnowledgeBaseDto) -> None:
         raise BusiException("owner_id 不能为空")
     if dto.description is not None and len(dto.description) > MAX_DESCRIPTION_LENGTH:
         raise BusiException("description 不能超过 500 个字符")
+    if dto.system_prompt is not None and len(dto.system_prompt) > MAX_SYSTEM_PROMPT_LENGTH:
+        raise BusiException("system_prompt 不能超过 10000 个字符")
     if dto.chunk_size is not None and dto.chunk_size <= 0:
         raise BusiException("chunk_size 必须大于 0")
     if dto.chunk_overlap is not None and dto.chunk_overlap < 0:
@@ -60,11 +64,20 @@ async def add(dto: KnowledgeBaseDto) -> Any:
     values.setdefault("chunk_size", DEFAULT_CHUNK_SIZE)
     values.setdefault("chunk_overlap", DEFAULT_CHUNK_OVERLAP)
     values.setdefault("retrieval_top_k", DEFAULT_RETRIEVAL_TOP_K)
+    values.setdefault("system_prompt", "")
+    values.setdefault("system_prompt_version", 1)
     values.setdefault("status", STATUS_ACTIVE)
 
     db = DB.get()
     async with db.transaction():
         knowledge_base_id = await knowledge_base_db.insert_(db, **values)
+        await knowledge_base_prompt_db.insert_(
+            db,
+            kb_id=knowledge_base_id,
+            version=1,
+            system_prompt=values["system_prompt"],
+            created_by=dto.owner_id,
+        )
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
     if rd is None:
         raise BusiException("知识库创建失败")
@@ -90,6 +103,16 @@ async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
             raise BusiException("知识库不存在", status_code=404)
 
         values["updated_at"] = common_utils.utc_now()
+        if "system_prompt" in values and values["system_prompt"] != old.get("system_prompt", ""):
+            values["system_prompt_version"] = int(old.get("system_prompt_version") or 1) + 1
+            values["system_prompt_updated_at"] = values["updated_at"]
+            await knowledge_base_prompt_db.insert_(
+                db,
+                kb_id=knowledge_base_id,
+                version=values["system_prompt_version"],
+                system_prompt=values["system_prompt"],
+                created_by=dto.owner_id or old["owner_id"],
+            )
         await knowledge_base_db.update_(db, values, id=knowledge_base_id)
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
     return rd
@@ -132,6 +155,18 @@ async def get(id: int) -> dict[str, Any]:
 
 
 @check_db_connected
+async def prompt_history(knowledge_base_id: int) -> list[dict[str, Any]]:
+    if not knowledge_base_id:
+        raise BusiException("knowledge_base_id 不能为空")
+
+    db = DB.get()
+    knowledge_base = await knowledge_base_db.get(db, id=knowledge_base_id)
+    if knowledge_base is None:
+        raise BusiException("知识库不存在", status_code=404)
+    return await knowledge_base_prompt_db.list(db, kb_id=knowledge_base_id)
+
+
+@check_db_connected
 async def list(
     owner_id: str | None = None,
     status: str | None = None,
@@ -166,4 +201,4 @@ async def page(
     return await knowledge_base_db.page(DB.get(), page=page, page_size=page_size, **filters)
 
 
-__all__ = ("validate", "add", "modify", "remove", "get", "list", "page")
+__all__ = ("validate", "add", "modify", "remove", "get", "prompt_history", "list", "page")

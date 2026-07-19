@@ -137,8 +137,16 @@ async def _chat_in_transaction(
     retrieval = await retrieval_service.search(kb_id, question, top_k=top_k)
     # 将 Pydantic 分块对象转换为普通字典，供 Chain 组装上下文和保存引用。
     chunks = [chunk.model_dump() for chunk in retrieval.chunks]
-    # 将问题和召回分块交给 RAG Chain，生成最终答案。
-    answer = await chains.generate_answer(question, chunks)
+    # 读取当前知识库独立提示词，确保不同知识库的回答规则互不污染。
+    knowledge_base = await knowledge_base_db.get(db, id=kb_id)
+    if knowledge_base is None or knowledge_base.get("status") == STATUS_DELETED:
+        raise BusiException("知识库不存在", status_code=404)
+    # 将知识库提示词、问题和召回分块交给 RAG Chain，生成最终答案。
+    answer = await chains.generate_answer(
+        question,
+        chunks,
+        system_prompt=knowledge_base.get("system_prompt"),
+    )
     # 保存模型生成的 assistant 消息，并把检索参数写入 metadata。
     assistant_message = await _save_message(
         db,

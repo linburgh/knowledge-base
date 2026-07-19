@@ -82,4 +82,12 @@ async def get(id: int) -> Any:
         common_utils.raise_http_exception(exc)
 
 
+@router.get("/{id}/prompt-history")
+async def prompt_history(id: int) -> Any:
+    try:
+        return await knowledge_base_service.prompt_history(id)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 __all__ = ("router",)
