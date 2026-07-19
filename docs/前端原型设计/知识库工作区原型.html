@@ -108,10 +108,30 @@
     .donut::after { content:""; position:absolute; inset:28px; border-radius:50%; background:#fff; }
     .legend { display:grid; gap:9px; color:var(--muted); font-size:12px; } .legend i { display:inline-block; width:8px; height:8px; margin-right:7px; border-radius:50%; background:var(--blue); } .legend i.mint { background:var(--mint); } .legend i.warn { background:#e7b85c; } .legend i.gray { background:#d9dee8; }
     .trend-note { color:var(--muted); font-size:12px; }
+    .login-page { display:grid; min-height:100vh; place-items:center; padding:30px; background:linear-gradient(135deg,#f5f7fb 0%,#eef1ff 100%); }
+    .login-card { width:410px; padding:38px; border:1px solid var(--line); border-radius:18px; background:#fff; box-shadow:0 18px 50px rgba(23,32,51,.08); }
+    .login-brand { display:flex; align-items:center; gap:12px; margin-bottom:32px; }
+    .login-brand .brand-mark { flex:none; }
+    .login-brand small { display:block; margin-top:4px; color:var(--muted); }
+    .login-title { margin-bottom:25px; } .login-title h1 { margin:6px 0; font-size:25px; } .login-title p { font-size:13px; }
+    .login-field { display:block; margin:17px 0; color:#53617b; font-size:13px; }
+    .login-field input { width:100%; margin-top:8px; padding:12px; }
+    .login-options { display:flex; align-items:center; justify-content:space-between; margin:18px 0 24px; color:var(--muted); font-size:12px; }
+    .login-options a { color:var(--blue); cursor:pointer; } .login-submit { width:100%; padding:12px; }
+    .login-error { display:none; margin-top:12px; color:#c14b58; font-size:12px; } .login-error.show { display:block; }
+    .app-enter { animation:app-enter .35s ease-out; }
+    @keyframes app-enter { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
   </style>
 </head>
 <body>
-  <div class="shell">
+  <section id="login-page" class="login-page">
+    <div class="login-card">
+      <div class="login-brand"><div class="brand-mark">K</div><div><strong>Knowledge Base</strong><small>企业知识中枢</small></div></div>
+      <div class="login-title"><span class="eyebrow">WELCOME BACK</span><h1>登录系统</h1><p>登录后管理知识库并进行知识库问答。</p></div>
+      <form onsubmit="loginDemo(event)"><label class="login-field">用户名或邮箱<input id="login-account" autocomplete="username" value="linburgh" placeholder="请输入用户名或邮箱" /></label><label class="login-field">密码<input id="login-password" type="password" autocomplete="current-password" value="linburgh" placeholder="请输入密码" /></label><div class="login-options"><label><input id="remember-login" type="checkbox" /> 记住登录状态</label><a onclick="showLoginMessage('密码重置流程将在后续版本提供')">忘记密码？</a></div><button class="login-submit" type="submit">登录</button><div id="login-error" class="login-error"></div></form>
+    </div>
+  </section>
+  <div id="app-shell" class="shell hidden">
     <aside>
       <div class="brand"><div class="brand-mark">K</div><div><strong>Knowledge Base</strong><small>企业知识中枢</small></div></div>
       <nav>
@@ -125,7 +145,7 @@
       </nav>
     </aside>
     <main>
-      <div class="topbar"><span>企业知识库</span><span>dev-user</span></div>
+      <div class="topbar"><span>企业知识库</span><span>dev-user　<button class="link-button" onclick="logoutDemo()">退出登录</button></span></div>
 
       <section id="page-kbs">
         <div class="heading"><div><span class="eyebrow">KNOWLEDGE BASE MANAGEMENT</span><h1>知识库管理</h1><p>创建和管理知识库，进入后处理该知识库自己的文档与问答。</p></div><button onclick="openDrawer('kb')">＋ 新建知识库</button></div>
@@ -169,6 +189,9 @@
   <div id="platform-drawer" class="drawer" onclick="if(event.target===this)closePlatformDrawer()"><div class="drawer-panel"><div class="toolbar"><h2 id="platform-drawer-title">新建用户</h2><button class="ghost" onclick="closePlatformDrawer()">关闭</button></div><label>名称<input placeholder="请输入名称" /></label><label>邮箱<input placeholder="请输入邮箱" /></label><label>所属租户<select><option>企业租户</option><option>产品租户</option></select></label><label>所属组织<select><option>技术中心</option><option>财务部</option></select></label><label>状态<select><option>正常</option><option>禁用</option></select></label><div class="drawer-footer"><button class="ghost" onclick="closePlatformDrawer()">取消</button><button onclick="closePlatformDrawer()">保存</button></div></div></div>
   <script>
     let selectedKnowledgeBase = '企业制度库';
+    function loginDemo(event) { event.preventDefault(); const account = document.getElementById('login-account').value.trim(); const password = document.getElementById('login-password').value; if (account !== 'linburgh' || password !== 'linburgh') { showLoginMessage('账号或密码错误'); return; } document.getElementById('login-page').classList.add('hidden'); const app = document.getElementById('app-shell'); app.classList.remove('hidden'); app.classList.remove('app-enter'); void app.offsetWidth; app.classList.add('app-enter'); showPage('kbs'); }
+    function logoutDemo() { document.getElementById('app-shell').classList.add('hidden'); document.getElementById('login-page').classList.remove('hidden'); showPage('kbs'); }
+    function showLoginMessage(message) { const error = document.getElementById('login-error'); error.textContent = message; error.classList.add('show'); }
     function toggleDrawer(open) { document.getElementById('drawer').classList.toggle('open', open); }
     function openDrawer(mode) { toggleDrawer(true); const drawer = document.getElementById('drawer'); drawer.classList.toggle('detail-mode', mode === 'detail'); document.getElementById('kb-form').classList.toggle('hidden', mode !== 'kb'); document.getElementById('upload-form').classList.toggle('hidden', mode !== 'upload'); document.getElementById('detail-form').classList.toggle('hidden', mode !== 'detail'); document.getElementById('drawer-title').textContent = mode === 'upload' ? '上传文档' : mode === 'detail' ? '文档分片信息' : '新建知识库'; document.getElementById('drawer-submit').classList.toggle('hidden', mode === 'detail'); document.getElementById('drawer-submit').textContent = mode === 'upload' ? '开始上传' : '保存'; }
     function editKb(name) { openDrawer('kb'); document.getElementById('drawer-title').textContent = '修改知识库'; document.getElementById('drawer-name').value = name; document.getElementById('drawer-description').value = '当前知识库描述'; }
