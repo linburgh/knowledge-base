@@ -138,6 +138,14 @@ def _validate_filters(
         raise BusiException("organization_id 必须大于 0")
 
 
+def _normalize_filter(value: str | None) -> str | None:
+    """Treat empty query-string filters as an omitted filter."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 @check_db_connected
 async def list(
     keyword: str | None = None,
@@ -145,6 +153,8 @@ async def list(
     tenant_id: int | None = None,
     organization_id: int | None = None,
 ) -> list[dict[str, Any]]:
+    keyword = _normalize_filter(keyword)
+    status = _normalize_filter(status)
     _validate_filters(status, tenant_id, organization_id)
     rows = await user_db.list(
         DB.get(),
@@ -165,6 +175,8 @@ async def page(
     page: int = 1,
     page_size: int = 20,
 ) -> PageRecord:
+    keyword = _normalize_filter(keyword)
+    status = _normalize_filter(status)
     if page <= 0:
         raise BusiException("page 必须大于 0")
     if page_size <= 0 or page_size > 100:
