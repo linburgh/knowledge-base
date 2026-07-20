@@ -19,7 +19,11 @@ def _session_expiry(ttl_seconds: int) -> datetime:
     return datetime.now(UTC) + timedelta(seconds=ttl_seconds)
 
 
-async def _issue_sessions(db, user_id: int) -> dict[str, Any]:
+async def _issue_sessions(
+    db,
+    user_id: int,
+    tenant_id: int | None = None,
+) -> dict[str, Any]:
     access_token, expires_in = auth.issue_token(user_id)
     refresh_token, refresh_expires_in = auth.issue_token(
         user_id,
@@ -31,6 +35,7 @@ async def _issue_sessions(db, user_id: int) -> dict[str, Any]:
     await auth_session_db.insert_(
         db,
         user_id=user_id,
+        tenant_id=tenant_id,
         jti=access.jti,
         token_type="access",
         expires_at=_session_expiry(expires_in),
@@ -38,6 +43,7 @@ async def _issue_sessions(db, user_id: int) -> dict[str, Any]:
     await auth_session_db.insert_(
         db,
         user_id=user_id,
+        tenant_id=tenant_id,
         jti=refresh.jti,
         token_type="refresh",
         expires_at=_session_expiry(refresh_expires_in),
@@ -123,7 +129,13 @@ async def login(
             )
 
             user = await user_db.get(db, id=user["id"])
-            tokens = await _issue_sessions(db, user["id"])
+            context = await user_db.get_auth_context(db, user["id"])
+            tenant = context["current_tenant"] if context else None
+            tokens = await _issue_sessions(
+                db,
+                user["id"],
+                tenant["id"] if tenant else None,
+            )
 
     if failure_reason is not None:
         raise BusiException("账号或密码错误", status_code=401)
@@ -138,11 +150,49 @@ async def me(current_user: CurrentUser) -> dict[str, Any]:
         user_id = int(current_user.user_id)
     except ValueError:
         raise BusiException("当前用户无效", status_code=401) from None
-    context = await user_db.get_auth_context(DB.get(), user_id)
+    context = await user_db.get_auth_context(DB.get(), user_id, current_user.tenant_id)
     if context is None or context["user"].get("status") in {"disabled", "deleted"}:
         raise BusiException("用户不存在或已失效", status_code=401)
     context["user"] = _safe_user(context["user"])
     return context
+
+
+@check_db_connected
+async def tenants(current_user: CurrentUser) -> list[dict[str, Any]]:
+    context = await user_db.get_auth_context(DB.get(), int(current_user.user_id))
+    if context is None:
+        raise BusiException("用户不存在或已失效", status_code=401)
+    return context["tenants"]
+
+
+@check_db_connected
+async def select_tenant(current_user: CurrentUser, tenant_id: int) -> dict[str, Any]:
+    if tenant_id <= 0:
+        raise BusiException("tenant_id 必须大于 0")
+    db = DB.get()
+    context = await user_db.get_auth_context(db, int(current_user.user_id))
+    if context is None:
+        raise BusiException("用户不存在或已失效", status_code=401)
+    tenant = next((item for item in context["tenants"] if item["id"] == tenant_id), None)
+    if tenant is None:
+        raise BusiException("无权访问该租户", status_code=403)
+    async with db.transaction():
+        await auth_session_db.update_tenant_for_user(db, current_user.user_id, tenant_id)
+        await audit_service.record(
+            db,
+            action="select_tenant",
+            target_type="tenant",
+            target_id=tenant_id,
+            summary={"user_id": current_user.user_id},
+        )
+    selected_user = CurrentUser(
+        user_id=current_user.user_id,
+        token=current_user.token,
+        jti=current_user.jti,
+        tenant_id=tenant_id,
+        token_type=current_user.token_type,
+    )
+    return await me(selected_user)
 
 
 @check_db_connected
@@ -161,7 +211,11 @@ async def refresh(refresh_token: str) -> dict[str, Any]:
     async with db.transaction():
         now = common_utils.utc_now()
         await auth_session_db.revoke(db, current_user.jti, revoked_at=now)
-        tokens = await _issue_sessions(db, int(current_user.user_id))
+        tokens = await _issue_sessions(
+            db,
+            int(current_user.user_id),
+            session.get("tenant_id"),
+        )
         await login_log_db.insert_(
             db,
             user_id=int(current_user.user_id),
@@ -202,4 +256,4 @@ async def logout(current_user: CurrentUser) -> dict[str, str]:
     return {"status": "logged_out"}
 
 
-__all__ = ("login", "logout", "me", "refresh")
+__all__ = ("login", "logout", "me", "refresh", "select_tenant", "tenants")

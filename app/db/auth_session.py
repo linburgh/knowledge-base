@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+import sqlalchemy as sa
+
 from app.db import api as db_api
 from app.db.models import AuthSession
 
@@ -36,4 +38,16 @@ async def revoke_all(db, user_id: int | str, *, revoked_at: datetime) -> Any:
     )
 
 
-__all__ = ("get_active", "insert_", "revoke", "revoke_all")
+async def update_tenant_for_user(db, user_id: int | str, tenant_id: int) -> Any:
+    query = (
+        sa.update(AuthSession)
+        .where(
+            AuthSession.c.user_id == int(user_id),
+            AuthSession.c.revoked_at.is_(None),
+        )
+        .values(tenant_id=tenant_id)
+    )
+    return await db.execute(query)
+
+
+__all__ = ("get_active", "insert_", "revoke", "revoke_all", "update_tenant_for_user")

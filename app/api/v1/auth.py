@@ -8,7 +8,13 @@ from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import authentication as authentication_service
-from app.schemas.auth import AuthContextResponse, LoginRequest, RefreshRequest, TokenResponse
+from app.schemas.auth import (
+    AuthContextResponse,
+    LoginRequest,
+    RefreshRequest,
+    TenantSelectionRequest,
+    TokenResponse,
+)
 
 router = APIRouter()
 current_user_dependency = Depends(auth.get_current_user)
@@ -32,6 +38,25 @@ async def login(payload: LoginRequest, request: Request) -> Any:
 async def me(current_user: auth.CurrentUser = current_user_dependency) -> Any:
     try:
         return await authentication_service.me(current_user)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/tenants")
+async def tenants(current_user: auth.CurrentUser = current_user_dependency) -> Any:
+    try:
+        return await authentication_service.tenants(current_user)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.post("/tenant", response_model=AuthContextResponse)
+async def select_tenant(
+    payload: TenantSelectionRequest,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await authentication_service.select_tenant(current_user, payload.tenant_id)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

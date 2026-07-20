@@ -154,22 +154,31 @@
     .login-brand small { display:block; margin-top:4px; color:var(--muted); }
     .login-title { margin-bottom:25px; } .login-title h1 { margin:6px 0; font-size:25px; } .login-title p { font-size:13px; }
     .login-field { display:block; margin:17px 0; color:#53617b; font-size:13px; }
-    .login-field input, .login-field select { width:100%; margin-top:8px; padding:12px; }
-    .login-field select { border:1px solid #dce2ed; border-radius:8px; color:var(--ink); background:#fff; font:inherit; }
+    .login-field input { width:100%; margin-top:8px; padding:12px; }
     .login-options { display:flex; align-items:center; gap:7px; margin:4px 0 17px; color:#53617b; font-size:12px; }
     .login-options input { width:14px; height:14px; margin:0; }
     .login-submit { width:100%; margin-top:8px; padding:12px; }
     .login-error { display:none; margin-top:12px; color:#c14b58; font-size:12px; } .login-error.show { display:block; }
+    .tenant-context-modal { position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center; padding:20px; background:rgba(25,35,58,.24); }
+    .tenant-context-modal.open { display:flex; }
+    .tenant-context-card { width:min(440px,100%); padding:28px; border-radius:16px; background:#fff; box-shadow:0 20px 60px rgba(23,32,51,.18); }
+    .tenant-context-card h2 { margin:8px 0; }
+    .tenant-context-card p { color:var(--muted); font-size:13px; line-height:1.7; }
+    .tenant-context-options { display:grid; gap:10px; margin:20px 0; }
+    .tenant-context-option { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border:1px solid var(--line); border-radius:10px; color:var(--ink); background:#fff; text-align:left; cursor:pointer; }
+    .tenant-context-option:hover { border-color:var(--blue); background:#f7f8ff; }
+    .tenant-context-option small { color:var(--muted); }
   </style>
 </head>
 <body>
   <section id="login-page" class="login-page">
     <div class="login-card">
       <div class="login-brand"><div class="brand-mark">K</div><div><strong>Knowledge Base</strong><small>企业知识中枢</small></div></div>
-      <div class="login-title"><span class="eyebrow">WELCOME BACK</span><h1>开始探索</h1><p>登录后进入知识库管理主页。</p></div>
-      <form onsubmit="loginDemo(event)"><label class="login-field">用户名或邮箱<input id="login-account" autocomplete="username" value="linburgh" placeholder="请输入用户名或邮箱" /></label><label class="login-field">密码<input id="login-password" type="password" autocomplete="current-password" value="linburgh" placeholder="请输入密码" /></label><label class="login-field">所属租户<select id="login-tenant"><option value="1">企业租户</option><option value="2">产品租户</option></select></label><label class="login-options"><input id="login-remember" type="checkbox" checked />记住密码</label><button class="login-submit" type="submit">登录</button><div id="login-error" class="login-error"></div></form>
+      <div class="login-title"><span class="eyebrow">WELCOME BACK</span><h1>开始探索</h1><p>登录后进入对应租户的知识库空间。</p></div>
+      <form onsubmit="loginDemo(event)"><label class="login-field">用户名或邮箱<input id="login-account" autocomplete="username" value="linburgh" placeholder="请输入用户名或邮箱" /></label><label class="login-field">密码<input id="login-password" type="password" autocomplete="current-password" value="linburgh" placeholder="请输入密码" /></label><label class="login-options"><input id="login-remember" type="checkbox" checked />记住密码</label><button class="login-submit" type="submit">登录</button><p class="muted" style="margin:12px 0 0;font-size:12px">原型演示账号：linburgh / linburgh（平台管理员），multi-tenant / multi-tenant（多租户用户），single-tenant / single-tenant（单租户用户）。</p><div id="login-error" class="login-error"></div></form>
     </div>
   </section>
+  <div id="tenant-context-modal" class="tenant-context-modal" onclick="if(event.target===this)closeTenantContext()"><div class="tenant-context-card"><span class="eyebrow" id="tenant-context-eyebrow">TENANT CONTEXT</span><h2 id="tenant-context-title">选择租户</h2><p id="tenant-context-description">请选择登录后要进入的租户空间。</p><div class="tenant-context-options"><button class="tenant-context-option" onclick="selectTenantContext('企业租户','tenant')"><span><strong>企业租户</strong><small>企业知识服务空间</small></span><span>进入 →</span></button><button class="tenant-context-option" onclick="selectTenantContext('产品租户','tenant')"><span><strong>产品租户</strong><small>产品资料空间</small></span><span>进入 →</span></button></div></div></div>
   <div id="app-shell" class="shell hidden">
     <aside>
       <div class="brand"><div class="brand-mark">K</div><div><strong>Knowledge Base</strong><small>企业知识中枢</small></div></div>
@@ -228,7 +237,11 @@
   <div id="platform-drawer" class="drawer" onclick="if(event.target===this)closePlatformDrawer()"><div class="drawer-panel"><div class="toolbar"><h2 id="platform-drawer-title">新建用户</h2><button class="ghost" onclick="closePlatformDrawer()">关闭</button></div><div id="tenant-detail" class="hidden"><p><strong id="tenant-detail-name"></strong></p><p class="muted">租户编码：<span id="tenant-detail-code"></span></p><p class="muted">租户描述：<span id="tenant-detail-description"></span></p><p class="muted">成员数：<span id="tenant-detail-members"></span></p><p class="muted">知识库数：<span id="tenant-detail-kbs"></span></p><p class="muted">状态：正常</p></div><div id="kb-permission" class="hidden"><div class="permission-summary"><p class="eyebrow">KNOWLEDGE BASE ACCESS</p><h3>企业制度库</h3><p class="muted">管理哪些组织可以访问当前知识库。授权后，该组织的成员可以在权限范围内检索和使用知识库内容。</p></div><div class="permission-section"><h3>添加授权组织</h3><div class="permission-add"><select><option>请选择组织</option><option>技术中心</option><option>财务部</option><option>人力资源部</option></select><button onclick="window.alert('原型：已提交组织授权')">授权</button></div></div><div class="permission-section"><h3>当前已授权组织</h3><div class="permission-list"><div class="permission-row"><div><strong>技术中心</strong><span class="muted">包含 24 名成员</span></div><button class="link-danger" onclick="window.alert('原型：已提交撤销授权')">撤销</button></div><div class="permission-row"><div><strong>财务部</strong><span class="muted">包含 16 名成员</span></div><button class="link-danger" onclick="window.alert('原型：已提交撤销授权')">撤销</button></div></div></div></div><div id="platform-form"><label>名称<input placeholder="请输入名称" /></label><label>邮箱<input placeholder="请输入邮箱" /></label><label>所属租户<select><option>企业租户</option><option>产品租户</option></select></label><label>所属组织<select><option>技术中心</option><option>财务部</option></select></label><label>状态<select><option>正常</option><option>禁用</option></select></label></div><div class="drawer-footer"><button class="ghost" onclick="closePlatformDrawer()">取消</button><button id="platform-drawer-submit" onclick="closePlatformDrawer()">保存</button></div></div></div>
   <script>
     let selectedKnowledgeBase = '企业制度库';
-    function loginDemo(event) { event.preventDefault(); const account = document.getElementById('login-account').value.trim(); const password = document.getElementById('login-password').value; if (account !== 'linburgh' || password !== 'linburgh') { showLoginMessage('账号或密码错误'); return; } document.getElementById('login-page').classList.add('hidden'); document.getElementById('app-shell').classList.remove('hidden'); showPage('kbs'); }
+    let tenantContextMode = 'tenant';
+    function loginDemo(event) { event.preventDefault(); const account = document.getElementById('login-account').value.trim(); const password = document.getElementById('login-password').value; const valid = (account === 'linburgh' && password === 'linburgh') || (account === 'multi-tenant' && password === 'multi-tenant') || (account === 'single-tenant' && password === 'single-tenant'); if (!valid) { showLoginMessage('账号或密码错误'); return; } document.getElementById('login-page').classList.add('hidden'); document.getElementById('app-shell').classList.remove('hidden'); if (account === 'multi-tenant') { showTenantContext('多租户用户，请选择租户', 'tenant'); return; } if (account === 'linburgh') { showTenantContext('平台超级管理员，请选择目标租户', 'platform'); return; } showPage('kbs'); }
+    function showTenantContext(description, mode) { tenantContextMode = mode; document.getElementById('tenant-context-description').textContent = description; document.getElementById('tenant-context-modal').classList.add('open'); }
+    function closeTenantContext() { document.getElementById('tenant-context-modal').classList.remove('open'); }
+    function selectTenantContext(name) { closeTenantContext(); document.querySelector('#app-shell .topbar > span').textContent = name; showPage(tenantContextMode === 'platform' ? 'platform' : 'kbs'); }
     function logoutDemo() { document.getElementById('app-shell').classList.add('hidden'); document.getElementById('login-page').classList.remove('hidden'); showPage('kbs'); }
     function showLoginMessage(message) { const error = document.getElementById('login-error'); error.textContent = message; error.classList.add('show'); }
     function toggleDrawer(open) { document.getElementById('drawer').classList.toggle('open', open); }

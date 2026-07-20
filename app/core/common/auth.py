@@ -20,6 +20,7 @@ class CurrentUser:
     user_id: str
     token: str | None = None
     jti: str | None = None
+    tenant_id: int | None = None
     token_type: str = "access"
 
 
@@ -147,7 +148,13 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
         session = await auth_session_db.get_active(DB.get(), current_user.jti, "access")
         if session is None or str(session.get("user_id")) != current_user.user_id:
             raise BusiException("Token 已失效", status_code=401)
-        return current_user
+        return CurrentUser(
+            user_id=current_user.user_id,
+            token=current_user.token,
+            jti=current_user.jti,
+            tenant_id=session.get("tenant_id"),
+            token_type=current_user.token_type,
+        )
 
     try:
         environment = CONF.default.environment

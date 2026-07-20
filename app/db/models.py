@@ -75,6 +75,7 @@ AuthSession = sa.Table(
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("user_id", sa.BigInteger, nullable=False),
+    sa.Column("tenant_id", sa.BigInteger),
     sa.Column("jti", sa.String(64), nullable=False),
     sa.Column("token_type", sa.String(32), nullable=False),
     sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),

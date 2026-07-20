@@ -169,7 +169,11 @@ async def get_with_context(db, user_id: int) -> dict[str, Any] | None:
     return user
 
 
-async def get_auth_context(db, user_id: int) -> dict[str, Any] | None:
+async def get_auth_context(
+    db,
+    user_id: int,
+    tenant_id: int | None = None,
+) -> dict[str, Any] | None:
     user = await get(db, id=user_id)
     if user is None:
         return None
@@ -227,10 +231,20 @@ async def get_auth_context(db, user_id: int) -> dict[str, Any] | None:
     )
     tenants = [dict(row) for row in tenant_rows]
     organizations = [dict(row) for row in organization_rows]
-    current_tenant = tenants[0] if tenants else None
+    current_tenant = next(
+        (tenant for tenant in tenants if tenant_id is not None and tenant["id"] == tenant_id),
+        tenants[0] if tenants else None,
+    )
+    if current_tenant is not None:
+        organizations = [
+            organization
+            for organization in organizations
+            if organization["tenant_id"] == current_tenant["id"]
+        ]
     return {
         "user": user,
         "platform_roles": [dict(row) for row in platform_rows],
+        "tenants": tenants,
         "current_tenant": current_tenant,
         "tenant_role": current_tenant.get("role_code") if current_tenant else None,
         "organizations": organizations,

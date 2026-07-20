@@ -12,6 +12,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(..., min_length=1, description="刷新 Token")
 
 
+class TenantSelectionRequest(BaseModel):
+    tenant_id: int = Field(..., gt=0, description="当前租户 ID")
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -24,6 +28,7 @@ class AuthContextResponse(BaseModel):
     user: dict
     platform_roles: list[dict]
     current_tenant: dict | None = None
+    tenants: list[dict] = Field(default_factory=list)
     tenant_role: str | None = None
     organizations: list[dict]
 
@@ -32,5 +37,6 @@ __all__ = (
     "AuthContextResponse",
     "LoginRequest",
     "RefreshRequest",
+    "TenantSelectionRequest",
     "TokenResponse",
 )
