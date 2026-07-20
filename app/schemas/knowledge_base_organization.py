@@ -7,4 +7,11 @@ class KnowledgeBaseOrganizationRequest(BaseModel):
     organization_id: int = Field(..., gt=0)
 
 
-__all__ = ("KnowledgeBaseOrganizationRequest",)
+class KnowledgeBaseOrganizationBatchRequest(BaseModel):
+    organization_ids: list[int] = Field(..., min_length=1)
+
+
+__all__ = (
+    "KnowledgeBaseOrganizationBatchRequest",
+    "KnowledgeBaseOrganizationRequest",
+)

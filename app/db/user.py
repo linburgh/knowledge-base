@@ -30,7 +30,11 @@ def _conditions(
     conditions: list[Any] = []
     if keyword:
         pattern = f"%{keyword}%"
-        conditions.append(User.c.username.ilike(pattern) | User.c.email.ilike(pattern))
+        conditions.append(
+            User.c.username.ilike(pattern)
+            | User.c.email.ilike(pattern)
+            | User.c.display_name.ilike(pattern)
+        )
     if username:
         conditions.append(User.c.username.ilike(f"%{username}%"))
     if email:

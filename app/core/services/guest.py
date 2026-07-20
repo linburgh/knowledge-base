@@ -12,14 +12,13 @@ from app.db import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 
-TENANT_GUEST_ROLE = "tenant_guest"
 STATUS_ACTIVE = "active"
 STATUS_DELETED = "deleted"
 MAX_PAGE_SIZE = 100
 MAX_TITLE_LENGTH = 255
 
 
-async def _access_context(current_user: CurrentUser) -> tuple[int, list[int]]:
+async def _access_context(current_user: CurrentUser) -> tuple[int, int, list[int]]:
     try:
         user_id = int(current_user.user_id)
     except (TypeError, ValueError):
@@ -28,21 +27,21 @@ async def _access_context(current_user: CurrentUser) -> tuple[int, list[int]]:
     if current_user.tenant_id is None:
         raise BusiException("当前用户未选择租户", status_code=403)
     context = await user_db.get_auth_context(DB.get(), user_id, current_user.tenant_id)
-    if context is None or context.get("tenant_role") != TENANT_GUEST_ROLE:
-        raise BusiException("仅租户访客可以访问该接口", status_code=403)
+    if context is None or not context.get("tenant_role"):
+        raise BusiException("当前用户不是有效的租户成员", status_code=403)
     organization_ids = [
         int(item.get("organization_id", item.get("id")))
         for item in context.get("organizations", [])
         if item.get("organization_id", item.get("id")) is not None
     ]
-    return current_user.tenant_id, organization_ids
+    return user_id, current_user.tenant_id, organization_ids
 
 
 async def _authorized_conversation(
     current_user: CurrentUser,
     conversation_id: int,
 ) -> dict[str, Any]:
-    tenant_id, organization_ids = await _access_context(current_user)
+    user_id, tenant_id, organization_ids = await _access_context(current_user)
     conversation = await conversation_db.get(DB.get(), id=conversation_id)
     if (
         conversation is None
@@ -51,7 +50,7 @@ async def _authorized_conversation(
     ):
         raise BusiException("会话不存在", status_code=404)
     if await knowledge_base_db.guest_get(
-        DB.get(), tenant_id, organization_ids, int(conversation["kb_id"])
+        DB.get(), tenant_id, user_id, organization_ids, int(conversation["kb_id"])
     ) is None:
         raise BusiException("会话不存在", status_code=404)
     return conversation
@@ -68,11 +67,12 @@ async def page_knowledge_bases(
         raise BusiException("page 必须大于 0")
     if page_size <= 0 or page_size > MAX_PAGE_SIZE:
         raise BusiException(f"page_size 必须在 1 到 {MAX_PAGE_SIZE} 之间")
-    tenant_id, organization_ids = await _access_context(current_user)
+    user_id, tenant_id, organization_ids = await _access_context(current_user)
     normalized_keyword = keyword.strip() if keyword and keyword.strip() else None
     return await knowledge_base_db.guest_page(
         DB.get(),
         tenant_id=tenant_id,
+        user_id=user_id,
         organization_ids=organization_ids,
         keyword=normalized_keyword,
         page=page,
@@ -88,8 +88,10 @@ async def chat(
     conversation_id: int | None = None,
     top_k: int | None = None,
 ) -> Any:
-    tenant_id, organization_ids = await _access_context(current_user)
-    if await knowledge_base_db.guest_get(DB.get(), tenant_id, organization_ids, kb_id) is None:
+    user_id, tenant_id, organization_ids = await _access_context(current_user)
+    if await knowledge_base_db.guest_get(
+        DB.get(), tenant_id, user_id, organization_ids, kb_id
+    ) is None:
         raise BusiException("无权访问该知识库", status_code=403)
     return await chat_service.chat(
         kb_id=kb_id,
@@ -102,8 +104,10 @@ async def chat(
 
 @check_db_connected
 async def list_conversations(current_user: CurrentUser, kb_id: int) -> list[dict[str, Any]]:
-    tenant_id, organization_ids = await _access_context(current_user)
-    if await knowledge_base_db.guest_get(DB.get(), tenant_id, organization_ids, kb_id) is None:
+    user_id, tenant_id, organization_ids = await _access_context(current_user)
+    if await knowledge_base_db.guest_get(
+        DB.get(), tenant_id, user_id, organization_ids, kb_id
+    ) is None:
         raise BusiException("无权访问该知识库", status_code=403)
     return await conversation_db.list(
         DB.get(),

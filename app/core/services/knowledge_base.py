@@ -4,13 +4,18 @@ from typing import Any
 
 from app.config import CONF
 from app.core.common import utils as common_utils
+from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
 from app.db import knowledge_base as knowledge_base_db
 from app.db import knowledge_base_organization as knowledge_base_organization_db
 from app.db import knowledge_base_prompt as knowledge_base_prompt_db
+from app.db import knowledge_base_user as knowledge_base_user_db
 from app.db import organization as organization_db
+from app.db import platform_role as platform_role_db
 from app.db import tenant as tenant_db
+from app.db import tenant_member as tenant_member_db
+from app.db import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.knowledge_base import KnowledgeBaseDto
@@ -24,6 +29,25 @@ DEFAULT_CHUNK_OVERLAP = 100
 DEFAULT_RETRIEVAL_TOP_K = 5
 MAX_DESCRIPTION_LENGTH = 500
 MAX_SYSTEM_PROMPT_LENGTH = 10000
+
+
+async def _resolve_tenant_scope(
+    current_user: CurrentUser,
+    tenant_id: int | None,
+) -> int | None:
+    db = DB.get()
+    platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
+    is_platform_super_admin = any(
+        role.get("code") == "p_super_admin" and role.get("status") == STATUS_ACTIVE
+        for role in platform_roles
+    )
+    if is_platform_super_admin:
+        return tenant_id
+    if tenant_id is None:
+        return current_user.tenant_id
+    if current_user.tenant_id != tenant_id:
+        raise BusiException("只能查询当前租户的知识库", status_code=403)
+    return tenant_id
 
 
 def validate(dto: KnowledgeBaseDto) -> None:
@@ -221,6 +245,33 @@ async def organization_grants(knowledge_base_id: int) -> list[dict[str, Any]]:
 
 
 @check_db_connected
+async def available_organizations(
+    knowledge_base_id: int,
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PageRecord:
+    if not knowledge_base_id:
+        raise BusiException("knowledge_base_id 不能为空")
+    if page <= 0:
+        raise BusiException("page 必须大于 0")
+    if page_size <= 0 or page_size > 100:
+        raise BusiException("page_size 必须在 1 到 100 之间")
+    db = DB.get()
+    knowledge_base = await knowledge_base_db.get(db, id=knowledge_base_id)
+    if knowledge_base is None:
+        raise BusiException("知识库不存在", status_code=404)
+    return await knowledge_base_organization_db.available_page(
+        db,
+        kb_id=knowledge_base_id,
+        tenant_id=knowledge_base["tenant_id"],
+        keyword=common_utils.normalize_optional_filter(keyword),
+        page=page,
+        page_size=page_size,
+    )
+
+
+@check_db_connected
 async def grant_organization(
     knowledge_base_id: int, organization_id: int, created_by: int
 ) -> dict[str, Any]:
@@ -246,6 +297,60 @@ async def grant_organization(
 
 
 @check_db_connected
+async def batch_grant_organizations(
+    knowledge_base_id: int,
+    organization_ids: list[int],
+    created_by: int,
+) -> list[dict[str, Any]]:
+    if not knowledge_base_id:
+        raise BusiException("knowledge_base_id 不能为空")
+    if not organization_ids:
+        raise BusiException("organization_ids 不能为空")
+    if any(organization_id <= 0 for organization_id in organization_ids):
+        raise BusiException("organization_id 必须大于 0")
+    if len(organization_ids) != len(set(organization_ids)):
+        raise BusiException("organization_ids 不能包含重复组织")
+
+    db = DB.get()
+    async with db.transaction():
+        knowledge_base = await knowledge_base_db.get(db, id=knowledge_base_id)
+        if knowledge_base is None:
+            raise BusiException("知识库不存在", status_code=404)
+        grant_ids: list[int] = []
+        for organization_id in organization_ids:
+            organization = await organization_db.get(db, id=organization_id)
+            if (
+                organization is None
+                or organization.get("tenant_id") != knowledge_base.get("tenant_id")
+            ):
+                raise BusiException("组织不存在或不属于当前租户", status_code=400)
+            if await knowledge_base_organization_db.get(
+                db, kb_id=knowledge_base_id, organization_id=organization_id
+            ):
+                raise BusiException("组织已经获得当前知识库授权", status_code=409)
+            grant_ids.append(
+                await knowledge_base_organization_db.insert_(
+                    db,
+                    kb_id=knowledge_base_id,
+                    organization_id=organization_id,
+                    created_by=created_by,
+                )
+            )
+        grants = [
+            await knowledge_base_organization_db.get(db, id=grant_id)
+            for grant_id in grant_ids
+        ]
+        await audit_service.record(
+            db,
+            action="batch_grant_knowledge_base_organizations",
+            target_type="knowledge_base",
+            target_id=knowledge_base_id,
+            summary={"organization_ids": organization_ids},
+        )
+    return [grant for grant in grants if grant is not None]
+
+
+@check_db_connected
 async def revoke_organization(knowledge_base_id: int, organization_id: int) -> dict[str, Any]:
     db = DB.get()
     async with db.transaction():
@@ -259,6 +364,148 @@ async def revoke_organization(knowledge_base_id: int, organization_id: int) -> d
 
 
 @check_db_connected
+async def user_grants(knowledge_base_id: int) -> list[dict[str, Any]]:
+    if not knowledge_base_id:
+        raise BusiException("knowledge_base_id 不能为空")
+    db = DB.get()
+    if await knowledge_base_db.get(db, id=knowledge_base_id) is None:
+        raise BusiException("知识库不存在", status_code=404)
+    return await knowledge_base_user_db.list(db, knowledge_base_id)
+
+
+@check_db_connected
+async def available_users(
+    knowledge_base_id: int,
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PageRecord:
+    if not knowledge_base_id:
+        raise BusiException("knowledge_base_id 不能为空")
+    if page <= 0:
+        raise BusiException("page 必须大于 0")
+    if page_size <= 0 or page_size > 100:
+        raise BusiException("page_size 必须在 1 到 100 之间")
+    db = DB.get()
+    knowledge_base = await knowledge_base_db.get(db, id=knowledge_base_id)
+    if knowledge_base is None:
+        raise BusiException("知识库不存在", status_code=404)
+    return await knowledge_base_user_db.available_page(
+        db,
+        kb_id=knowledge_base_id,
+        tenant_id=knowledge_base["tenant_id"],
+        keyword=common_utils.normalize_optional_filter(keyword),
+        page=page,
+        page_size=page_size,
+    )
+
+
+@check_db_connected
+async def grant_user(
+    knowledge_base_id: int, user_id: int, created_by: int
+) -> dict[str, Any]:
+    db = DB.get()
+    async with db.transaction():
+        knowledge_base = await knowledge_base_db.get(db, id=knowledge_base_id)
+        if knowledge_base is None:
+            raise BusiException("知识库不存在", status_code=404)
+        user = await user_db.get(db, id=user_id)
+        if user is None or user.get("status") in {"deleted", "disabled"}:
+            raise BusiException("用户不存在或已禁用", status_code=404)
+        member = await tenant_member_db.get(
+            db,
+            tenant_id=knowledge_base["tenant_id"],
+            user_id=user_id,
+            status="active",
+        )
+        if member is None:
+            raise BusiException("用户不是当前知识库所属租户的有效成员", status_code=400)
+        if await knowledge_base_user_db.get(
+            db, kb_id=knowledge_base_id, user_id=user_id
+        ):
+            raise BusiException("用户已经获得当前知识库授权", status_code=409)
+        grant_id = await knowledge_base_user_db.insert_(
+            db,
+            kb_id=knowledge_base_id,
+            user_id=user_id,
+            created_by=created_by,
+        )
+        return await knowledge_base_user_db.get(db, id=grant_id)
+
+
+@check_db_connected
+async def batch_grant_users(
+    knowledge_base_id: int,
+    user_ids: list[int],
+    created_by: int,
+) -> list[dict[str, Any]]:
+    if not knowledge_base_id:
+        raise BusiException("knowledge_base_id 不能为空")
+    if not user_ids:
+        raise BusiException("user_ids 不能为空")
+    if any(user_id <= 0 for user_id in user_ids):
+        raise BusiException("user_id 必须大于 0")
+    if len(user_ids) != len(set(user_ids)):
+        raise BusiException("user_ids 不能包含重复用户")
+
+    db = DB.get()
+    async with db.transaction():
+        knowledge_base = await knowledge_base_db.get(db, id=knowledge_base_id)
+        if knowledge_base is None:
+            raise BusiException("知识库不存在", status_code=404)
+        grant_ids: list[int] = []
+        for user_id in user_ids:
+            user = await user_db.get(db, id=user_id)
+            if user is None or user.get("status") in {"deleted", "disabled"}:
+                raise BusiException("用户不存在或已禁用", status_code=404)
+            member = await tenant_member_db.get(
+                db,
+                tenant_id=knowledge_base["tenant_id"],
+                user_id=user_id,
+                status="active",
+            )
+            if member is None:
+                raise BusiException("用户不是当前知识库所属租户的有效成员", status_code=400)
+            if await knowledge_base_user_db.get(
+                db, kb_id=knowledge_base_id, user_id=user_id
+            ):
+                raise BusiException("用户已经获得当前知识库授权", status_code=409)
+            grant_ids.append(
+                await knowledge_base_user_db.insert_(
+                    db,
+                    kb_id=knowledge_base_id,
+                    user_id=user_id,
+                    created_by=created_by,
+                )
+            )
+        grants = [
+            await knowledge_base_user_db.get(db, id=grant_id)
+            for grant_id in grant_ids
+        ]
+        await audit_service.record(
+            db,
+            action="batch_grant_knowledge_base_users",
+            target_type="knowledge_base",
+            target_id=knowledge_base_id,
+            summary={"user_ids": user_ids},
+        )
+    return [grant for grant in grants if grant is not None]
+
+
+@check_db_connected
+async def revoke_user(knowledge_base_id: int, user_id: int) -> dict[str, Any]:
+    db = DB.get()
+    async with db.transaction():
+        grant = await knowledge_base_user_db.get(
+            db, kb_id=knowledge_base_id, user_id=user_id
+        )
+        if grant is None:
+            raise BusiException("知识库用户授权不存在", status_code=404)
+        await knowledge_base_user_db.delete_(db, id=grant["id"])
+    return grant
+
+
+@check_db_connected
 async def list(
     name: str | None = None,
     owner_id: str | None = None,
@@ -266,7 +513,11 @@ async def list(
     visibility: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
+    current_user: CurrentUser | None = None,
 ) -> list[dict[str, Any]]:
+    if current_user is None:
+        raise BusiException("当前用户不能为空", status_code=401)
+    tenant_id = await _resolve_tenant_scope(current_user, tenant_id)
     filters: dict[str, Any] = {
         "name": common_utils.normalize_optional_filter(name),
         "owner_id": owner_id,
@@ -291,11 +542,15 @@ async def page(
     page_size: int = 20,
     tenant_id: int | None = None,
     organization_id: int | None = None,
+    current_user: CurrentUser | None = None,
 ) -> PageRecord:
+    if current_user is None:
+        raise BusiException("当前用户不能为空", status_code=401)
     if page <= 0:
         raise BusiException("page 必须大于 0")
     if page_size <= 0:
         raise BusiException("page_size 必须大于 0")
+    tenant_id = await _resolve_tenant_scope(current_user, tenant_id)
 
     filters: dict[str, Any] = {
         "name": common_utils.normalize_optional_filter(name),
@@ -313,5 +568,7 @@ async def page(
 
 __all__ = (
     "validate", "add", "modify", "remove", "get", "prompt_history", "organization_grants",
-    "grant_organization", "revoke_organization", "list", "page",
+    "available_organizations", "grant_organization", "batch_grant_organizations",
+    "revoke_organization", "user_grants", "available_users", "grant_user",
+    "batch_grant_users", "revoke_user", "list", "page",
 )

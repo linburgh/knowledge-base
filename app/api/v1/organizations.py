@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
+from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import organization as organization_service
@@ -18,6 +19,7 @@ from app.schemas.organization import (
 from app.schemas.organization_member import OrganizationMemberBatchRequest
 
 router = APIRouter()
+current_user_dependency = Depends(auth.get_current_user)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -31,17 +33,44 @@ async def add(payload: OrganizationCreateRequest) -> Any:
 
 
 @router.get("")
-async def tree(tenant_id: int, keyword: str | None = None, status: str | None = None) -> Any:
+async def tree(
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
     try:
-        return await organization_service.tree(tenant_id, keyword, status)
+        return await organization_service.tree(current_user, tenant_id, keyword, status)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 
 
 @router.get("/tree")
-async def tree_view(tenant_id: int, keyword: str | None = None, status: str | None = None) -> Any:
+async def tree_view(
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
     try:
-        return await organization_service.tree(tenant_id, keyword, status)
+        return await organization_service.tree(current_user, tenant_id, keyword, status)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/page")
+async def page(
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await organization_service.page(
+            current_user, tenant_id, keyword, status, page, page_size
+        )
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

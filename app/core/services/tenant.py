@@ -121,7 +121,9 @@ def _filters(code: str | None, status: str | None) -> dict[str, Any]:
 
 @check_db_connected
 async def list(
-    code: str | None = None, name: str | None = None, status: str | None = None
+    code: str | None = None,
+    name: str | None = None,
+    status: str | None = None,
 ) -> list[dict[str, Any]]:
     code = common_utils.normalize_optional_filter(code)
     name = common_utils.normalize_optional_filter(name)
@@ -153,4 +155,12 @@ async def page(
     )
 
 
-__all__ = ("validate", "add", "modify", "remove", "get", "list", "page")
+__all__ = (
+    "validate",
+    "add",
+    "modify",
+    "remove",
+    "get",
+    "list",
+    "page",
+)

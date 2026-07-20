@@ -30,7 +30,10 @@ async def member_page(
 
 
 @router.get("/{id}/member-candidates")
-async def member_candidates(id: int, keyword: str | None = None) -> Any:
+async def member_candidates(
+    id: int,
+    keyword: str | None = None,
+) -> Any:
     try:
         return await tenant_member_service.candidates(id, keyword)
     except BusiException as exc:
@@ -38,7 +41,10 @@ async def member_candidates(id: int, keyword: str | None = None) -> Any:
 
 
 @router.post("/{id}/members", status_code=status.HTTP_201_CREATED)
-async def add_member(id: int, payload: TenantMemberRequest) -> Any:
+async def add_member(
+    id: int,
+    payload: TenantMemberRequest,
+) -> Any:
     try:
         return await tenant_member_service.add(id, payload.model_dump())
     except BusiException as exc:
@@ -46,7 +52,11 @@ async def add_member(id: int, payload: TenantMemberRequest) -> Any:
 
 
 @router.put("/{id}/members/{member_id}")
-async def modify_member(id: int, member_id: int, payload: TenantMemberModifyRequest) -> Any:
+async def modify_member(
+    id: int,
+    member_id: int,
+    payload: TenantMemberModifyRequest,
+) -> Any:
     try:
         return await tenant_member_service.modify(
             id, member_id, payload.model_dump(exclude_unset=True)
@@ -56,7 +66,10 @@ async def modify_member(id: int, member_id: int, payload: TenantMemberModifyRequ
 
 
 @router.delete("/{id}/members/{member_id}")
-async def remove_member(id: int, member_id: int) -> Any:
+async def remove_member(
+    id: int,
+    member_id: int,
+) -> Any:
     try:
         return await tenant_member_service.remove(id, member_id)
     except BusiException as exc:
@@ -64,7 +77,9 @@ async def remove_member(id: int, member_id: int) -> Any:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def add(payload: TenantCreateRequest) -> Any:
+async def add(
+    payload: TenantCreateRequest,
+) -> Any:
     try:
         return await tenant_service.add(common_utils.parse_dataclass(payload, TenantDto))
     except BusiException as exc:
@@ -72,7 +87,11 @@ async def add(payload: TenantCreateRequest) -> Any:
 
 
 @router.get("")
-async def list(code: str | None = None, name: str | None = None, status: str | None = None) -> Any:
+async def list(
+    code: str | None = None,
+    name: str | None = None,
+    status: str | None = None,
+) -> Any:
     try:
         return await tenant_service.list(code=code, name=name, status=status)
     except BusiException as exc:
@@ -89,14 +108,21 @@ async def page(
 ) -> Any:
     try:
         return await tenant_service.page(
-            code=code, name=name, status=status, page=page, page_size=page_size
+            code=code,
+            name=name,
+            status=status,
+            page=page,
+            page_size=page_size,
         )
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 
 
 @router.put("/{id}")
-async def modify(id: int, payload: TenantModifyRequest) -> Any:
+async def modify(
+    id: int,
+    payload: TenantModifyRequest,
+) -> Any:
     try:
         return await tenant_service.modify(id, common_utils.parse_dataclass(payload, TenantDto))
     except BusiException as exc:
@@ -104,7 +130,9 @@ async def modify(id: int, payload: TenantModifyRequest) -> Any:
 
 
 @router.delete("/{id}")
-async def remove(id: int) -> Any:
+async def remove(
+    id: int,
+) -> Any:
     try:
         return await tenant_service.remove(id)
     except BusiException as exc:
@@ -112,7 +140,9 @@ async def remove(id: int) -> Any:
 
 
 @router.get("/{id}")
-async def get(id: int) -> Any:
+async def get(
+    id: int,
+) -> Any:
     try:
         return await tenant_service.get(id)
     except BusiException as exc:

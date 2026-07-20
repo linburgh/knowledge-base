@@ -6,7 +6,7 @@ import sqlalchemy as sa
 
 from app.db import api as db_api
 from app.db.base import PageRecord
-from app.db.models import KnowledgeBase, KnowledgeBaseOrganization, Tenant
+from app.db.models import KnowledgeBase, KnowledgeBaseOrganization, KnowledgeBaseUser, Tenant
 
 
 async def insert_(db, **kwargs: Any) -> Any:
@@ -64,6 +64,7 @@ async def page(
 async def guest_page(
     db,
     tenant_id: int,
+    user_id: int,
     organization_ids: list[int],
     page: int = 1,
     page_size: int = 10,
@@ -73,9 +74,19 @@ async def guest_page(
         KnowledgeBase.c.tenant_id == tenant_id,
         KnowledgeBase.c.status == "active",
     ]
+    access_conditions = [
+        sa.exists(
+            sa.select(1)
+            .select_from(KnowledgeBaseUser)
+            .where(
+                KnowledgeBaseUser.c.kb_id == KnowledgeBase.c.id,
+                KnowledgeBaseUser.c.user_id == user_id,
+            )
+        )
+    ]
     if organization_ids:
-        conditions.append(
-            sa.or_(
+        access_conditions.extend(
+            [
                 KnowledgeBase.c.organization_id.in_(organization_ids),
                 sa.exists(
                     sa.select(1)
@@ -85,10 +96,9 @@ async def guest_page(
                         KnowledgeBaseOrganization.c.organization_id.in_(organization_ids),
                     )
                 ),
-            )
+            ]
         )
-    else:
-        conditions.append(sa.false())
+    conditions.append(sa.or_(*access_conditions))
     if keyword:
         pattern = f"%{keyword}%"
         conditions.append(
@@ -123,6 +133,7 @@ async def guest_page(
 async def guest_get(
     db,
     tenant_id: int,
+    user_id: int,
     organization_ids: list[int],
     knowledge_base_id: int,
 ) -> dict[str, Any] | None:
@@ -131,20 +142,32 @@ async def guest_get(
         KnowledgeBase.c.tenant_id == tenant_id,
         KnowledgeBase.c.status == "active",
     ]
-    if not organization_ids:
-        return None
-    conditions.append(
-        sa.or_(
-            KnowledgeBase.c.organization_id.in_(organization_ids),
-            sa.exists(
-                sa.select(1)
-                .select_from(KnowledgeBaseOrganization)
-                .where(
-                    KnowledgeBaseOrganization.c.kb_id == KnowledgeBase.c.id,
-                    KnowledgeBaseOrganization.c.organization_id.in_(organization_ids),
-                )
-            ),
+    access_conditions = [
+        sa.exists(
+            sa.select(1)
+            .select_from(KnowledgeBaseUser)
+            .where(
+                KnowledgeBaseUser.c.kb_id == KnowledgeBase.c.id,
+                KnowledgeBaseUser.c.user_id == user_id,
+            )
         )
+    ]
+    if organization_ids:
+        access_conditions.extend(
+            [
+                KnowledgeBase.c.organization_id.in_(organization_ids),
+                sa.exists(
+                    sa.select(1)
+                    .select_from(KnowledgeBaseOrganization)
+                    .where(
+                        KnowledgeBaseOrganization.c.kb_id == KnowledgeBase.c.id,
+                        KnowledgeBaseOrganization.c.organization_id.in_(organization_ids),
+                    )
+                ),
+            ]
+        )
+    conditions.append(
+        sa.or_(*access_conditions)
     )
     row = await db.fetch_one(
         sa.select(

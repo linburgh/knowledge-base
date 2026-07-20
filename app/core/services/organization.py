@@ -4,9 +4,11 @@ import re
 from typing import Any
 
 from app.core.common import utils as common_utils
+from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
 from app.db import organization as organization_db
+from app.db import platform_role as platform_role_db
 from app.db import tenant as tenant_db
 from app.db import user as user_db
 from app.db.api import check_db_connected
@@ -225,16 +227,69 @@ async def get(organization_id: int) -> dict[str, Any]:
 
 @check_db_connected
 async def tree(
-    tenant_id: int,
+    current_user: CurrentUser,
+    tenant_id: int | None = None,
     keyword: str | None = None,
     status: str | None = None,
 ) -> list[dict[str, Any]]:
-    if tenant_id <= 0:
+    if tenant_id is not None and tenant_id <= 0:
         raise BusiException("tenant_id 必须大于 0")
     if status is not None and status not in VALID_STATUSES:
         raise BusiException("status 不合法")
-    await _require_tenant(DB.get(), tenant_id)
-    return _tree(await organization_db.list(DB.get(), tenant_id, keyword, status))
+    db = DB.get()
+    platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
+    is_platform_super_admin = any(
+        role.get("code") == "p_super_admin" and role.get("status") == STATUS_ACTIVE
+        for role in platform_roles
+    )
+    if not is_platform_super_admin:
+        if tenant_id is None:
+            tenant_id = current_user.tenant_id
+        if tenant_id is None or tenant_id != current_user.tenant_id:
+            raise BusiException("只能查询当前租户的组织", status_code=403)
+    elif tenant_id is not None:
+        await _require_tenant(db, tenant_id)
+    return _tree(await organization_db.list(db, tenant_id, keyword, status))
+
+
+@check_db_connected
+async def page(
+    current_user: CurrentUser,
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PageRecord:
+    if tenant_id is not None and tenant_id <= 0:
+        raise BusiException("tenant_id 必须大于 0")
+    if page <= 0:
+        raise BusiException("page 必须大于 0")
+    if page_size <= 0 or page_size > 100:
+        raise BusiException("page_size 必须在 1 到 100 之间")
+    if status is not None and status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+    db = DB.get()
+    platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
+    is_platform_super_admin = any(
+        role.get("code") == "p_super_admin" and role.get("status") == STATUS_ACTIVE
+        for role in platform_roles
+    )
+    if not is_platform_super_admin:
+        if tenant_id is None:
+            tenant_id = current_user.tenant_id
+        if tenant_id is None or tenant_id != current_user.tenant_id:
+            raise BusiException("只能查询当前租户的组织", status_code=403)
+    elif tenant_id is not None:
+        await _require_tenant(db, tenant_id)
+    return await organization_db.page(
+        db,
+        page=page,
+        page_size=page_size,
+        tenant_id=tenant_id,
+        keyword=common_utils.normalize_optional_filter(keyword),
+        status=status,
+    )
 
 
 @check_db_connected

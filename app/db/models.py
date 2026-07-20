@@ -235,6 +235,22 @@ KnowledgeBaseOrganization = sa.Table(
 )
 
 
+KnowledgeBaseUser = sa.Table(
+    "t_knowledge_base_user",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("user_id", sa.BigInteger, nullable=False),
+    sa.Column("created_by", sa.BigInteger, nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("kb_id", "user_id", name="uq_t_knowledge_base_user_kb_user"),
+    sa.Index("idx_t_knowledge_base_user_kb_id", "kb_id"),
+    sa.Index("idx_t_knowledge_base_user_user_id", "user_id"),
+)
+
+
 Document = sa.Table(
     "t_document",
     metadata,
