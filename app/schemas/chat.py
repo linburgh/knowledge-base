@@ -11,6 +11,13 @@ class ChatRequest(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=50, description="召回数量")
 
 
+class GuestChatRequest(BaseModel):
+    kb_id: int = Field(..., gt=0, description="知识库 ID")
+    question: str = Field(..., min_length=1, max_length=8000, description="用户问题")
+    conversation_id: int | None = Field(default=None, gt=0, description="已有会话 ID")
+    top_k: int | None = Field(default=None, ge=1, le=50, description="召回数量")
+
+
 class CitationDto(BaseModel):
     document_id: int
     chunk_id: int

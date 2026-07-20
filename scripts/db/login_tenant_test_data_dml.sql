@@ -51,6 +51,13 @@ values
         '单租户演示用户',
         'pbkdf2_sha256$600000$VKvr5R5XsqRdDuPTnfw57A$QY36xzngnYG6klqCljhUPit3qtRaTLVGVm_rFa25sZw',
         'active'
+    ),
+    (
+        'guest',
+        'guest@example.test',
+        '访客演示用户',
+        'pbkdf2_sha256$600000$bzprv0AXG4F1w3VMS7iOOQ$yfJ84ElYmceMh16aM9eUbs32tlpK4EKygjO1Eolg9x4',
+        'active'
     )
 on conflict (username) do update
 set email = excluded.email,
@@ -97,7 +104,8 @@ from (
         ('linburgh', 'demo-tenant-b', 'tenant_owner', false),
         ('multi-tenant', 'demo-tenant-a', 'member', true),
         ('multi-tenant', 'demo-tenant-b', 'member', false),
-        ('single-tenant', 'demo-tenant-a', 'member', true)
+        ('single-tenant', 'demo-tenant-a', 'member', true),
+        ('guest', 'demo-tenant-a', 'tenant_guest', true)
 ) as membership(username, tenant_code, role_code, is_primary)
 join t_user demo_user on demo_user.username = membership.username
 join t_tenant demo_tenant on demo_tenant.code = membership.tenant_code
@@ -106,5 +114,100 @@ set role_code = excluded.role_code,
     is_primary = excluded.is_primary,
     status = excluded.status,
     updated_at = now();
+
+-- tenant_guest 测试账号使用演示企业租户中的独立组织和知识库。
+insert into t_organization (
+    tenant_id,
+    parent_id,
+    code,
+    name,
+    status
+)
+select demo_tenant.id, null, 'demo-guest-org', '访客测试组织', 'active'
+from t_tenant demo_tenant
+where demo_tenant.code = 'demo-tenant-a'
+on conflict (tenant_id, code) do update
+set name = excluded.name,
+    status = excluded.status,
+    updated_at = now();
+
+insert into t_organization_member (
+    organization_id,
+    user_id,
+    role_code,
+    is_primary,
+    status,
+    joined_at
+)
+select demo_org.id, demo_user.id, 'org_member', true, 'active', now()
+from t_organization demo_org
+join t_tenant demo_tenant on demo_tenant.id = demo_org.tenant_id
+join t_user demo_user on demo_user.username = 'guest'
+where demo_tenant.code = 'demo-tenant-a'
+  and demo_org.code = 'demo-guest-org'
+on conflict (organization_id, user_id) do update
+set role_code = excluded.role_code,
+    is_primary = excluded.is_primary,
+    status = excluded.status,
+    updated_at = now();
+
+insert into t_knowledge_base (
+    tenant_id,
+    organization_id,
+    name,
+    description,
+    owner_id,
+    visibility,
+    embedding_model,
+    chunk_size,
+    chunk_overlap,
+    retrieval_top_k,
+    system_prompt,
+    system_prompt_version,
+    created_by,
+    status
+)
+select demo_tenant.id,
+       demo_org.id,
+       '访客测试知识库',
+       '用于验证 tenant_guest 授权数据源、搜索分页和问答流程',
+       'guest',
+       'private',
+       'text-embedding-3-small',
+       600,
+       100,
+       5,
+       '',
+       1,
+       demo_user.id,
+       'active'
+from t_tenant demo_tenant
+join t_organization demo_org
+  on demo_org.tenant_id = demo_tenant.id
+ and demo_org.code = 'demo-guest-org'
+join t_user demo_user on demo_user.username = 'guest'
+where demo_tenant.code = 'demo-tenant-a'
+  and not exists (
+      select 1
+      from t_knowledge_base existing_kb
+      where existing_kb.tenant_id = demo_tenant.id
+        and existing_kb.name = '访客测试知识库'
+  );
+
+insert into t_knowledge_base_organization (
+    kb_id,
+    organization_id,
+    created_by
+)
+select demo_kb.id, demo_org.id, demo_user.id
+from t_knowledge_base demo_kb
+join t_organization demo_org
+  on demo_org.tenant_id = demo_kb.tenant_id
+ and demo_org.code = 'demo-guest-org'
+join t_tenant demo_tenant on demo_tenant.id = demo_kb.tenant_id
+join t_user demo_user on demo_user.username = 'guest'
+where demo_tenant.code = 'demo-tenant-a'
+  and demo_kb.name = '访客测试知识库'
+on conflict (kb_id, organization_id) do nothing;
 
 commit;

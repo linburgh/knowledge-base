@@ -27,6 +27,10 @@ class ConversationModifyRequest(BaseModel):
     status: str | None = Field(default=None, description="会话状态")
 
 
+class GuestConversationModifyRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255, description="会话标题")
+
+
 @dataclass(slots=True)
 class ConversationMessageDto:
     conversation_id: int | None = None
@@ -83,6 +87,7 @@ __all__ = (
     "ConversationDto",
     "ConversationCreateRequest",
     "ConversationModifyRequest",
+    "GuestConversationModifyRequest",
     "ConversationMessageDto",
     "ConversationMessageCreateRequest",
     "ConversationMessageModifyRequest",
