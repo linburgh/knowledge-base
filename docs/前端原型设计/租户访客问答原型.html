@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>访客问答工作台 · Knowledge Base</title>
+    <style>
+      :root { --navy:#17233f; --navy-light:#26365c; --blue:#5b6ee1; --blue-soft:#eef1ff; --ink:#1d2942; --muted:#7f8aa4; --line:#e7ebf3; --green:#39a98a; --bg:#f6f8fc; --shadow:0 18px 48px rgba(29,42,77,.08); }
+      * { box-sizing:border-box; }
+      body { min-width:1180px; margin:0; color:var(--ink); background:var(--bg); font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif; }
+      button,textarea { font:inherit; } button { cursor:pointer; }
+      .app { min-height:100vh; }
+      .sidebar { display:flex; width:252px; flex-direction:column; padding:28px 18px; color:#fff; background:var(--navy); }
+      .brand { display:flex; align-items:center; gap:11px; padding:0 12px; }
+      .brand-mark { display:grid; width:38px; height:38px; place-items:center; border-radius:12px; color:#fff; background:linear-gradient(145deg,#7c8cff,#5064d9); font-size:19px; font-weight:800; }
+      .brand strong,.brand small { display:block; } .brand strong { font-size:14px; } .brand small { margin-top:4px; color:#aeb9d4; font-size:11px; }
+      .sidebar-label { margin:48px 12px 12px; color:#7888b1; font-size:10px; font-weight:700; letter-spacing:.16em; }
+      .nav-item { display:flex; align-items:center; gap:11px; width:100%; margin:3px 0; padding:12px; border:0; border-radius:10px; color:#b7c2dd; background:transparent; text-align:left; font-size:13px; }
+      .nav-item.active { color:#fff; background:var(--navy-light); box-shadow:inset 3px 0 #8391ff; }
+      .nav-icon { width:20px; color:#9aa9d0; text-align:center; font-size:16px; }
+      .sidebar-bottom { margin-top:auto; padding:18px 12px 0; border-top:1px solid rgba(255,255,255,.1); }
+      .guest-badge { display:inline-flex; padding:5px 8px; border-radius:6px; color:#bfe7dc; background:rgba(57,169,138,.16); font-size:11px; }
+      .sidebar-bottom p { margin:12px 0 0; color:#8695ba; font-size:11px; line-height:1.7; }
+      .main { min-width:0; }
+      .topbar { display:flex; height:76px; align-items:center; justify-content:space-between; padding:0 38px; border-bottom:1px solid var(--line); background:#fff; }
+      .tenant-context { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
+      .tenant-dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 4px #e7f6f1; }
+      .user-area { display:flex; align-items:center; gap:12px; } .avatar { display:grid; width:34px; height:34px; place-items:center; border-radius:50%; color:#fff; background:#8290df; font-size:12px; font-weight:700; }
+      .user-info strong,.user-info small { display:block; } .user-info strong { font-size:12px; } .user-info small { margin-top:3px; color:var(--muted); font-size:11px; }
+      .logout { border:0; color:var(--muted); background:transparent; font-size:12px; }
+      .content { max-width:1680px; margin:0 auto; padding:32px 36px; }
+      .page-title { margin-bottom:28px; } .eyebrow { color:var(--blue); font-size:10px; font-weight:800; letter-spacing:.16em; }
+      h1,h2,h3,p { margin-top:0; } h1 { margin:8px 0; font-size:28px; letter-spacing:-.03em; } .page-title p { margin:0; color:var(--muted); font-size:13px; }
+      .layout { display:grid; grid-template-columns:250px minmax(620px,1fr) 300px; gap:18px; }
+      .panel { border:1px solid var(--line); border-radius:16px; background:#fff; box-shadow:var(--shadow); }
+      .panel-heading { display:flex; align-items:center; justify-content:space-between; padding:20px 20px 14px; } .panel-heading h2 { margin:0; font-size:14px; } .panel-heading span { color:var(--muted); font-size:11px; }
+      .kb-list { padding:0 12px 14px; } .kb-card { width:100%; margin:4px 0; padding:14px; border:1px solid transparent; border-radius:11px; color:var(--ink); background:transparent; text-align:left; }
+      .kb-card:hover,.kb-card.active { border-color:#dce1ff; background:var(--blue-soft); } .kb-card.active { box-shadow:inset 3px 0 var(--blue); }
+      .kb-card strong,.kb-card small { display:block; } .kb-card strong { font-size:13px; } .kb-card small { margin-top:6px; overflow:hidden; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+      .kb-status { display:inline-flex; align-items:center; gap:5px; margin-top:10px; color:var(--green); font-size:10px; } .kb-status i { width:5px; height:5px; border-radius:50%; background:currentColor; }
+      .kb-access-button { display:grid; width:34px; height:34px; place-items:center; padding:0; border:1px solid #dce2ed; border-radius:9px; color:var(--blue); background:#fbfcff; }
+      .kb-access-button:hover { border-color:#c8d0ff; background:var(--blue-soft); }
+      .kb-access-button svg { width:17px; height:17px; }
+      .drawer-backdrop { position:fixed; z-index:10; inset:0; visibility:hidden; background:rgba(23,35,63,.2); opacity:0; transition:opacity .2s, visibility .2s; }
+      .drawer-backdrop.open { visibility:visible; opacity:1; }
+      .kb-drawer { position:absolute; top:0; right:0; width:360px; height:100%; padding:24px; transform:translateX(100%); border-left:1px solid var(--line); background:#fff; box-shadow:-18px 0 40px rgba(29,42,77,.12); transition:transform .24s ease; }
+      .drawer-backdrop.open .kb-drawer { transform:translateX(0); }
+      .drawer-header { display:flex; align-items:flex-start; justify-content:space-between; padding-bottom:18px; border-bottom:1px solid var(--line); }
+      .drawer-header h2 { margin:0 0 6px; font-size:17px; } .drawer-header p { margin:0; color:var(--muted); font-size:11px; }
+      .drawer-close { width:28px; height:28px; padding:0; border:0; border-radius:7px; color:var(--muted); background:transparent; font-size:20px; line-height:1; }
+      .drawer-close:hover { color:var(--ink); background:var(--bg); }
+      .kb-search { display:flex; gap:8px; margin-top:18px; }
+      .kb-search input { min-width:0; flex:1; padding:9px 10px; border:1px solid #dce2ed; border-radius:8px; outline:0; color:var(--ink); background:#fbfcff; font-size:11px; }
+      .kb-search input:focus { border-color:var(--blue); box-shadow:0 0 0 3px #eef1ff; }
+      .kb-search button { padding:0 12px; border:0; border-radius:8px; color:#fff; background:var(--blue); font-size:11px; }
+      .kb-option-list { display:grid; gap:8px; margin-top:18px; }
+      .kb-option { width:100%; padding:14px; border:1px solid var(--line); border-radius:10px; color:var(--ink); background:#fff; text-align:left; }
+      .kb-option:hover,.kb-option.active { border-color:#cdd4ff; background:var(--blue-soft); }
+      .kb-option strong,.kb-option span { display:block; } .kb-option strong { font-size:12px; } .kb-option span { margin-top:6px; color:var(--muted); font-size:11px; line-height:1.6; }
+      .kb-loading,.kb-empty { padding:24px 8px; color:var(--muted); font-size:11px; text-align:center; }
+      .kb-pagination { display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:10px; }
+      .kb-pagination button { padding:4px 7px; border:0; color:var(--blue); background:transparent; font-size:10px; }
+      .kb-pagination button:disabled { color:#c5cada; cursor:not-allowed; }
+      .session-section { margin-top:12px; padding:18px 12px 14px; border-top:1px solid var(--line); }
+      .session-heading { display:flex; align-items:center; justify-content:space-between; padding:0 8px 8px; }
+      .session-heading strong { font-size:13px; } .session-new { padding:0; border:0; color:var(--blue); background:transparent; font-size:11px; font-weight:700; }
+      .session-panel .panel-heading { padding-bottom:16px; }
+      .session-list { display:grid; gap:6px; padding:0 12px 18px; } .session-item { display:flex; align-items:center; gap:8px; min-width:0; min-height:40px; padding:10px 11px; border:1px solid transparent; border-radius:9px; color:var(--muted); font-size:11px; }
+      .session-item.active { border-color:#dce1ff; color:var(--blue); background:var(--blue-soft); font-weight:700; } .session-item > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .session-actions { position:relative; flex-shrink:0; margin-left:auto; padding-left:8px; opacity:0; } .session-item:hover .session-actions,.session-item.active .session-actions { opacity:1; }
+      .session-menu-button { width:24px; height:24px; padding:0; border:0; border-radius:6px; color:var(--muted); background:transparent; font-size:17px; line-height:1; }
+      .session-menu-button:hover,.session-actions.open .session-menu-button { color:var(--blue); background:#e2e6ff; }
+      .session-menu { position:absolute; z-index:3; top:28px; right:0; display:none; min-width:76px; padding:5px; border:1px solid var(--line); border-radius:8px; background:#fff; box-shadow:0 10px 24px rgba(29,42,77,.12); }
+      .session-actions.open .session-menu { display:grid; gap:2px; }
+      .session-menu button { padding:7px 8px; border:0; border-radius:5px; color:var(--ink); background:transparent; text-align:left; font-size:10px; white-space:nowrap; }
+      .session-menu button:hover { color:var(--blue); background:var(--blue-soft); }
+      .chat-panel { display:flex; min-height:685px; flex-direction:column; overflow:hidden; } .chat-header { display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid var(--line); }
+      .chat-header > div:last-child { display:flex; align-items:center; gap:10px; }
+      .chat-header h2 { margin:0 0 6px; font-size:17px; } .chat-header p { margin:0; color:var(--muted); font-size:11px; } .scope { padding:7px 10px; border-radius:7px; color:var(--blue); background:var(--blue-soft); font-size:10px; }
+      .messages { flex:1; padding:28px 30px; overflow:auto; } .welcome { padding:26px; border-radius:13px; background:linear-gradient(135deg,#f4f6ff,#fbfcff); }
+      .welcome h3 { margin-bottom:8px; font-size:16px; } .welcome p { margin:0; color:var(--muted); font-size:12px; line-height:1.8; }
+      .question { max-width:82%; margin:26px 0 10px auto; padding:13px 16px; border-radius:13px 13px 3px 13px; color:#fff; background:var(--blue); font-size:13px; line-height:1.7; }
+      .answer { max-width:88%; padding:17px 18px; border:1px solid var(--line); border-radius:3px 13px 13px 13px; font-size:13px; line-height:1.9; } .answer strong { color:var(--blue); }
+      .composer { margin-top:auto; padding:18px 24px 22px; border-top:1px solid var(--line); } .composer textarea { display:block; width:100%; min-height:78px; padding:13px 14px; resize:vertical; border:1px solid #dce2ed; border-radius:10px; outline:0; color:var(--ink); background:#fbfcff; font-size:13px; line-height:1.7; }
+      .composer textarea:focus { border-color:var(--blue); box-shadow:0 0 0 3px #eef1ff; } .composer-footer { display:flex; align-items:center; justify-content:space-between; margin-top:10px; color:var(--muted); font-size:11px; }
+      .send { padding:10px 18px; border:0; border-radius:8px; color:#fff; background:var(--blue); font-size:12px; font-weight:700; }
+      .citation-panel { min-height:685px; } .citation-list { padding:0 20px 20px; } .citation { padding:15px 0; border-top:1px solid var(--line); } .citation:first-child { border-top:0; }
+      .citation-title { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; } .citation-number { display:grid; width:22px; height:22px; place-items:center; border-radius:6px; color:var(--blue); background:var(--blue-soft); font-size:10px; }
+      .citation p { margin:9px 0; color:var(--muted); font-size:11px; line-height:1.8; } .citation-meta { color:#a2abc0; font-size:10px; }
+      @media (max-width:1250px) { .content { padding:28px; } .layout { grid-template-columns:220px minmax(500px,1fr); } .citation-panel { display:none; } }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <main class="main">
+        <header class="topbar"><div class="brand"><div class="brand-mark">K</div><div><strong>Knowledge Base</strong><small>企业知识中枢 · 访客问答</small></div></div><div class="tenant-context"><i class="tenant-dot"></i>当前租户：演示企业租户</div><div class="user-area"><div class="avatar">多</div><div class="user-info"><strong>多租户演示用户</strong><small>multi-tenant · 租户访客</small></div><button class="logout">退出</button></div></header>
+        <div class="content">
+          <div class="page-title"><span class="eyebrow">ASK YOUR KNOWLEDGE BASE</span><h1>你好，今天想了解什么？</h1><p>基于已授权的企业知识，为你提供可追溯、有依据的回答。</p></div>
+          <div class="layout">
+            <section class="panel session-panel"><div class="panel-heading"><h2>会话</h2><button class="session-new" onclick="newSession()">＋ 新建会话</button></div><div class="session-list"><div class="session-item active"><span>报销流程咨询</span><div class="session-actions"><button class="session-menu-button" aria-label="会话操作" onclick="toggleSessionMenu(event, this)">⋯</button><div class="session-menu"><button onclick="renameSession(event, this)">重命名</button><button onclick="deleteSession(event, this)">删除</button></div></div></div><div class="session-item"><span>产品资料查询</span><div class="session-actions"><button class="session-menu-button" aria-label="会话操作" onclick="toggleSessionMenu(event, this)">⋯</button><div class="session-menu"><button onclick="renameSession(event, this)">重命名</button><button onclick="deleteSession(event, this)">删除</button></div></div></div><div class="session-item"><span>员工入职流程</span><div class="session-actions"><button class="session-menu-button" aria-label="会话操作" onclick="toggleSessionMenu(event, this)">⋯</button><div class="session-menu"><button onclick="renameSession(event, this)">重命名</button><button onclick="deleteSession(event, this)">删除</button></div></div></div></section>
+            <section class="panel chat-panel"><div class="chat-header"><div><h2 id="chat-title">企业制度库</h2><p>回答仅基于当前知识库中已完成索引的内容</p></div><div><button class="kb-access-button" aria-label="查看授权数据源" title="授权数据源" onclick="openKbDrawer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg></button></div></div><div class="messages"><div class="welcome"><h3>从一个问题开始</h3><p>你可以询问制度流程、产品说明或企业内部知识。回答会附带参考资料，方便你核对原文。</p></div><div id="messages"><div class="question">报销流程需要哪些材料？</div><div class="answer">根据当前知识库资料，报销需要准备<strong>发票、费用明细和直属负责人审批单</strong>。提交后还需要直属负责人审批。</div></div></div><div class="composer"><textarea id="question" placeholder="输入问题，开始问答" onkeydown="handleKey(event)"></textarea><div class="composer-footer"><span>Enter 发送 · Shift+Enter 换行</span><button class="send" onclick="sendQuestion()">发送问题</button></div></div></section>
+            <aside class="panel citation-panel"><div class="panel-heading"><h2>参考资料</h2><span>2 条</span></div><div class="citation-list"><div class="citation"><div class="citation-title"><span class="citation-number">1</span>报销制度.md</div><p>员工提交报销时，需要准备发票、费用明细和直属负责人审批单。</p><span class="citation-meta">第 1 页</span></div><div class="citation"><div class="citation-title"><span class="citation-number">2</span>员工手册.pdf</div><p>费用报销需经过直属负责人审批后提交财务审核。</p><span class="citation-meta">第 8 页</span></div></div></aside>
+          </div>
+        </div>
+        <div id="kb-drawer-backdrop" class="drawer-backdrop" onclick="closeKbDrawer(event)"><aside class="kb-drawer" role="dialog" aria-label="授权数据源列表" onclick="event.stopPropagation()"><div class="drawer-header"><div><h2>授权数据源</h2><p>选择本次问答使用的数据源</p></div><button class="drawer-close" aria-label="关闭" onclick="closeKbDrawer()">×</button></div><div class="kb-search"><input id="kb-keyword" placeholder="快速查找数据源" oninput="debounceSearch()" onkeydown="if(event.key === 'Enter') searchKnowledgeBases()" /><button onclick="searchKnowledgeBases()">查找</button></div><div id="kb-option-list" class="kb-option-list"></div><div class="kb-pagination"><button id="kb-prev" onclick="changeKbPage(-1)">上一页</button><span id="kb-page-summary">第 1 / 1 页</span><button id="kb-next" onclick="changeKbPage(1)">下一页</button></div></aside></div>
+      </main>
+    </div>
+    <script>
+      const authorizedKnowledgeBases = [{ name: '企业制度库', description: '制度、流程与员工手册' }, { name: '产品资料库', description: '产品说明与技术资料' }, { name: '项目交付库', description: '项目交付规范与实施文档' }, { name: '研发知识库', description: '研发流程、技术规范与接口文档' }, { name: '客户服务库', description: '客户服务流程与常见问题' }];
+      const kbPageSize = 2;
+      let kbPage = 1;
+      let kbKeyword = '';
+      let kbSearchTimer;
+      function openKbDrawer() { document.getElementById('kb-drawer-backdrop').classList.add('open'); loadAuthorizedKnowledgeBases(1); document.getElementById('kb-keyword').focus(); }
+      function closeKbDrawer(event) { if (!event || event.target === event.currentTarget) document.getElementById('kb-drawer-backdrop').classList.remove('open'); }
+      function searchKnowledgeBases() { kbKeyword = document.getElementById('kb-keyword').value.trim(); loadAuthorizedKnowledgeBases(1); }
+      function debounceSearch() { window.clearTimeout(kbSearchTimer); kbSearchTimer = window.setTimeout(searchKnowledgeBases, 300); }
+      function loadAuthorizedKnowledgeBases(page) { const list = document.getElementById('kb-option-list'); list.innerHTML = '<div class="kb-loading">正在从服务端加载...</div>'; window.setTimeout(() => { const matched = authorizedKnowledgeBases.filter(item => !kbKeyword || `${item.name}${item.description}`.includes(kbKeyword)); const totalPages = Math.max(1, Math.ceil(matched.length / kbPageSize)); kbPage = Math.min(Math.max(page, 1), totalPages); const rows = matched.slice((kbPage - 1) * kbPageSize, kbPage * kbPageSize); list.innerHTML = rows.length ? rows.map(item => `<button class="kb-option${item.name === document.getElementById('chat-title').textContent ? ' active' : ''}" onclick="selectKb(this, '${item.name}')"><strong>${item.name}</strong><span>${item.description}</span></button>`).join('') : '<div class="kb-empty">未找到匹配的知识库</div>'; document.getElementById('kb-page-summary').textContent = `第 ${kbPage} / ${totalPages} 页`; document.getElementById('kb-prev').disabled = kbPage <= 1; document.getElementById('kb-next').disabled = kbPage >= totalPages; }, 220); }
+      function changeKbPage(offset) { loadAuthorizedKnowledgeBases(kbPage + offset); }
+      function selectKb(button, name) { document.querySelectorAll('.kb-option').forEach(item => item.classList.remove('active')); button.classList.add('active'); document.getElementById('chat-title').textContent = name; document.getElementById('messages').innerHTML = ''; closeKbDrawer(); }
+      function toggleSessionMenu(event, button) { event.stopPropagation(); const actions = button.parentElement; document.querySelectorAll('.session-actions.open').forEach(item => { if (item !== actions) item.classList.remove('open'); }); actions.classList.toggle('open'); }
+      function newSession() { document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active')); document.getElementById('messages').innerHTML = ''; document.getElementById('question').focus(); }
+      function renameSession(event, button) { event.stopPropagation(); button.closest('.session-actions').classList.remove('open'); const title = button.closest('.session-item').querySelector('span'); const value = window.prompt('请输入会话名称', title.textContent); if (value && value.trim()) title.textContent = value.trim(); }
+      function deleteSession(event, button) { event.stopPropagation(); if (window.confirm('确定删除这个会话吗？删除后不可恢复。')) button.closest('.session-item').remove(); }
+      function sendQuestion() { const input = document.getElementById('question'); const value = input.value.trim(); if (!value) return; document.getElementById('messages').insertAdjacentHTML('beforeend', '<div class="question">' + value.replaceAll('<', '&lt;') + '</div>'); input.value = ''; }
+      function handleKey(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendQuestion(); } }
+    </script>
+  </body>
+</html>
