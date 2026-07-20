@@ -120,22 +120,27 @@ def _filters(code: str | None, status: str | None) -> dict[str, Any]:
 
 
 @check_db_connected
-async def list(code: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+async def list(
+    code: str | None = None, name: str | None = None, status: str | None = None
+) -> list[dict[str, Any]]:
     code = common_utils.normalize_optional_filter(code)
+    name = common_utils.normalize_optional_filter(name)
     status = common_utils.normalize_optional_filter(status)
     if status is not None and status not in VALID_STATUSES:
         raise BusiException("status 不合法")
-    return await tenant_db.list(DB.get(), **_filters(code, status))
+    return await tenant_db.list(DB.get(), **_filters(code, status), name=name)
 
 
 @check_db_connected
 async def page(
     code: str | None = None,
+    name: str | None = None,
     status: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> PageRecord:
     code = common_utils.normalize_optional_filter(code)
+    name = common_utils.normalize_optional_filter(name)
     status = common_utils.normalize_optional_filter(status)
     if page <= 0:
         raise BusiException("page 必须大于 0")
@@ -143,7 +148,9 @@ async def page(
         raise BusiException("page_size 必须在 1 到 100 之间")
     if status is not None and status not in VALID_STATUSES:
         raise BusiException("status 不合法")
-    return await tenant_db.page(DB.get(), page=page, page_size=page_size, **_filters(code, status))
+    return await tenant_db.page(
+        DB.get(), page=page, page_size=page_size, **_filters(code, status), name=name
+    )
 
 
 __all__ = ("validate", "add", "modify", "remove", "get", "list", "page")

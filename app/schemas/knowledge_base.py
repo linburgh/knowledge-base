@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 @dataclass(slots=True)
 class KnowledgeBaseDto:
+    tenant_id: int | None = None
+    organization_id: int | None = None
     name: str | None = None
     description: str | None = None
     owner_id: str | None = None
@@ -22,6 +24,8 @@ class KnowledgeBaseDto:
 class KnowledgeBaseRequest(BaseModel):
     name: str = Field(..., description="知识库名称")
     owner_id: str = Field(..., description="所有者用户 ID")
+    tenant_id: int | None = Field(default=None, gt=0, description="所属租户 ID")
+    organization_id: int | None = Field(default=None, gt=0, description="所属组织 ID")
     description: str | None = Field(default=None, description="知识库描述")
     visibility: str | None = Field(default=None, description="可见范围")
     embedding_model: str | None = Field(default=None, description="Embedding 模型")

@@ -158,16 +158,22 @@ def _normalize_filter(value: str | None) -> str | None:
 @check_db_connected
 async def list(
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
 ) -> list[dict[str, Any]]:
     keyword = _normalize_filter(keyword)
+    username = _normalize_filter(username)
+    email = _normalize_filter(email)
     status = _normalize_filter(status)
     _validate_filters(status, tenant_id, organization_id)
     rows = await user_db.list(
         DB.get(),
         keyword=keyword,
+        username=username,
+        email=email,
         status=status,
         tenant_id=tenant_id,
         organization_id=organization_id,
@@ -178,6 +184,8 @@ async def list(
 @check_db_connected
 async def page(
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
@@ -185,6 +193,8 @@ async def page(
     page_size: int = 20,
 ) -> PageRecord:
     keyword = _normalize_filter(keyword)
+    username = _normalize_filter(username)
+    email = _normalize_filter(email)
     status = _normalize_filter(status)
     if page <= 0:
         raise BusiException("page 必须大于 0")
@@ -196,6 +206,8 @@ async def page(
         page=page,
         page_size=page_size,
         keyword=keyword,
+        username=username,
+        email=email,
         status=status,
         tenant_id=tenant_id,
         organization_id=organization_id,

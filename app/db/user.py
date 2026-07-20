@@ -21,6 +21,8 @@ STATUS_DELETED = "deleted"
 
 def _conditions(
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
@@ -29,6 +31,10 @@ def _conditions(
     if keyword:
         pattern = f"%{keyword}%"
         conditions.append(User.c.username.ilike(pattern) | User.c.email.ilike(pattern))
+    if username:
+        conditions.append(User.c.username.ilike(f"%{username}%"))
+    if email:
+        conditions.append(User.c.email.ilike(f"%{email}%"))
     if status is not None:
         conditions.append(User.c.status == status)
     else:
@@ -42,6 +48,8 @@ def _conditions(
 
 def _query(
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
@@ -51,7 +59,7 @@ def _query(
         query = query.join(TenantMember, TenantMember.c.user_id == User.c.id)
     if organization_id is not None:
         query = query.join(OrganizationMember, OrganizationMember.c.user_id == User.c.id)
-    conditions = _conditions(keyword, status, tenant_id, organization_id)
+    conditions = _conditions(keyword, username, email, status, tenant_id, organization_id)
     if conditions:
         query = query.where(sa.and_(*conditions))
     return query.distinct().order_by(User.c.created_at.desc(), User.c.id.desc())
@@ -240,11 +248,13 @@ async def get_by_account(db, account: str) -> dict[str, Any] | None:
 async def list(
     db,
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    rows = await db.fetch_all(_query(keyword, status, tenant_id, organization_id))
+    rows = await db.fetch_all(_query(keyword, username, email, status, tenant_id, organization_id))
     return [dict(row) for row in rows]
 
 
@@ -253,11 +263,13 @@ async def page(
     page: int = 1,
     page_size: int = 20,
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
 ) -> PageRecord:
-    query = _query(keyword, status, tenant_id, organization_id)
+    query = _query(keyword, username, email, status, tenant_id, organization_id)
     count_query = sa.select(sa.func.count(sa.distinct(User.c.id))).select_from(User)
     if tenant_id is not None:
         count_query = count_query.join(TenantMember, TenantMember.c.user_id == User.c.id)
@@ -266,7 +278,7 @@ async def page(
             OrganizationMember,
             OrganizationMember.c.user_id == User.c.id,
         )
-    conditions = _conditions(keyword, status, tenant_id, organization_id)
+    conditions = _conditions(keyword, username, email, status, tenant_id, organization_id)
     if conditions:
         count_query = count_query.where(sa.and_(*conditions))
 

@@ -23,6 +23,8 @@ async def add(payload: UserCreateRequest) -> Any:
 @router.get("")
 async def list(
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
@@ -30,6 +32,8 @@ async def list(
     try:
         return await user_service.list(
             keyword=keyword,
+            username=username,
+            email=email,
             status=status,
             tenant_id=tenant_id,
             organization_id=organization_id,
@@ -41,6 +45,8 @@ async def list(
 @router.get("/page")
 async def page(
     keyword: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
     status: str | None = None,
     tenant_id: int | None = None,
     organization_id: int | None = None,
@@ -50,6 +56,8 @@ async def page(
     try:
         return await user_service.page(
             keyword=keyword,
+            username=username,
+            email=email,
             status=status,
             tenant_id=tenant_id,
             organization_id=organization_id,

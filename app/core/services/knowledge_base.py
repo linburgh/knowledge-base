@@ -7,7 +7,10 @@ from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
 from app.db import knowledge_base as knowledge_base_db
+from app.db import knowledge_base_organization as knowledge_base_organization_db
 from app.db import knowledge_base_prompt as knowledge_base_prompt_db
+from app.db import organization as organization_db
+from app.db import tenant as tenant_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.knowledge_base import KnowledgeBaseDto
@@ -31,6 +34,10 @@ def validate(dto: KnowledgeBaseDto) -> None:
         raise BusiException("name 不能为空")
     if not dto.owner_id:
         raise BusiException("owner_id 不能为空")
+    if dto.tenant_id is not None and dto.tenant_id <= 0:
+        raise BusiException("tenant_id 必须大于 0")
+    if dto.organization_id is not None and dto.organization_id <= 0:
+        raise BusiException("organization_id 必须大于 0")
     if dto.description is not None and len(dto.description) > MAX_DESCRIPTION_LENGTH:
         raise BusiException("description 不能超过 500 个字符")
     if dto.system_prompt is not None and len(dto.system_prompt) > MAX_SYSTEM_PROMPT_LENGTH:
@@ -54,6 +61,8 @@ async def add(dto: KnowledgeBaseDto) -> Any:
     rd = None
 
     validate(dto)
+    if dto.tenant_id is None:
+        raise BusiException("tenant_id 不能为空")
     
     values = common_utils.clear_field_nv(dto)
     values.setdefault("description", "")
@@ -71,6 +80,13 @@ async def add(dto: KnowledgeBaseDto) -> Any:
 
     db = DB.get()
     async with db.transaction():
+        tenant = await tenant_db.get(db, id=dto.tenant_id)
+        if tenant is None or tenant.get("status") == "deleted":
+            raise BusiException("租户不存在", status_code=404)
+        if dto.organization_id is not None:
+            organization = await organization_db.get(db, id=dto.organization_id)
+            if organization is None or organization.get("tenant_id") != dto.tenant_id:
+                raise BusiException("组织不存在或不属于当前租户", status_code=400)
         knowledge_base_id = await knowledge_base_db.insert_(db, **values)
         await knowledge_base_prompt_db.insert_(
             db,
@@ -109,6 +125,12 @@ async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
         old = await knowledge_base_db.get(db, id=knowledge_base_id)
         if old is None:
             raise BusiException("知识库不存在", status_code=404)
+
+        if dto.organization_id is not None:
+            organization = await organization_db.get(db, id=dto.organization_id)
+            if organization is None or organization.get("tenant_id") != old.get("tenant_id"):
+                raise BusiException("组织不存在或不属于当前租户", status_code=400)
+        values.pop("tenant_id", None)
 
         values["updated_at"] = common_utils.utc_now()
         if "system_prompt" in values and values["system_prompt"] != old.get("system_prompt", ""):
@@ -189,12 +211,69 @@ async def prompt_history(knowledge_base_id: int) -> list[dict[str, Any]]:
 
 
 @check_db_connected
+async def organization_grants(knowledge_base_id: int) -> list[dict[str, Any]]:
+    if not knowledge_base_id:
+        raise BusiException("knowledge_base_id 不能为空")
+    db = DB.get()
+    if await knowledge_base_db.get(db, id=knowledge_base_id) is None:
+        raise BusiException("知识库不存在", status_code=404)
+    return await knowledge_base_organization_db.list(db, knowledge_base_id)
+
+
+@check_db_connected
+async def grant_organization(
+    knowledge_base_id: int, organization_id: int, created_by: int
+) -> dict[str, Any]:
+    db = DB.get()
+    async with db.transaction():
+        knowledge_base = await knowledge_base_db.get(db, id=knowledge_base_id)
+        if knowledge_base is None:
+            raise BusiException("知识库不存在", status_code=404)
+        organization = await organization_db.get(db, id=organization_id)
+        if organization is None or organization.get("tenant_id") != knowledge_base.get("tenant_id"):
+            raise BusiException("组织不存在或不属于当前租户", status_code=400)
+        if await knowledge_base_organization_db.get(
+            db, kb_id=knowledge_base_id, organization_id=organization_id
+        ):
+            raise BusiException("组织已经获得当前知识库授权", status_code=409)
+        grant_id = await knowledge_base_organization_db.insert_(
+            db,
+            kb_id=knowledge_base_id,
+            organization_id=organization_id,
+            created_by=created_by,
+        )
+        return await knowledge_base_organization_db.get(db, id=grant_id)
+
+
+@check_db_connected
+async def revoke_organization(knowledge_base_id: int, organization_id: int) -> dict[str, Any]:
+    db = DB.get()
+    async with db.transaction():
+        grant = await knowledge_base_organization_db.get(
+            db, kb_id=knowledge_base_id, organization_id=organization_id
+        )
+        if grant is None:
+            raise BusiException("知识库组织授权不存在", status_code=404)
+        await knowledge_base_organization_db.delete_(db, id=grant["id"])
+    return grant
+
+
+@check_db_connected
 async def list(
+    name: str | None = None,
     owner_id: str | None = None,
     status: str | None = None,
     visibility: str | None = None,
+    tenant_id: int | None = None,
+    organization_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    filters: dict[str, Any] = {"owner_id": owner_id, "visibility": visibility}
+    filters: dict[str, Any] = {
+        "name": common_utils.normalize_optional_filter(name),
+        "owner_id": owner_id,
+        "visibility": visibility,
+        "tenant_id": tenant_id,
+        "organization_id": organization_id,
+    }
     if status is None:
         filters["status__ne"] = STATUS_DELETED
     else:
@@ -204,18 +283,27 @@ async def list(
 
 @check_db_connected
 async def page(
+    name: str | None = None,
     owner_id: str | None = None,
     status: str | None = None,
     visibility: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    tenant_id: int | None = None,
+    organization_id: int | None = None,
 ) -> PageRecord:
     if page <= 0:
         raise BusiException("page 必须大于 0")
     if page_size <= 0:
         raise BusiException("page_size 必须大于 0")
 
-    filters: dict[str, Any] = {"owner_id": owner_id, "visibility": visibility}
+    filters: dict[str, Any] = {
+        "name": common_utils.normalize_optional_filter(name),
+        "owner_id": owner_id,
+        "visibility": visibility,
+        "tenant_id": tenant_id,
+        "organization_id": organization_id,
+    }
     if status is None:
         filters["status__ne"] = STATUS_DELETED
     else:
@@ -223,4 +311,7 @@ async def page(
     return await knowledge_base_db.page(DB.get(), page=page, page_size=page_size, **filters)
 
 
-__all__ = ("validate", "add", "modify", "remove", "get", "prompt_history", "list", "page")
+__all__ = (
+    "validate", "add", "modify", "remove", "get", "prompt_history", "organization_grants",
+    "grant_organization", "revoke_organization", "list", "page",
+)

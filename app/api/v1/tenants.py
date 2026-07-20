@@ -21,9 +21,10 @@ async def member_page(
     status: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    role_code: str | None = None,
 ) -> Any:
     try:
-        return await tenant_member_service.page(id, keyword, status, page, page_size)
+        return await tenant_member_service.page(id, keyword, status, page, page_size, role_code)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 
@@ -71,9 +72,9 @@ async def add(payload: TenantCreateRequest) -> Any:
 
 
 @router.get("")
-async def list(code: str | None = None, status: str | None = None) -> Any:
+async def list(code: str | None = None, name: str | None = None, status: str | None = None) -> Any:
     try:
-        return await tenant_service.list(code=code, status=status)
+        return await tenant_service.list(code=code, name=name, status=status)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 
@@ -81,12 +82,15 @@ async def list(code: str | None = None, status: str | None = None) -> Any:
 @router.get("/page")
 async def page(
     code: str | None = None,
+    name: str | None = None,
     status: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> Any:
     try:
-        return await tenant_service.page(code=code, status=status, page=page, page_size=page_size)
+        return await tenant_service.page(
+            code=code, name=name, status=status, page=page, page_size=page_size
+        )
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

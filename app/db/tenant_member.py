@@ -6,10 +6,18 @@ import sqlalchemy as sa
 
 from app.db import api as db_api
 from app.db.base import PageRecord
-from app.db.models import TenantMember, User
+from app.db.models import Organization, OrganizationMember, TenantMember, User
 
 
-def _query(tenant_id: int, keyword: str | None = None, status: str | None = None):
+def _query(
+    tenant_id: int,
+    keyword: str | None = None,
+    status: str | None = None,
+    role_code: str | None = None,
+):
+    organization_name = sa.func.string_agg(
+        sa.distinct(Organization.c.name), sa.literal(", ")
+    ).label("organization_name")
     query = (
         sa.select(
             TenantMember,
@@ -18,15 +26,36 @@ def _query(tenant_id: int, keyword: str | None = None, status: str | None = None
             User.c.display_name,
             User.c.avatar,
             User.c.status.label("user_status"),
+            organization_name,
         )
-        .select_from(TenantMember.join(User, User.c.id == TenantMember.c.user_id))
+        .select_from(
+            TenantMember.join(User, User.c.id == TenantMember.c.user_id)
+            .outerjoin(
+                OrganizationMember,
+                sa.and_(
+                    OrganizationMember.c.user_id == TenantMember.c.user_id,
+                    OrganizationMember.c.status == "active",
+                ),
+            )
+            .outerjoin(Organization, Organization.c.id == OrganizationMember.c.organization_id)
+        )
         .where(TenantMember.c.tenant_id == tenant_id)
+        .group_by(
+            *TenantMember.c,
+            User.c.username,
+            User.c.email,
+            User.c.display_name,
+            User.c.avatar,
+            User.c.status,
+        )
         .order_by(TenantMember.c.created_at.desc(), TenantMember.c.id.desc())
     )
     if status is None:
         query = query.where(TenantMember.c.status != "left")
     else:
         query = query.where(TenantMember.c.status == status)
+    if role_code:
+        query = query.where(TenantMember.c.role_code == role_code)
     if keyword:
         pattern = f"%{keyword}%"
         query = query.where(
@@ -44,6 +73,7 @@ async def page(
     page_size: int = 20,
     keyword: str | None = None,
     status: str | None = None,
+    role_code: str | None = None,
 ) -> PageRecord:
     count_query = sa.select(sa.func.count()).select_from(TenantMember).join(
         User, User.c.id == TenantMember.c.user_id
@@ -59,6 +89,8 @@ async def page(
             | User.c.email.ilike(pattern)
             | User.c.display_name.ilike(pattern)
         )
+    if role_code:
+        count_query = count_query.where(TenantMember.c.role_code == role_code)
     record = PageRecord(
         rows=[],
         total=int(await db.fetch_val(count_query)),
@@ -66,7 +98,7 @@ async def page(
         page_size=page_size,
     )
     rows = await db.fetch_all(
-        _query(tenant_id, keyword, status)
+        _query(tenant_id, keyword, status, role_code)
         .limit(page_size)
         .offset((page - 1) * page_size)
     )

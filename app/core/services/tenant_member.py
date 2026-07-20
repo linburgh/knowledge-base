@@ -37,12 +37,14 @@ async def page(
     status: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    role_code: str | None = None,
 ) -> PageRecord:
     if tenant_id <= 0:
         raise BusiException("tenant_id 必须大于 0")
     if page <= 0 or page_size <= 0 or page_size > 100:
         raise BusiException("分页参数不合法")
     _validate_status(status)
+    _validate_role(role_code)
     db = DB.get()
     await _require_tenant(db, tenant_id)
     return await tenant_member_db.page(
@@ -52,6 +54,7 @@ async def page(
         page_size,
         common_utils.normalize_optional_filter(keyword),
         status,
+        role_code,
     )
 
 

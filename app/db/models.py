@@ -221,6 +221,19 @@ KnowledgeBasePrompt = sa.Table(
 )
 
 
+KnowledgeBaseOrganization = sa.Table(
+    "t_knowledge_base_organization",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("organization_id", sa.BigInteger, nullable=False),
+    sa.Column("created_by", sa.BigInteger, nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+)
+
+
 Document = sa.Table(
     "t_document",
     metadata,
