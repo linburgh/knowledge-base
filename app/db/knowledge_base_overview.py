@@ -266,6 +266,7 @@ async def recent_activities(db, kb_id: int, limit: int = 5) -> list[dict[str, An
             AuditLog.c.id,
             AuditLog.c.actor_id,
             AuditLog.c.action,
+            AuditLog.c.action_cn,
             AuditLog.c.target_type,
             AuditLog.c.target_id,
             AuditLog.c.result,

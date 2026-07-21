@@ -167,6 +167,7 @@ async def recent_activities(db, limit: int = 5) -> list[dict[str, Any]]:
             AuditLog.c.id,
             AuditLog.c.actor_id,
             AuditLog.c.action,
+            AuditLog.c.action_cn,
             AuditLog.c.target_type,
             AuditLog.c.target_id,
             AuditLog.c.result,

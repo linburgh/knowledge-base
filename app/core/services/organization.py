@@ -432,6 +432,33 @@ async def member_candidates(
 
 
 @check_db_connected
+async def member_candidate_page(
+    organization_id: int,
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PageRecord:
+    if organization_id <= 0:
+        raise BusiException("organization_id 必须大于 0")
+    if page <= 0:
+        raise BusiException("page 必须大于 0")
+    if page_size <= 0 or page_size > 100:
+        raise BusiException("page_size 必须在 1 到 100 之间")
+    db = DB.get()
+    organization = await organization_db.get(db, id=organization_id)
+    if organization is None or organization.get("status") == STATUS_DELETED:
+        raise BusiException("组织不存在", status_code=404)
+    return await organization_db.page_member_candidates(
+        db,
+        organization_id,
+        organization["tenant_id"],
+        page,
+        page_size,
+        common_utils.normalize_optional_filter(keyword),
+    )
+
+
+@check_db_connected
 async def batch_members(
     organization_id: int,
     members: list[OrganizationMemberBatchItem],
@@ -507,5 +534,6 @@ __all__ = (
     "remove_member",
     "member_page",
     "member_candidates",
+    "member_candidate_page",
     "batch_members",
 )

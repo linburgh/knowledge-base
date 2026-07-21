@@ -127,6 +127,19 @@ async def member_candidates(id: int, keyword: str | None = None) -> Any:
         common_utils.raise_http_exception(exc)
 
 
+@router.get("/{id}/member-candidates/page")
+async def member_candidate_page(
+    id: int,
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> Any:
+    try:
+        return await organization_service.member_candidate_page(id, keyword, page, page_size)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 @router.put("/{id}/members/batch")
 async def batch_members(id: int, payload: OrganizationMemberBatchRequest) -> Any:
     try:

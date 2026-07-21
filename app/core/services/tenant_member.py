@@ -93,6 +93,45 @@ async def add(tenant_id: int, values: dict[str, Any]) -> dict[str, Any]:
 
 
 @check_db_connected
+async def batch_add(tenant_id: int, values: dict[str, Any]) -> list[dict[str, Any]]:
+    user_ids = list(dict.fromkeys(values.get("user_ids") or []))
+    if not user_ids or any(user_id <= 0 for user_id in user_ids):
+        raise BusiException("user_ids 必须包含有效用户 ID")
+    _validate_role(values.get("role_code"))
+    _validate_status(values.get("status"))
+    db = DB.get()
+    async with db.transaction():
+        await _require_tenant(db, tenant_id)
+        rows = []
+        for user_id in user_ids:
+            user = await user_db.get(db, id=user_id)
+            if user is None or user.get("status") == "deleted":
+                raise BusiException(f"用户不存在: {user_id}", status_code=404)
+            if await tenant_member_db.get(db, tenant_id=tenant_id, user_id=user_id):
+                raise BusiException(f"用户已经是当前租户成员: {user_id}", status_code=409)
+            member_id = await tenant_member_db.insert_(
+                db,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                role_code=values.get("role_code", "tenant_member"),
+                is_primary=values.get("is_primary", False),
+                status=values.get("status", "active"),
+                joined_at=common_utils.utc_now(),
+            )
+            member = await tenant_member_db.get(db, id=member_id)
+            if member is not None:
+                rows.append(member)
+        await audit_service.record(
+            db,
+            action="batch_add_tenant_members",
+            target_type="tenant",
+            target_id=tenant_id,
+            summary={"user_ids": user_ids, "members": rows},
+        )
+    return rows
+
+
+@check_db_connected
 async def modify(tenant_id: int, member_id: int, values: dict[str, Any]) -> dict[str, Any]:
     if member_id <= 0:
         raise BusiException("member_id 必须大于 0")
@@ -159,4 +198,26 @@ async def candidates(tenant_id: int, keyword: str | None = None) -> list[dict[st
     )
 
 
-__all__ = ("add", "candidates", "modify", "page", "remove")
+@check_db_connected
+async def candidate_page(
+    tenant_id: int,
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PageRecord:
+    if tenant_id <= 0:
+        raise BusiException("tenant_id 必须大于 0")
+    if page <= 0 or page_size <= 0 or page_size > 100:
+        raise BusiException("分页参数不合法")
+    db = DB.get()
+    await _require_tenant(db, tenant_id)
+    return await tenant_member_db.page_candidates(
+        db,
+        tenant_id,
+        page,
+        page_size,
+        common_utils.normalize_optional_filter(keyword),
+    )
+
+
+__all__ = ("add", "batch_add", "candidate_page", "candidates", "modify", "page", "remove")

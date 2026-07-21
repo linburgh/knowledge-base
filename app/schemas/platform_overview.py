@@ -44,6 +44,7 @@ class PlatformActivityResponse(BaseModel):
     id: int
     actor_id: str
     action: str
+    action_cn: str
     target_type: str
     target_id: str | None = None
     result: str

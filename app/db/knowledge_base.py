@@ -6,7 +6,13 @@ import sqlalchemy as sa
 
 from app.db import api as db_api
 from app.db.base import PageRecord
-from app.db.models import KnowledgeBase, KnowledgeBaseOrganization, KnowledgeBaseUser, Tenant
+from app.db.models import (
+    KnowledgeBase,
+    KnowledgeBaseOrganization,
+    KnowledgeBaseUser,
+    Organization,
+    Tenant,
+)
 
 
 async def insert_(db, **kwargs: Any) -> Any:
@@ -59,6 +65,40 @@ async def page(
     rows = await db.fetch_all(query.limit(page_size).offset((page - 1) * page_size))
     record.rows = [dict(row) for row in rows]
     return record
+
+
+async def page_unbound(
+    db,
+    tenant_id: int,
+    page: int = 1,
+    page_size: int = 20,
+    keyword: str | None = None,
+) -> PageRecord:
+    conditions = [
+        sa.or_(KnowledgeBase.c.tenant_id.is_(None), KnowledgeBase.c.tenant_id != tenant_id),
+        KnowledgeBase.c.status != "deleted",
+    ]
+    if keyword:
+        pattern = f"%{keyword}%"
+        conditions.append(
+            KnowledgeBase.c.name.ilike(pattern) | KnowledgeBase.c.description.ilike(pattern)
+        )
+    total_query = sa.select(sa.func.count()).select_from(KnowledgeBase).where(*conditions)
+    query = _query({}).where(*conditions).order_by(KnowledgeBase.c.name.asc(), KnowledgeBase.c.id.asc())
+    return PageRecord(
+        rows=[dict(row) for row in await db.fetch_all(query.limit(page_size).offset((page - 1) * page_size))],
+        total=int(await db.fetch_val(total_query)),
+        page=page,
+        page_size=page_size,
+    )
+
+
+async def bind_tenant(db, knowledge_base_ids: list[int], tenant_id: int) -> None:
+    await db.execute(
+        sa.update(KnowledgeBase)
+        .where(KnowledgeBase.c.id.in_(knowledge_base_ids))
+        .values(tenant_id=tenant_id, organization_id=None, updated_at=sa.func.now())
+    )
 
 
 async def guest_page(
@@ -198,10 +238,14 @@ def _query(kwargs: dict[str, Any]):
     query = sa.select(
         KnowledgeBase,
         Tenant.c.name.label("tenant_name"),
+        Organization.c.name.label("organization_name"),
     ).select_from(
         KnowledgeBase.outerjoin(
             Tenant,
             Tenant.c.id == KnowledgeBase.c.tenant_id,
+        ).outerjoin(
+            Organization,
+            Organization.c.id == KnowledgeBase.c.organization_id,
         )
     )
     conditions = _conditions(kwargs)

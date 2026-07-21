@@ -19,9 +19,17 @@ class TenantMemberModifyRequest(BaseModel):
     status: str | None = None
 
 
+class TenantMemberBatchRequest(BaseModel):
+    user_ids: list[int] = Field(..., min_length=1)
+    role_code: str = "tenant_member"
+    is_primary: bool = False
+    status: str = "active"
+
+
 __all__ = (
     "TENANT_MEMBER_STATUSES",
     "TENANT_ROLES",
     "TenantMemberModifyRequest",
+    "TenantMemberBatchRequest",
     "TenantMemberRequest",
 )

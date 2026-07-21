@@ -139,4 +139,45 @@ async def list_candidates(db, tenant_id: int, keyword: str | None = None) -> lis
     return [dict(row) for row in rows]
 
 
-__all__ = ("get", "insert_", "list_candidates", "page", "update_")
+async def page_candidates(
+    db,
+    tenant_id: int,
+    page: int = 1,
+    page_size: int = 20,
+    keyword: str | None = None,
+) -> PageRecord:
+    conditions = [User.c.status == "active", TenantMember.c.id.is_(None)]
+    if keyword:
+        pattern = f"%{keyword}%"
+        conditions.append(
+            User.c.username.ilike(pattern)
+            | User.c.email.ilike(pattern)
+            | User.c.display_name.ilike(pattern)
+        )
+    from_query = User.outerjoin(
+        TenantMember,
+        sa.and_(
+            TenantMember.c.user_id == User.c.id,
+            TenantMember.c.tenant_id == tenant_id,
+        ),
+    )
+    total_query = sa.select(sa.func.count()).select_from(from_query).where(*conditions)
+    query = (
+        sa.select(User.c.id, User.c.username, User.c.email, User.c.display_name, User.c.avatar)
+        .select_from(from_query)
+        .where(*conditions)
+        .order_by(User.c.display_name.asc(), User.c.id.asc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    record = PageRecord(
+        rows=[],
+        total=int(await db.fetch_val(total_query)),
+        page=page,
+        page_size=page_size,
+    )
+    record.rows = [dict(row) for row in await db.fetch_all(query)]
+    return record
+
+
+__all__ = ("get", "insert_", "list_candidates", "page", "page_candidates", "update_")

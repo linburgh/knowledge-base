@@ -33,11 +33,11 @@
     .eyebrow { color:#6e7df4; font-size:11px; font-weight:800; letter-spacing:.14em; }
     .card { border:1px solid var(--line); border-radius:15px; background:#fff; overflow:hidden; }
     .card + .card { margin-top:18px; }
-    .filter-bar { display:grid; grid-template-columns:repeat(4,minmax(220px,320px)); justify-content:start; align-items:end; gap:10px; margin-bottom:16px; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+    .filter-bar { display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:center; gap:12px; margin-bottom:16px; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fff; }
     .filter-bar input, .filter-bar select { min-width:150px; padding:10px 11px; border:1px solid #dce2ed; border-radius:8px; color:var(--ink); background:#fff; font:inherit; }
-    .filter-label { color:var(--muted); font-size:12px; } .filter-field { display:flex; align-items:center; gap:8px; flex:0 1 auto; min-width:0; white-space:nowrap; } .filter-field input,.filter-field select { width:180px; }
-    .filter-bar > * { min-width:0; } .filter-field { width:100%; justify-content:flex-start; text-align:left; } .filter-field input,.filter-field select { min-width:0; flex:1; box-sizing:border-box; } .filter-bar button { justify-self:start; }
-    @media (max-width:1100px) { .filter-bar { grid-template-columns:repeat(2,minmax(0,1fr)); } } @media (max-width:600px) { .filter-bar { grid-template-columns:minmax(0,1fr); } }
+    .filter-label { color:var(--muted); font-size:12px; } .filter-field { display:flex; align-items:center; gap:8px; flex:0 0 325px; width:325px; min-width:325px; white-space:nowrap; } .filter-field input,.filter-field select { width:100%; }
+    .filter-bar > * { min-width:0; } .filter-field { justify-content:flex-start; text-align:left; } .filter-field input,.filter-field select { min-width:0; flex:1; box-sizing:border-box; } .filter-actions { display:flex; flex:0 0 auto; flex-wrap:wrap; align-items:center; gap:8px; }
+    @media (max-width:600px) { .filter-field { flex-basis:100%; width:100%; min-width:0; } .filter-actions { width:100%; } }
     .pagination { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:16px 20px; color:var(--muted); font-size:12px; }
     .pagination button { padding:7px 10px; color:#53617b; background:transparent; }
     .pagination button:hover { color:var(--blue); }
@@ -334,6 +334,110 @@
     function closeTenantMembers() { document.getElementById('platform-tenant-members')?.classList.add('hidden'); }
     function toggleActionMenu(button) { document.querySelectorAll('.action-dropdown.open').forEach(menu => { if (menu !== button.parentElement) menu.classList.remove('open'); }); button.parentElement.classList.toggle('open'); event.stopPropagation(); }
     document.addEventListener('click', event => { if (event.target.closest('#platform-tab-orgs, #nav-platform-orgs')) setTimeout(() => normalizeOrgActions(document.getElementById('platform-org-tree')), 0); const paginationButton = event.target.closest('#user-pagination button'); if (paginationButton && !paginationButton.disabled) { const label = paginationButton.textContent.trim(); const nextPage = /^\d+$/.test(label) ? Number(label) : label === '下一页' ? userPage + 1 : Math.max(1, userPage - 1); queryAvailableUsers(nextPage); } document.querySelectorAll('.action-dropdown.open').forEach(menu => { if (!event.target.closest('.action-dropdown')) menu.classList.remove('open'); }); });
+  </script>
+  <script>
+    function viewTenantResource(name, resourceType) {
+      const panelId = 'platform-tenant-' + resourceType;
+      let panel = document.getElementById(panelId);
+      const title = resourceType === 'organizations' ? '组织列表' : '知识库列表';
+      const rows = resourceType === 'organizations'
+        ? '<div class="row"><strong>企业总部</strong><span>—</span><span>张三</span><span>54</span><span class="tag">正常</span><span>2026-07-20 10:30</span><span>2026-07-20 10:30</span><span><button class="link-button">查看</button></span></div><div class="row"><strong>技术中心</strong><span>企业总部</span><span>李四</span><span>24</span><span class="tag">正常</span><span>2026-07-19 09:20</span><span>2026-07-19 09:20</span><span><button class="link-button">查看</button></span></div>'
+        : '<div class="row"><strong>企业制度库</strong><span class="muted">制度与流程资料</span><span class="tag">正常</span><span>企业总部</span><span>linburgh</span><span>2026-07-20 10:30</span><span>2026-07-20 10:30</span><span><button class="link-button">查看</button></span></div><div class="row"><strong>产品资料库</strong><span class="muted">产品研发资料</span><span class="tag">正常</span><span>技术中心</span><span>张三</span><span>2026-07-18 12:00</span><span>2026-07-19 08:10</span><span><button class="link-button">查看</button></span></div>';
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = panelId;
+        panel.className = 'platform-tenant-resource';
+        panel.innerHTML = '<div class="toolbar" style="margin-bottom:16px"><div><h2 id="' + panelId + '-title"></h2><p>当前租户范围内的' + title + '，支持查询和分页。</p></div><span><button class="link-button" onclick="closeTenantResource(\'' + resourceType + '\')">← 返回租户列表</button></span></div><div class="filter-bar"><span class="filter-label">' + (resourceType === 'organizations' ? '组织名称' : '知识库名称') + '</span><input placeholder="输入关键词" /><span class="filter-label">' + (resourceType === 'organizations' ? '组织状态' : '知识库状态') + '</span><select><option>全部状态</option><option>正常</option><option>已禁用</option></select><button>查询</button><button class="ghost">重置</button><button class="ghost refresh-button" onclick="showRefreshNotice(\'' + title + '已刷新\')">刷新</button></div><div class="card"><div class="table-head resource-table-head"></div><div class="resource-table-rows"></div><div class="pagination"><span>共 12 条</span><button>上一页</button><button class="active">1</button><button>下一页</button></div></div>';
+        document.getElementById('platform-tenants').parentElement.appendChild(panel);
+        normalizeFilterBars();
+        panel.querySelector('.filter-bar').insertAdjacentHTML('beforeend', resourceType === 'organizations'
+          ? '<button onclick="openTenantCandidatePicker(\'' + name + '\',\'organizations\')">＋ 添加组织</button>'
+          : '<button onclick="openTenantCandidatePicker(\'' + name + '\',\'knowledge-bases\')">＋ 添加知识库</button>');
+        panel.querySelector('.resource-table-rows').innerHTML = rows;
+        panel.querySelector('.resource-table-head').innerHTML = resourceType === 'organizations'
+          ? '<span>组织名称</span><span>上级组织</span><span>负责人</span><span>成员数量</span><span>组织状态</span><span>创建时间</span><span>更新时间</span><span>操作</span>'
+          : '<span>知识库名称</span><span>描述</span><span>知识库状态</span><span>所属组织</span><span>创建用户</span><span>创建时间</span><span>更新时间</span><span>操作</span>';
+        const resourceColumns = resourceType === 'organizations'
+          ? '1.4fr 1fr 1fr .8fr .9fr 1.2fr 1.2fr .7fr'
+          : '1.4fr 1.5fr .9fr 1fr 1fr 1.2fr 1.2fr .7fr';
+        panel.querySelectorAll('.resource-table-head, .resource-table-rows .row').forEach(row => {
+          row.style.gridTemplateColumns = resourceColumns;
+        });
+      }
+      document.querySelectorAll('#platform-overview, #platform-users, #platform-tenants, #platform-orgs, #platform-tenant-members, #platform-tenant-organizations, #platform-tenant-knowledge-bases').forEach(section => section.classList.add('hidden'));
+      document.getElementById(panelId + '-title').textContent = name + ' · ' + title;
+      panel.classList.remove('hidden');
+    }
+
+    function closeTenantResource(resourceType) {
+      document.getElementById('platform-tenant-' + resourceType)?.classList.add('hidden');
+      document.getElementById('platform-tenants')?.classList.remove('hidden');
+    }
+
+    function normalizeFilterActionGroups() {
+      document.querySelectorAll('.filter-bar').forEach(bar => {
+        if (bar.dataset.actionsGrouped) return;
+        const buttons = [...bar.children].filter(child => child.tagName === 'BUTTON');
+        if (!buttons.length) {
+          bar.dataset.actionsGrouped = 'true';
+          return;
+        }
+        const group = document.createElement('div');
+        group.className = 'filter-actions';
+        buttons.forEach(button => group.appendChild(button));
+        bar.appendChild(group);
+        bar.dataset.actionsGrouped = 'true';
+      });
+    }
+
+    function openTenantCandidatePicker(tenantName, resourceType) {
+      const title = resourceType === 'members' ? '添加成员' : resourceType === 'organizations' ? '添加组织' : '添加知识库';
+      let panel = document.getElementById('tenant-candidate-picker');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'tenant-candidate-picker';
+        panel.className = 'organization-picker';
+        document.body.appendChild(panel);
+      }
+      const rows = resourceType === 'members'
+        ? '<label class="organization-table-row permission-option"><input type="checkbox"><span>张三</span><span>技术中心</span></label><label class="organization-table-row permission-option"><input type="checkbox"><span>李四</span><span>产品管理部</span></label>'
+        : resourceType === 'organizations'
+          ? '<label class="organization-table-row permission-option"><input type="checkbox"><span>技术中心</span><span>企业总部</span></label><label class="organization-table-row permission-option"><input type="checkbox"><span>产品管理部</span><span>企业总部</span></label>'
+          : '<label class="organization-table-row permission-option"><input type="checkbox"><span>企业制度库</span><span>企业总部</span></label><label class="organization-table-row permission-option"><input type="checkbox"><span>产品资料库</span><span>技术中心</span></label>';
+      panel.innerHTML = '<div class="toolbar"><h2>选择' + title.slice(2) + '</h2><button class="ghost" onclick="closeTenantCandidatePicker()">关闭</button></div><p class="picker-description">' + tenantName + ' · 仅展示当前租户下尚未加入的对象，可搜索并多选。</p><div class="picker-search"><input placeholder="输入关键词进行搜索"><button onclick="showRefreshNotice(\'正在搜索\')">查询</button></div><div class="organization-table"><div class="organization-table-head"><span>多选</span><span>' + title.slice(2) + '</span><span>所属组织</span></div>' + rows + '</div><div class="organization-pagination"><span>共 12 条</span><button disabled>上一页</button><button class="active">1</button><button>下一页</button></div><div class="permission-options-footer"><button class="ghost" onclick="closeTenantCandidatePicker()">取消</button><button onclick="confirmTenantCandidatePicker(\'' + title + '\')">确认</button></div>';
+      panel.classList.add('open');
+      normalizeFilterActionGroups();
+    }
+
+    function closeTenantCandidatePicker() {
+      document.getElementById('tenant-candidate-picker')?.classList.remove('open');
+    }
+
+    function confirmTenantCandidatePicker(title) {
+      closeTenantCandidatePicker();
+      showRefreshNotice(title + '已加入当前列表');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const tenantRows = document.querySelectorAll('#platform-tenants .action-dropdown-menu');
+      tenantRows.forEach(menu => {
+        const name = menu.closest('.row')?.querySelector('strong')?.textContent.trim() || '当前租户';
+        if (menu.querySelector('[data-resource="organizations"]')) return;
+        menu.insertAdjacentHTML('beforeend', '<button data-resource="organizations" onclick="viewTenantResource(\'' + name + '\',\'organizations\')">组织列表</button><button data-resource="knowledge-bases" onclick="viewTenantResource(\'' + name + '\',\'knowledge-bases\')">知识库列表</button>');
+      });
+      normalizeFilterActionGroups();
+      const observer = new MutationObserver(() => {
+        normalizeFilterActionGroups();
+        document.querySelectorAll('#platform-tenant-members .filter-bar button').forEach(button => {
+          if (button.textContent.trim().includes('添加成员') && !button.dataset.candidateBound) {
+            const tenantName = document.getElementById('tenant-members-title')?.textContent.replace(' · 成员列表', '') || '当前租户';
+            button.dataset.candidateBound = 'true';
+            button.onclick = () => openTenantCandidatePicker(tenantName, 'members');
+          }
+        });
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
   </script>
 </body>
 </html>

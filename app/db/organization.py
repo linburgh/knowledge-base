@@ -82,10 +82,31 @@ async def page(
     keyword: str | None = None,
     status: str | None = None,
 ) -> PageRecord:
-    query = sa.select(Organization).select_from(Organization)
+    parent_organization = Organization.alias("organization_parent")
+    leader_user = User.alias("organization_page_leader")
+    member_count = sa.func.count(
+        sa.distinct(OrganizationMember.c.id)
+    ).filter(OrganizationMember.c.status == "active")
+    query = (
+        sa.select(
+            Organization,
+            Tenant.c.name.label("tenant_name"),
+            parent_organization.c.name.label("parent_name"),
+            leader_user.c.display_name.label("leader_name"),
+            leader_user.c.username.label("leader_username"),
+            member_count.label("member_count"),
+        )
+        .select_from(Organization)
+        .join(Tenant, Tenant.c.id == Organization.c.tenant_id)
+        .outerjoin(parent_organization, parent_organization.c.id == Organization.c.parent_id)
+        .outerjoin(leader_user, leader_user.c.id == Organization.c.leader_user_id)
+        .outerjoin(
+            OrganizationMember,
+            OrganizationMember.c.organization_id == Organization.c.id,
+        )
+    )
     total_query = sa.select(sa.func.count()).select_from(Organization)
     tenant_join = Tenant.c.id == Organization.c.tenant_id
-    query = query.join(Tenant, tenant_join)
     total_query = total_query.join(Tenant, tenant_join)
     conditions = [Tenant.c.status != "deleted"]
     if tenant_id is not None:
@@ -99,10 +120,20 @@ async def page(
         conditions.append(
             Organization.c.name.ilike(pattern) | Organization.c.code.ilike(pattern)
         )
-    query = query.where(*conditions).order_by(
-        Organization.c.tenant_id.asc(),
-        Organization.c.created_at.asc(),
-        Organization.c.id.asc(),
+    query = (
+        query.where(*conditions)
+        .group_by(
+            *Organization.c,
+            Tenant.c.name,
+            parent_organization.c.name,
+            leader_user.c.display_name,
+            leader_user.c.username,
+        )
+        .order_by(
+            Organization.c.tenant_id.asc(),
+            Organization.c.created_at.asc(),
+            Organization.c.id.asc(),
+        )
     )
     total_query = total_query.where(*conditions)
     record = PageRecord(
@@ -230,8 +261,25 @@ async def list_member_candidates(
     tenant_id: int,
     keyword: str | None = None,
 ) -> list[dict[str, Any]]:
+    organization_names = (
+        sa.select(sa.func.string_agg(Organization.c.name, sa.literal(", ")))
+        .select_from(OrganizationMember.join(Organization))
+        .where(
+            OrganizationMember.c.user_id == User.c.id,
+            OrganizationMember.c.status == "active",
+            Organization.c.tenant_id == tenant_id,
+        )
+        .scalar_subquery()
+    )
     query = (
-        sa.select(User.c.id, User.c.username, User.c.email, User.c.display_name, User.c.avatar)
+        sa.select(
+            User.c.id,
+            User.c.username,
+            User.c.email,
+            User.c.display_name,
+            User.c.avatar,
+            organization_names.label("organization_name"),
+        )
         .select_from(
             User.join(
                 TenantMember,
@@ -262,6 +310,115 @@ async def list_member_candidates(
     return [dict(row) for row in rows]
 
 
+async def page_member_candidates(
+    db,
+    organization_id: int,
+    tenant_id: int,
+    page: int = 1,
+    page_size: int = 20,
+    keyword: str | None = None,
+) -> PageRecord:
+    organization_names = (
+        sa.select(sa.func.string_agg(Organization.c.name, sa.literal(", ")))
+        .select_from(OrganizationMember.join(Organization))
+        .where(
+            OrganizationMember.c.user_id == User.c.id,
+            OrganizationMember.c.status == "active",
+            Organization.c.tenant_id == tenant_id,
+        )
+        .scalar_subquery()
+    )
+    from_query = User.join(
+        TenantMember,
+        sa.and_(
+            TenantMember.c.user_id == User.c.id,
+            TenantMember.c.tenant_id == tenant_id,
+            TenantMember.c.status == "active",
+        ),
+    ).outerjoin(
+        OrganizationMember,
+        sa.and_(
+            OrganizationMember.c.user_id == User.c.id,
+            OrganizationMember.c.organization_id == organization_id,
+        ),
+    )
+    conditions = [User.c.status == "active", OrganizationMember.c.id.is_(None)]
+    if keyword:
+        pattern = f"%{keyword}%"
+        conditions.append(
+            User.c.username.ilike(pattern)
+            | User.c.email.ilike(pattern)
+            | User.c.display_name.ilike(pattern)
+        )
+    total_query = sa.select(sa.func.count()).select_from(from_query).where(*conditions)
+    query = (
+        sa.select(
+            User.c.id,
+            User.c.username,
+            User.c.email,
+            User.c.display_name,
+            User.c.avatar,
+            organization_names.label("organization_name"),
+        )
+        .select_from(from_query)
+        .where(*conditions)
+        .order_by(User.c.display_name.asc(), User.c.id.asc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    record = PageRecord(
+        rows=[],
+        total=int(await db.fetch_val(total_query)),
+        page=page,
+        page_size=page_size,
+    )
+    record.rows = [dict(row) for row in await db.fetch_all(query)]
+    return record
+
+
+async def page_unbound(
+    db,
+    tenant_id: int,
+    page: int = 1,
+    page_size: int = 20,
+    keyword: str | None = None,
+) -> PageRecord:
+    parent = Organization.alias("unbound_organization_parent")
+    source = Organization.outerjoin(parent, Organization.c.parent_id == parent.c.id)
+    conditions = [
+        sa.or_(Organization.c.tenant_id.is_(None), Organization.c.tenant_id != tenant_id),
+        Organization.c.status != "deleted",
+    ]
+    if keyword:
+        pattern = f"%{keyword}%"
+        conditions.append(
+            Organization.c.name.ilike(pattern) | Organization.c.code.ilike(pattern)
+        )
+    total = int(await db.fetch_val(sa.select(sa.func.count()).select_from(source).where(*conditions)))
+    query = (
+        sa.select(Organization, parent.c.name.label("parent_name"))
+        .select_from(source)
+        .where(*conditions)
+        .order_by(Organization.c.name.asc(), Organization.c.id.asc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    return PageRecord(
+        rows=[dict(row) for row in await db.fetch_all(query)],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+async def bind_tenant(db, organization_ids: list[int], tenant_id: int) -> None:
+    await db.execute(
+        sa.update(Organization)
+        .where(Organization.c.id.in_(organization_ids))
+        .values(tenant_id=tenant_id, parent_id=None, updated_at=sa.func.now())
+    )
+
+
 __all__ = (
     "insert_",
     "update_",
@@ -275,4 +432,7 @@ __all__ = (
     "get_tenant_member",
     "member_page",
     "list_member_candidates",
+    "page_member_candidates",
+    "page_unbound",
+    "bind_tenant",
 )

@@ -8,10 +8,54 @@ from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import tenant as tenant_service
 from app.core.services import tenant_member as tenant_member_service
+from app.core.services import tenant_resource as tenant_resource_service
 from app.schemas.tenant import TenantCreateRequest, TenantDto, TenantModifyRequest
-from app.schemas.tenant_member import TenantMemberModifyRequest, TenantMemberRequest
+from app.schemas.tenant_member import (
+    TenantMemberBatchRequest,
+    TenantMemberModifyRequest,
+    TenantMemberRequest,
+)
+from app.schemas.tenant_resource import ResourceBatchRequest
 
 router = APIRouter()
+
+
+@router.get("/{id}/organization-candidates/page")
+async def organization_candidate_page(
+    id: int, keyword: str | None = None, page: int = 1, page_size: int = 20
+) -> Any:
+    try:
+        return await tenant_resource_service.organization_candidates(id, keyword, page, page_size)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.post("/{id}/organizations/batch", status_code=status.HTTP_201_CREATED)
+async def bind_organizations(id: int, payload: ResourceBatchRequest) -> Any:
+    try:
+        return await tenant_resource_service.bind_organizations(id, payload.resource_ids)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/{id}/knowledge-base-candidates/page")
+async def knowledge_base_candidate_page(
+    id: int, keyword: str | None = None, page: int = 1, page_size: int = 20
+) -> Any:
+    try:
+        return await tenant_resource_service.knowledge_base_candidates(
+            id, keyword, page, page_size
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.post("/{id}/knowledge-bases/batch", status_code=status.HTTP_201_CREATED)
+async def bind_knowledge_bases(id: int, payload: ResourceBatchRequest) -> Any:
+    try:
+        return await tenant_resource_service.bind_knowledge_bases(id, payload.resource_ids)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
 
 
 @router.get("/{id}/members/page")
@@ -40,6 +84,19 @@ async def member_candidates(
         common_utils.raise_http_exception(exc)
 
 
+@router.get("/{id}/member-candidates/page")
+async def member_candidate_page(
+    id: int,
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> Any:
+    try:
+        return await tenant_member_service.candidate_page(id, keyword, page, page_size)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 @router.post("/{id}/members", status_code=status.HTTP_201_CREATED)
 async def add_member(
     id: int,
@@ -47,6 +104,17 @@ async def add_member(
 ) -> Any:
     try:
         return await tenant_member_service.add(id, payload.model_dump())
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.post("/{id}/members/batch", status_code=status.HTTP_201_CREATED)
+async def batch_add_members(
+    id: int,
+    payload: TenantMemberBatchRequest,
+) -> Any:
+    try:
+        return await tenant_member_service.batch_add(id, payload.model_dump())
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 
