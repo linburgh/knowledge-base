@@ -10,7 +10,6 @@ from app.db.models import (
     KnowledgeBase,
     KnowledgeBaseOrganization,
     KnowledgeBaseUser,
-    Organization,
     Tenant,
 )
 
@@ -97,7 +96,7 @@ async def bind_tenant(db, knowledge_base_ids: list[int], tenant_id: int) -> None
     await db.execute(
         sa.update(KnowledgeBase)
         .where(KnowledgeBase.c.id.in_(knowledge_base_ids))
-        .values(tenant_id=tenant_id, organization_id=None, updated_at=sa.func.now())
+        .values(tenant_id=tenant_id, updated_at=sa.func.now())
     )
 
 
@@ -125,18 +124,15 @@ async def guest_page(
         )
     ]
     if organization_ids:
-        access_conditions.extend(
-            [
-                KnowledgeBase.c.organization_id.in_(organization_ids),
-                sa.exists(
-                    sa.select(1)
-                    .select_from(KnowledgeBaseOrganization)
-                    .where(
-                        KnowledgeBaseOrganization.c.kb_id == KnowledgeBase.c.id,
-                        KnowledgeBaseOrganization.c.organization_id.in_(organization_ids),
-                    )
-                ),
-            ]
+        access_conditions.append(
+            sa.exists(
+                sa.select(1)
+                .select_from(KnowledgeBaseOrganization)
+                .where(
+                    KnowledgeBaseOrganization.c.kb_id == KnowledgeBase.c.id,
+                    KnowledgeBaseOrganization.c.organization_id.in_(organization_ids),
+                )
+            )
         )
     conditions.append(sa.or_(*access_conditions))
     if keyword:
@@ -193,18 +189,15 @@ async def guest_get(
         )
     ]
     if organization_ids:
-        access_conditions.extend(
-            [
-                KnowledgeBase.c.organization_id.in_(organization_ids),
-                sa.exists(
-                    sa.select(1)
-                    .select_from(KnowledgeBaseOrganization)
-                    .where(
-                        KnowledgeBaseOrganization.c.kb_id == KnowledgeBase.c.id,
-                        KnowledgeBaseOrganization.c.organization_id.in_(organization_ids),
-                    )
-                ),
-            ]
+        access_conditions.append(
+            sa.exists(
+                sa.select(1)
+                .select_from(KnowledgeBaseOrganization)
+                .where(
+                    KnowledgeBaseOrganization.c.kb_id == KnowledgeBase.c.id,
+                    KnowledgeBaseOrganization.c.organization_id.in_(organization_ids),
+                )
+            )
         )
     conditions.append(
         sa.or_(*access_conditions)
@@ -238,14 +231,10 @@ def _query(kwargs: dict[str, Any]):
     query = sa.select(
         KnowledgeBase,
         Tenant.c.name.label("tenant_name"),
-        Organization.c.name.label("organization_name"),
     ).select_from(
         KnowledgeBase.outerjoin(
             Tenant,
             Tenant.c.id == KnowledgeBase.c.tenant_id,
-        ).outerjoin(
-            Organization,
-            Organization.c.id == KnowledgeBase.c.organization_id,
         )
     )
     conditions = _conditions(kwargs)

@@ -176,7 +176,6 @@ KnowledgeBase = sa.Table(
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("tenant_id", sa.BigInteger, nullable=True),
-    sa.Column("organization_id", sa.BigInteger),
     sa.Column("name", sa.String(255), nullable=False),
     sa.Column("description", sa.String(500), nullable=False, server_default=sa.text("''")),
     sa.Column("owner_id", sa.String(128), nullable=False),

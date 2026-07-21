@@ -38,7 +38,6 @@ async def list(
     status: str | None = None,
     visibility: str | None = None,
     tenant_id: int | None = None,
-    organization_id: int | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ) -> Any:
     try:
@@ -48,7 +47,6 @@ async def list(
             status=status,
             visibility=visibility,
             tenant_id=tenant_id,
-            organization_id=organization_id,
             current_user=current_user,
         )
     except BusiException as exc:
@@ -64,7 +62,6 @@ async def page(
     page: int = 1,
     page_size: int = 20,
     tenant_id: int | None = None,
-    organization_id: int | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ) -> Any:
     try:
@@ -76,7 +73,6 @@ async def page(
             page=page,
             page_size=page_size,
             tenant_id=tenant_id,
-            organization_id=organization_id,
             current_user=current_user,
         )
     except BusiException as exc:

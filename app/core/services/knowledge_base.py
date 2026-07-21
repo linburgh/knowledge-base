@@ -60,8 +60,6 @@ def validate(dto: KnowledgeBaseDto) -> None:
         raise BusiException("owner_id 不能为空")
     if dto.tenant_id is not None and dto.tenant_id <= 0:
         raise BusiException("tenant_id 必须大于 0")
-    if dto.organization_id is not None and dto.organization_id <= 0:
-        raise BusiException("organization_id 必须大于 0")
     if dto.description is not None and len(dto.description) > MAX_DESCRIPTION_LENGTH:
         raise BusiException("description 不能超过 500 个字符")
     if dto.system_prompt is not None and len(dto.system_prompt) > MAX_SYSTEM_PROMPT_LENGTH:
@@ -107,10 +105,6 @@ async def add(dto: KnowledgeBaseDto) -> Any:
         tenant = await tenant_db.get(db, id=dto.tenant_id)
         if tenant is None or tenant.get("status") == "deleted":
             raise BusiException("租户不存在", status_code=404)
-        if dto.organization_id is not None:
-            organization = await organization_db.get(db, id=dto.organization_id)
-            if organization is None or organization.get("tenant_id") != dto.tenant_id:
-                raise BusiException("组织不存在或不属于当前租户", status_code=400)
         knowledge_base_id = await knowledge_base_db.insert_(db, **values)
         await knowledge_base_prompt_db.insert_(
             db,
@@ -150,10 +144,6 @@ async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
         if old is None:
             raise BusiException("知识库不存在", status_code=404)
 
-        if dto.organization_id is not None:
-            organization = await organization_db.get(db, id=dto.organization_id)
-            if organization is None or organization.get("tenant_id") != old.get("tenant_id"):
-                raise BusiException("组织不存在或不属于当前租户", status_code=400)
         values.pop("tenant_id", None)
 
         values["updated_at"] = common_utils.utc_now()
@@ -512,7 +502,6 @@ async def list(
     status: str | None = None,
     visibility: str | None = None,
     tenant_id: int | None = None,
-    organization_id: int | None = None,
     current_user: CurrentUser | None = None,
 ) -> list[dict[str, Any]]:
     if current_user is None:
@@ -523,7 +512,6 @@ async def list(
         "owner_id": owner_id,
         "visibility": visibility,
         "tenant_id": tenant_id,
-        "organization_id": organization_id,
     }
     if status is None:
         filters["status__ne"] = STATUS_DELETED
@@ -541,7 +529,6 @@ async def page(
     page: int = 1,
     page_size: int = 20,
     tenant_id: int | None = None,
-    organization_id: int | None = None,
     current_user: CurrentUser | None = None,
 ) -> PageRecord:
     if current_user is None:
@@ -557,7 +544,6 @@ async def page(
         "owner_id": owner_id,
         "visibility": visibility,
         "tenant_id": tenant_id,
-        "organization_id": organization_id,
     }
     if status is None:
         filters["status__ne"] = STATUS_DELETED
