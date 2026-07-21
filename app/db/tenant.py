@@ -112,13 +112,23 @@ def _stats_query(**kwargs: Any):
         )
         .scalar_subquery()
     )
+    tenant_owner = (
+        sa.select(sa.func.string_agg(User.c.display_name, sa.literal(", ")))
+        .select_from(TenantMember.join(User, User.c.id == TenantMember.c.user_id))
+        .where(
+            TenantMember.c.tenant_id == Tenant.c.id,
+            TenantMember.c.status == "active",
+            TenantMember.c.role_code == "tenant_owner",
+        )
+        .scalar_subquery()
+    )
     tenant_admin = (
         sa.select(sa.func.string_agg(User.c.display_name, sa.literal(", ")))
         .select_from(TenantMember.join(User, User.c.id == TenantMember.c.user_id))
         .where(
             TenantMember.c.tenant_id == Tenant.c.id,
             TenantMember.c.status == "active",
-            TenantMember.c.role_code.in_(["tenant_owner", "tenant_admin"]),
+            TenantMember.c.role_code == "tenant_admin",
         )
         .scalar_subquery()
     )
@@ -127,6 +137,7 @@ def _stats_query(**kwargs: Any):
         member_count.label("member_count"),
         knowledge_base_count.label("knowledge_base_count"),
         organization_count.label("organization_count"),
+        tenant_owner.label("tenant_owner"),
         tenant_admin.label("tenant_admin"),
     )
 
