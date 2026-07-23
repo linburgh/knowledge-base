@@ -76,6 +76,15 @@ set parent_id = excluded.parent_id,
     status = 'active',
     updated_at = now();
 
+delete from t_role_menu role_menu
+using t_system_menu menu
+where role_menu.menu_id = menu.id
+  and menu.code = 'knowledge_base_documents'
+  and (
+      (role_menu.role_scope = 'tenant' and role_menu.role_code = 'tenant_member')
+      or (role_menu.role_scope = 'organization' and role_menu.role_code = 'org_member')
+  );
+
 with role_menus(role_scope, role_code, menu_code) as (
     values
         ('platform', 'p_super_admin', 'platform'),
@@ -120,7 +129,6 @@ with role_menus(role_scope, role_code, menu_code) as (
         ('organization', 'org_member', 'knowledge_base_list'),
         ('organization', 'org_member', 'knowledge_base_workspace'),
         ('organization', 'org_member', 'knowledge_base_overview'),
-        ('organization', 'org_member', 'knowledge_base_documents'),
         ('organization', 'org_member', 'knowledge_base_chat')
 )
 insert into t_role_menu (role_scope, role_code, menu_id)
