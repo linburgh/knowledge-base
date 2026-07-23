@@ -8,6 +8,7 @@ from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import authentication as authentication_service
+from app.core.services import system_menu as system_menu_service
 from app.schemas.auth import (
     AuthContextResponse,
     LoginRequest,
@@ -15,6 +16,7 @@ from app.schemas.auth import (
     TenantSelectionRequest,
     TokenResponse,
 )
+from app.schemas.menu import MenuTreeResponse
 
 router = APIRouter()
 current_user_dependency = Depends(auth.get_current_user)
@@ -38,6 +40,14 @@ async def login(payload: LoginRequest, request: Request) -> Any:
 async def me(current_user: auth.CurrentUser = current_user_dependency) -> Any:
     try:
         return await authentication_service.me(current_user)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/menus", response_model=MenuTreeResponse)
+async def menus(current_user: auth.CurrentUser = current_user_dependency) -> Any:
+    try:
+        return await system_menu_service.get_menus(current_user)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

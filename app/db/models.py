@@ -112,6 +112,52 @@ PlatformUserRole = sa.Table(
 )
 
 
+SystemMenu = sa.Table(
+    "t_system_menu",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("parent_id", sa.BigInteger),
+    sa.Column("code", sa.String(100), nullable=False),
+    sa.Column("name", sa.String(100), nullable=False),
+    sa.Column("menu_type", sa.String(32), nullable=False),
+    sa.Column("route_path", sa.String(255)),
+    sa.Column("icon", sa.String(100)),
+    sa.Column("sort_order", sa.Integer, nullable=False),
+    sa.Column("visible", sa.Boolean, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("meta", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_system_menu_parent_sort", "parent_id", "sort_order", "id"),
+    sa.Index("idx_t_system_menu_status_visible", "status", "visible"),
+)
+
+
+RoleMenu = sa.Table(
+    "t_role_menu",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("role_scope", sa.String(32), nullable=False),
+    sa.Column("role_code", sa.String(64), nullable=False),
+    sa.Column("menu_id", sa.BigInteger, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column("created_by", sa.BigInteger),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("role_scope", "role_code", "menu_id"),
+    sa.Index("idx_t_role_menu_role", "role_scope", "role_code", "status"),
+    sa.Index("idx_t_role_menu_menu", "menu_id", "status"),
+)
+
+
 TenantMember = sa.Table(
     "t_tenant_member",
     metadata,
