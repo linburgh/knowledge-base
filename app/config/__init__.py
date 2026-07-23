@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
 from app.config.base import Configuration, Group
 
 from . import chat, default, embedding, storage
 
 CONF = Configuration()
+
 
 def configure(project: str, setup: bool = True) -> None:
     conf_modules = (
@@ -18,6 +21,7 @@ def configure(project: str, setup: bool = True) -> None:
     groups = [Group(*item) for item in conf_modules]
     CONF(groups)
     if setup:
+        load_dotenv(override=False)
         CONF.setup(project, os.environ.copy())
 
 __all__ = ("CONF", "configure")

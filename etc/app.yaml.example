@@ -1,10 +1,10 @@
 default:
-  environment: development
-  debug: false
+  environment: "${KB_DEFAULT_ENVIRONMENT}"
+  debug: "${KB_DEFAULT_DEBUG}"
   log_dir: ./log
   log_file: app.log
   log_level: INFO
-  database_url: postgresql+asyncpg://linburgh:linburgh@127.0.0.1:5432/knowledge_base
+  database_url: "${KB_DEFAULT_DATABASE_URL}"
   dev_user_id: dev-user
   http_trust_env: false
   request_id_header: X-Request-ID
@@ -27,22 +27,22 @@ rag:
 storage:
   backend: minio
   local_dir: ./storage
-  minio_endpoint: http://127.0.0.1:9000
-  minio_access_key: linburgh
-  minio_secret_key: linburgh
-  minio_bucket: knowledge-base
+  minio_endpoint: "${KB_STORAGE_MINIO_ENDPOINT}"
+  minio_access_key: "${KB_STORAGE_MINIO_ACCESS_KEY}"
+  minio_secret_key: "${KB_STORAGE_MINIO_SECRET_KEY}"
+  minio_bucket: "${KB_STORAGE_MINIO_BUCKET}"
   minio_secure: false
 
 chat:
-  model: change-me
-  api_key: change-me
-  base_url: http://127.0.0.1:8000/v1
+  model: "${KB_CHAT_MODEL}"
+  api_key: "${KB_CHAT_API_KEY}"
+  base_url: "${KB_CHAT_BASE_URL}"
   timeout_seconds: 30
 
 embedding:
-  model: text-embedding-3-small
-  api_key: change-me
-  base_url: http://127.0.0.1:8000/v1
+  model: "${KB_EMBEDDING_MODEL}"
+  api_key: "${KB_EMBEDDING_API_KEY}"
+  base_url: "${KB_EMBEDDING_BASE_URL}"
   timeout_seconds: 30
 
 security:

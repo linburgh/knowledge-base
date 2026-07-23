@@ -21,3 +21,4 @@ storage/uploads/*
 etc/app.yaml
 .env
 .env.*
+!.env.example

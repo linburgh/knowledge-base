@@ -34,6 +34,7 @@ dependencies = [
     "immutables>=0.21",
     "pymysql>=1.2.0",
     "minio>=7.2,<8.0",
+    "python-dotenv>=1.2,<2.0",
 ]
 
 [dependency-groups]
@@ -50,4 +51,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-

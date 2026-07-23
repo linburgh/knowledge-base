@@ -7,6 +7,8 @@ services:
       POSTGRES_PASSWORD: linburgh
     ports:
       - "5432:5432"
+    networks:
+      - knowledge-base-net
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,6 +21,8 @@ services:
     image: redis:7
     ports:
       - "6379:6379"
+    networks:
+      - knowledge-base-net
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -31,7 +35,67 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    networks:
+      - knowledge-base-net
+
+  kb_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OS_CONFIG_DIR: /etc/app
+      KB_POSTGRES_HOST: postgres
+      KB_MINIO_HOST: minio
+      KB_DEFAULT_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-linburgh}:${POSTGRES_PASSWORD:-linburgh}@postgres:5432/${POSTGRES_DB:-knowledge_base}
+      KB_STORAGE_MINIO_ENDPOINT: http://minio:9000
+    ports:
+      - "28003:28003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:28003/api/v1/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - knowledge-base-net
+
+  kb_web:
+    build:
+      context: ../knowledge-base-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/knowledgebase/api/v1}
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://kb_service:28003}
+    ports:
+      - "8080:80"
+    depends_on:
+      kb_service:
+        condition: service_healthy
+    networks:
+      - knowledge-base-net
 
 volumes:
   postgres_data:
   minio_data:
+
+networks:
+  knowledge-base-net:
+    name: knowledge-base-net
+    external: true
