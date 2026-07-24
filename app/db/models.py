@@ -158,6 +158,47 @@ RoleMenu = sa.Table(
 )
 
 
+SystemMenuAction = sa.Table(
+    "t_system_menu_action",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("menu_id", sa.BigInteger, nullable=False),
+    sa.Column("code", sa.String(128), nullable=False),
+    sa.Column("name", sa.String(100), nullable=False),
+    sa.Column("action_type", sa.String(32), nullable=False),
+    sa.Column("sort_order", sa.Integer, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("meta", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_system_menu_action_menu", "menu_id", "status"),
+)
+
+
+RoleMenuAction = sa.Table(
+    "t_role_menu_action",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("role_scope", sa.String(32), nullable=False),
+    sa.Column("role_code", sa.String(64), nullable=False),
+    sa.Column("action_id", sa.BigInteger, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column("created_by", sa.BigInteger),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_role_menu_action_role", "role_scope", "role_code", "status"),
+    sa.Index("idx_t_role_menu_action_action", "action_id", "status"),
+)
+
+
 TenantMember = sa.Table(
     "t_tenant_member",
     metadata,

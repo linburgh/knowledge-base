@@ -139,6 +139,95 @@ on conflict (role_scope, role_code, menu_id) do update
 set status = 'active',
     updated_at = now();
 
+insert into t_system_menu_action (menu_id, code, name, action_type, sort_order, status)
+select menu.id, actions.code, actions.name, actions.action_type, actions.sort_order, 'active'
+from (
+    values
+        ('platform_overview', 'platform_overview:view', '查看平台概览', 'business', 10),
+        ('platform_users', 'platform_user:list', '查看平台用户', 'business', 10),
+        ('platform_users', 'platform_user:create', '新增平台用户', 'business', 20),
+        ('platform_users', 'platform_user:update', '编辑平台用户', 'business', 30),
+        ('platform_users', 'platform_user:delete', '删除平台用户', 'business', 40),
+        ('platform_users', 'platform_user:role', '调整平台角色', 'business', 50),
+        ('platform_tenants', 'tenant:list', '查看租户', 'business', 10),
+        ('platform_tenants', 'tenant:create', '新增租户', 'business', 20),
+        ('platform_tenants', 'tenant:update', '编辑租户', 'business', 30),
+        ('platform_tenants', 'tenant:delete', '删除租户', 'business', 40),
+        ('platform_tenants', 'tenant:member', '管理租户成员', 'business', 50),
+        ('platform_organizations', 'organization:list', '查看组织', 'business', 10),
+        ('platform_organizations', 'organization:create', '新增组织', 'business', 20),
+        ('platform_organizations', 'organization:update', '编辑组织', 'business', 30),
+        ('platform_organizations', 'organization:delete', '删除组织', 'business', 40),
+        ('platform_organizations', 'organization:member', '管理组织成员', 'business', 50),
+        ('developer_api', 'developer_api:view', '查看开发者文档', 'business', 10),
+        ('knowledge_base_list', 'knowledge_base:list', '查看知识库', 'business', 10),
+        ('knowledge_base_list', 'knowledge_base:create', '新增知识库', 'business', 20),
+        ('knowledge_base_list', 'knowledge_base:update', '编辑知识库', 'business', 30),
+        ('knowledge_base_list', 'knowledge_base:delete', '删除知识库', 'business', 40),
+        ('knowledge_base_list', 'knowledge_base:member', '管理知识库成员', 'business', 50),
+        ('knowledge_base_overview', 'knowledge_base:overview', '查看知识库概览', 'business', 10),
+        ('knowledge_base_overview', 'knowledge_base:update_config', '修改知识库配置', 'business', 20),
+        ('knowledge_base_documents', 'document:list', '查看文档', 'business', 10),
+        ('knowledge_base_documents', 'document:upload', '上传文档', 'business', 20),
+        ('knowledge_base_documents', 'document:delete', '删除文档', 'business', 30),
+        ('knowledge_base_documents', 'document:reindex', '重新索引文档', 'business', 40),
+        ('knowledge_base_chat', 'knowledge_base:ask', '知识库问答', 'business', 10),
+        ('independent_chat', 'guest_chat:ask', '独立问答', 'business', 10)
+) as actions(menu_code, code, name, action_type, sort_order)
+join t_system_menu menu on menu.code = actions.menu_code
+on conflict (code) do update
+set menu_id = excluded.menu_id,
+    name = excluded.name,
+    action_type = excluded.action_type,
+    sort_order = excluded.sort_order,
+    status = 'active',
+    updated_at = now();
+
+with role_action_grants(role_scope, role_code, menu_code, action_code) as (
+    values
+        ('platform', 'p_super_admin', 'platform_overview', null),
+        ('platform', 'p_super_admin', 'platform_users', null),
+        ('platform', 'p_super_admin', 'platform_tenants', null),
+        ('platform', 'p_super_admin', 'platform_organizations', null),
+        ('platform', 'p_super_admin', 'developer_api', null),
+        ('platform', 'p_super_admin', 'knowledge_base_list', null),
+        ('platform', 'p_super_admin', 'knowledge_base_overview', null),
+        ('platform', 'p_super_admin', 'knowledge_base_documents', null),
+        ('platform', 'p_super_admin', 'knowledge_base_chat', null),
+        ('tenant', 'tenant_owner', 'platform_organizations', null),
+        ('tenant', 'tenant_owner', 'knowledge_base_list', null),
+        ('tenant', 'tenant_owner', 'knowledge_base_overview', null),
+        ('tenant', 'tenant_owner', 'knowledge_base_documents', null),
+        ('tenant', 'tenant_owner', 'knowledge_base_chat', null),
+        ('tenant', 'tenant_admin', 'platform_organizations', null),
+        ('tenant', 'tenant_admin', 'knowledge_base_list', null),
+        ('tenant', 'tenant_admin', 'knowledge_base_overview', null),
+        ('tenant', 'tenant_admin', 'knowledge_base_documents', null),
+        ('tenant', 'tenant_admin', 'knowledge_base_chat', null),
+        ('tenant', 'tenant_member', 'knowledge_base_list', 'knowledge_base:list'),
+        ('tenant', 'tenant_member', 'knowledge_base_overview', 'knowledge_base:overview'),
+        ('tenant', 'tenant_member', 'knowledge_base_chat', 'knowledge_base:ask'),
+        ('tenant', 'tenant_guest', 'independent_chat', 'guest_chat:ask'),
+        ('organization', 'org_admin', 'platform_organizations', null),
+        ('organization', 'org_admin', 'knowledge_base_list', null),
+        ('organization', 'org_admin', 'knowledge_base_overview', null),
+        ('organization', 'org_admin', 'knowledge_base_documents', null),
+        ('organization', 'org_admin', 'knowledge_base_chat', null),
+        ('organization', 'org_member', 'knowledge_base_list', 'knowledge_base:list'),
+        ('organization', 'org_member', 'knowledge_base_overview', 'knowledge_base:overview'),
+        ('organization', 'org_member', 'knowledge_base_chat', 'knowledge_base:ask')
+)
+insert into t_role_menu_action (role_scope, role_code, action_id, status)
+select grants.role_scope, grants.role_code, action.id, 'active'
+from role_action_grants grants
+join t_system_menu menu on menu.code = grants.menu_code
+join t_system_menu_action action
+  on action.menu_id = menu.id
+ and (grants.action_code is null or action.code = grants.action_code)
+on conflict (role_scope, role_code, action_id) do update
+set status = 'active',
+    updated_at = now();
+
 -- 为已有知识库补齐初始提示词历史版本，重复执行不会产生重复记录。
 insert into t_knowledge_base_prompt (kb_id, version, system_prompt, created_by)
 select kb.id, coalesce(kb.system_prompt_version, 1), coalesce(kb.system_prompt, ''), kb.owner_id

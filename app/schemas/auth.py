@@ -33,10 +33,49 @@ class AuthContextResponse(BaseModel):
     organizations: list[dict]
 
 
+class PermissionActionResponse(BaseModel):
+    id: int
+    code: str
+    name: str
+    action_type: str
+
+
+class PermissionMenuResponse(BaseModel):
+    id: int
+    code: str
+    name: str
+    route_path: str | None = None
+    actions: list[PermissionActionResponse] = Field(default_factory=list)
+
+
+class PermissionResponse(BaseModel):
+    menus: list[PermissionMenuResponse] = Field(default_factory=list)
+    action_codes: list[str] = Field(default_factory=list)
+
+
+class PermissionCheckRequest(BaseModel):
+    action_codes: list[str] = Field(..., min_length=1, max_length=100)
+
+
+class PermissionCheckItem(BaseModel):
+    action_code: str
+    allowed: bool
+
+
+class PermissionCheckResponse(BaseModel):
+    items: list[PermissionCheckItem] = Field(default_factory=list)
+
+
 __all__ = (
     "AuthContextResponse",
     "LoginRequest",
     "RefreshRequest",
     "TenantSelectionRequest",
     "TokenResponse",
+    "PermissionActionResponse",
+    "PermissionCheckItem",
+    "PermissionCheckRequest",
+    "PermissionCheckResponse",
+    "PermissionMenuResponse",
+    "PermissionResponse",
 )

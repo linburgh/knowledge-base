@@ -8,10 +8,14 @@ from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import authentication as authentication_service
+from app.core.services import permission as permission_service
 from app.core.services import system_menu as system_menu_service
 from app.schemas.auth import (
     AuthContextResponse,
     LoginRequest,
+    PermissionCheckRequest,
+    PermissionCheckResponse,
+    PermissionResponse,
     RefreshRequest,
     TenantSelectionRequest,
     TokenResponse,
@@ -48,6 +52,25 @@ async def me(current_user: auth.CurrentUser = current_user_dependency) -> Any:
 async def menus(current_user: auth.CurrentUser = current_user_dependency) -> Any:
     try:
         return await system_menu_service.get_menus(current_user)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/permissions", response_model=PermissionResponse)
+async def permissions(current_user: auth.CurrentUser = current_user_dependency) -> Any:
+    try:
+        return await permission_service.get_permissions(current_user)
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.post("/permissions/check", response_model=PermissionCheckResponse)
+async def check_permissions(
+    payload: PermissionCheckRequest,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await permission_service.check_actions(current_user, payload.action_codes)
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 
