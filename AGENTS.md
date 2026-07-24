@@ -6,6 +6,15 @@
 
 当前阶段只保留工程骨架，不落地具体 API、Service、DB、RAG、Worker 业务实现。
 
+## 关联项目：ai-code-review
+
+- 项目名称固定为 `ai-code-review`，定位为面向研发团队的智能代码审查 Agent。
+- 项目接收 Pull Request、Merge Request、提交范围或本地补丁，结合代码差异、仓库上下文、静态分析工具和项目规则生成可定位、可验证的审查结果。
+- 项目支持审查任务编排、问题确认与反馈、规则配置、代码平台评论回写、权限、审计、评测和部署等完整能力。
+- `ai-code-review` 是独立项目；当前知识库仓库只维护其需求设计文档，不在本项目中直接实现该项目的 API、Service、DB、Agent 或 Worker。
+- 相关设计文档统一放在 `docs/code-review/`，主文档为 [`ai-code-review-需求设计文档.md`](docs/code-review/ai-code-review-需求设计文档.md)。
+- 后续实现必须遵守该设计文档的只读审查、安全沙箱、最小上下文、权限隔离、结果可追溯和人工确认原则，不得默认直接修改或发布代码。
+
 ## 目录边界
 
 - `app/api/v1/`：HTTP 接口层，只负责请求解析、认证上下文、调用 Service 和响应转换。
