@@ -19,12 +19,15 @@ from typing import Any
 
 from sqlalchemy import and_, delete, func, insert, select, update
 
+from app.core.common.log_utils import trace
 from app.types import Fn
 
 from .base import DB, PageRecord, inject_db
 
 
 def check_db_connected(fn: Fn) -> Any:
+    """确保数据库连接可用，并为 Service 入口统一记录未处理异常。"""
+
     @wraps(fn)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         await inject_db()
@@ -32,7 +35,7 @@ def check_db_connected(fn: Fn) -> Any:
         assert db is not None, "Database is not connected."
         return await fn(*args, **kwargs)
 
-    return wrapper
+    return trace(wrapper)
 
 
 def _build_conditions(table: Any, **kwargs: Any) -> list[Any]:

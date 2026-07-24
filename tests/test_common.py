@@ -1,6 +1,8 @@
+import asyncio
 import unittest
 
 from app.core.common.exception import BusiException
+from app.core.common.log_utils import trace
 from app.core.common.utils import mask_sensitive, normalize_space
 
 
@@ -14,3 +16,23 @@ class CommonTest(unittest.TestCase):
     def test_utils(self):
         self.assertEqual(normalize_space("a  \n b"), "a b")
         self.assertEqual(mask_sensitive("1234567890"), "1234****7890")
+
+    def test_trace_preserves_sync_exception(self):
+        @trace
+        def fail():
+            raise BusiException("invalid")
+
+        with self.assertRaisesRegex(BusiException, "invalid"):
+            fail()
+
+    def test_trace_preserves_async_exception(self):
+        async def fail_impl():
+            raise BusiException("invalid")
+
+        fail = trace(fail_impl)
+
+        async def run():
+            with self.assertRaisesRegex(BusiException, "invalid"):
+                await fail()
+
+        asyncio.run(run())
