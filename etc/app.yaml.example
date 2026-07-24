@@ -39,6 +39,16 @@ chat:
   base_url: "${KB_CHAT_BASE_URL}"
   timeout_seconds: 30
 
+agent:
+  enabled: true
+  max_steps: 4
+  max_tool_calls: 6
+  tool_timeout_seconds: 10.0
+  total_timeout_seconds: 60.0
+  max_context_chars: 24000
+  max_history_messages: 10
+  max_retries: 1
+
 embedding:
   model: "${KB_EMBEDDING_MODEL}"
   api_key: "${KB_EMBEDDING_API_KEY}"

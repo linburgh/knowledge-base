@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from app.config.base import Configuration, Group
 
-from . import chat, default, embedding, storage
+from . import agent, chat, default, embedding, storage
 
 CONF = Configuration()
 
@@ -17,6 +17,7 @@ def configure(project: str, setup: bool = True) -> None:
         (storage.GROUP_NAME, storage.ALL_OPTS),
         (chat.GROUP_NAME, chat.ALL_OPTS),
         (embedding.GROUP_NAME, embedding.ALL_OPTS),
+        (agent.GROUP_NAME, agent.ALL_OPTS),
     )
     groups = [Group(*item) for item in conf_modules]
     CONF(groups)
