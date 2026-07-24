@@ -168,6 +168,8 @@ async def _save_agent_result(
             hit_count=result.hit_count,
             mode="vector",
         ),
+        status=result.status,
+        termination_reason=result.termination_reason,
     )
 
 

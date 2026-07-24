@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config import CONF
 from app.core.common.exception import BusiException
 from app.db import knowledge_base as knowledge_base_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.rag import embeddings, retrievers
+from app.rag.rerank import rerank
 from app.schemas.retrieval import RetrievalResponse
 
 DEFAULT_TOP_K = 5
@@ -75,7 +77,15 @@ async def search(
     )
     if not vectors or not vectors[0]:
         raise BusiException("查询向量为空")
-    chunks = await retrievers.vector_search(db, kb_id, vectors[0], limit)
+    candidate_limit = limit
+    if CONF.rag.rerank_enabled:
+        candidate_limit = min(
+            MAX_TOP_K,
+            limit * max(1, int(CONF.rag.rerank_candidate_multiplier)),
+        )
+    chunks = await retrievers.vector_search(db, kb_id, vectors[0], candidate_limit)
+    if CONF.rag.rerank_enabled:
+        chunks = rerank(normalized_query, chunks, limit)
 
     # 无论底层使用关键词还是向量，向上层暴露相同的数据结构，方便后续 Chat Service 复用。
     return RetrievalResponse(

@@ -40,6 +40,8 @@ class ChatResponse(BaseModel):
     answer: str
     citations: list[CitationDto]
     retrieval: RetrievalInfoDto
+    status: str = "completed"
+    termination_reason: str = "completed"
 
 
 __all__ = (
