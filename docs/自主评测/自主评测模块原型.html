@@ -136,9 +136,46 @@
       .result-section { margin-top: 20px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
       .result-section h3 { margin: 0 0 14px; font-size: 15px; }
       .result-table th, .result-table td { padding: 12px 13px; }
+      .report-summary { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; }
+      .report-summary p { margin: 0; color: #53617b; line-height: 22px; }
+      .suggestion { padding: 16px; border: 1px solid #e2e6ff; border-radius: 9px; background: #f8f9ff; }
+      .suggestion-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+      .suggestion-head strong { font-size: 14px; }
+      .suggestion p { margin: 8px 0; color: #53617b; line-height: 21px; }
+      .suggestion-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 12px; }
+      .optimize-panel { position: absolute; top: 0; right: 0; display: flex; width: min(620px, 100%); height: 100%; flex-direction: column; background: #fff; box-shadow: var(--shadow); }
+      .optimize-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+      .optimize-header h2 { margin: 0; font-size: 18px; }
+      .optimize-body { flex: 1; overflow: auto; padding: 24px; }
+      .optimize-block { margin-bottom: 22px; }
+      .optimize-block h3 { margin: 0 0 10px; font-size: 14px; }
+      .evidence { padding: 14px 16px; border: 1px solid #f2dfb6; border-radius: 8px; background: #fffaf0; color: #6b5a34; line-height: 22px; }
+      .config-compare, .metric-compare { width: 100%; border-collapse: collapse; }
+      .config-compare th, .config-compare td, .metric-compare th, .metric-compare td { padding: 10px 12px; border: 1px solid var(--line); white-space: normal; }
+      .config-compare th, .metric-compare th { color: #68758b; background: #fbfcfe; font-size: 12px; }
+      .retest-status { margin-top: 12px; padding: 12px 14px; border-radius: 8px; color: var(--brand); background: var(--brand-soft); }
+      .optimize-footer { display: flex; justify-content: flex-end; gap: 9px; padding: 16px 24px; border-top: 1px solid var(--line); }
+      .case-backdrop { z-index: 6; }
+      .case-panel { position: absolute; top: 0; right: 0; display: flex; width: min(560px, 100%); height: 100%; flex-direction: column; background: #fff; box-shadow: var(--shadow); }
+      .case-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+      .case-header h2 { margin: 0; font-size: 18px; }
+      .case-body { flex: 1; overflow: auto; padding: 24px; }
+      .case-question { margin: 0 0 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; color: #3b4658; background: #fbfcfe; line-height: 22px; }
+      .case-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 22px; }
+      .case-meta-item { padding: 12px 14px; border-radius: 8px; background: #f7f8fb; }
+      .case-meta-item span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+      .case-meta-item strong { font-size: 14px; font-weight: 600; }
+      .case-block { margin-top: 20px; }
+      .case-block h3 { margin: 0 0 10px; font-size: 14px; }
+      .case-answer, .citation-list { max-height: 220px; overflow: auto; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; color: #4f5c72; background: #fff; line-height: 22px; }
+      .citation-list { margin: 0; padding-left: 32px; }
+      .citation-list li + li { margin-top: 10px; }
       .hidden { display: none !important; }
       @media (max-width: 700px) {
         .result-panel { width: 100%; border-radius: 0; }
+        .case-panel { width: 100%; }
+        .optimize-panel { width: 100%; }
+        .report-summary { grid-template-columns: 1fr; }
         .form-grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 900px) {
@@ -201,7 +238,11 @@
 
     <div class="modal-backdrop hidden" id="deleteModal"><div class="modal-wrap"><h2>确认删除评测任务？</h2><p>删除后任务将从正常列表中移除，历史运行结果也将不再展示。执行中的任务不能删除。</p><div class="modal-actions"><button class="button secondary" data-close="deleteModal">取消</button><button class="button danger" id="confirmDelete">确认删除</button></div></div></div>
 
-    <div class="modal-backdrop hidden" id="resultModal"><section class="result-panel"><div class="result-head"><div><h2 id="resultTitle">产品问答评测 · 第 3 次运行</h2><span class="muted">医签通产品知识库 · 已完成</span></div><button class="close" data-close="resultModal">×</button></div><div class="result-body"><div class="summary-grid"><div class="summary-card"><span>成功率</span><strong style="color:var(--success)">100%</strong></div><div class="summary-card"><span>错误率</span><strong>0%</strong></div><div class="summary-card"><span>降级率</span><strong>0%</strong></div><div class="summary-card"><span>引用率</span><strong style="color:var(--success)">100%</strong></div><div class="summary-card"><span>P95 响应时间</span><strong>3517ms</strong></div></div><section class="result-section"><h3>指标详情</h3><table class="result-table"><thead><tr><th>指标中文名</th><th>英文标识</th><th>实际值</th><th>门禁条件</th><th>结果</th></tr></thead><tbody><tr><td>成功率</td><td>success_rate</td><td>100%</td><td>&gt;= 95%</td><td><span class="tag success">合格</span></td></tr><tr><td>错误率</td><td>error_rate</td><td>0%</td><td>&lt;= 1%</td><td><span class="tag success">合格</span></td></tr><tr><td>降级率</td><td>fallback_rate</td><td>0%</td><td>&lt;= 5%</td><td><span class="tag success">合格</span></td></tr></tbody></table></section><section class="result-section"><h3>逐题结果</h3><table class="result-table"><thead><tr><th>题号</th><th>问题</th><th>状态</th><th>引用数</th><th>耗时</th><th>操作</th></tr></thead><tbody><tr><td>1</td><td>请简单介绍一下医签通</td><td><span class="tag success">已完成</span></td><td>3</td><td>1200ms</td><td><button class="text-button" onclick="alert('原型：打开第 1 题详情')">查看</button></td></tr><tr><td>2</td><td>扫码签名具体怎么操作？</td><td><span class="tag warning">降级</span></td><td>3</td><td>2600ms</td><td><button class="text-button" onclick="alert('原型：打开第 2 题详情')">查看</button></td></tr></tbody></table></section></div></section></div>
+    <div class="modal-backdrop hidden" id="resultModal"><section class="result-panel"><div class="result-head"><div><h2 id="resultTitle">产品问答评测 · 第 3 次运行</h2><span class="muted">医签通产品知识库 · 已完成</span></div><button class="close" data-close="resultModal">×</button></div><div class="result-body"><section class="result-section" style="margin-top:0"><h3>评测报告</h3><div class="report-summary"><p>本次评测整体通过，成功率和引用率达到门禁要求。发现 1 道题触发降级，建议优先检查扫码签名相关内容的检索覆盖和回答链路。</p><span class="tag success">总体通过</span></div></section><div class="summary-grid"><div class="summary-card"><span>成功率</span><strong style="color:var(--success)">100%</strong></div><div class="summary-card"><span>错误率</span><strong>0%</strong></div><div class="summary-card"><span>降级率</span><strong>0%</strong></div><div class="summary-card"><span>引用率</span><strong style="color:var(--success)">100%</strong></div><div class="summary-card"><span>P95 响应时间</span><strong>3517ms</strong></div></div><section class="result-section"><h3>指标详情</h3><table class="result-table"><thead><tr><th>指标中文名</th><th>英文标识</th><th>实际值</th><th>门禁条件</th><th>结果</th></tr></thead><tbody><tr><td>成功率</td><td>success_rate</td><td>100%</td><td>&gt;= 95%</td><td><span class="tag success">合格</span></td></tr><tr><td>错误率</td><td>error_rate</td><td>0%</td><td>&lt;= 1%</td><td><span class="tag success">合格</span></td></tr><tr><td>降级率</td><td>fallback_rate</td><td>0%</td><td>&lt;= 5%</td><td><span class="tag success">合格</span></td></tr></tbody></table></section><section class="result-section"><h3>优化建议</h3><div class="suggestion"><div class="suggestion-head"><strong>扫码签名问题存在检索覆盖不足风险</strong><span class="tag warning">高优先级</span></div><p>建议补充扫码签名操作说明，并对 chunk_size=600 与 chunk_size=400 进行对比评测，预期改善 Recall@5 和降级率。</p><div class="suggestion-meta"><span>证据：第 2 题触发 fallback</span><span>置信度：中</span><span>需要人工确认：是</span></div><button class="text-button" onclick="openOptimize()">帮我优化</button></div></section><section class="result-section"><h3>逐题结果</h3><table class="result-table"><thead><tr><th>题号</th><th>问题</th><th>状态</th><th>引用数</th><th>耗时</th><th>操作</th></tr></thead><tbody><tr><td>1</td><td>请简单介绍一下医签通</td><td><span class="tag success">已完成</span></td><td>3</td><td>1200ms</td><td><button class="text-button" onclick="openCaseDetail(1)">查看</button></td></tr><tr><td>2</td><td>扫码签名具体怎么操作？</td><td><span class="tag warning">降级</span></td><td>3</td><td>2600ms</td><td><button class="text-button" onclick="openCaseDetail(2)">查看</button></td></tr></tbody></table></section></div></section></div>
+
+    <div class="modal-backdrop case-backdrop hidden" id="optimizeModal"><aside class="optimize-panel"><div class="optimize-header"><h2>帮我优化</h2><button class="close" data-close="optimizeModal">×</button></div><div class="optimize-body"><section class="optimize-block"><h3>问题证据</h3><div class="evidence">第 2 题“扫码签名具体怎么操作？”触发 fallback；当前降级率 0%，但该题响应耗时 2600ms，建议补充操作文档并调整分块参数进行复测。</div></section><section class="optimize-block"><h3>候选优化方案</h3><table class="config-compare"><thead><tr><th>配置项</th><th>当前配置</th><th>建议配置</th></tr></thead><tbody><tr><td>chunk_size</td><td>600</td><td>400</td></tr><tr><td>retrieval_top_k</td><td>5</td><td>8</td></tr><tr><td>文档处理</td><td>保持不变</td><td>补充扫码签名操作说明</td></tr></tbody></table></section><section class="optimize-block"><h3>优化前后指标对比</h3><table class="metric-compare"><thead><tr><th>指标</th><th>优化前</th><th>优化后（复测）</th></tr></thead><tbody><tr><td>Recall@5</td><td>80%</td><td id="retestRecall">—</td></tr><tr><td>P95 响应时间</td><td>2.1 秒</td><td id="retestLatency">—</td></tr></tbody></table><div class="retest-status" id="retestStatus">候选方案尚未复测，请确认方案后开始复测。</div></section></div><div class="optimize-footer"><button class="button secondary" data-close="optimizeModal">结束</button><button class="button" id="retestButton">开始复测</button><button class="button hidden" id="saveDraftButton">保存为草稿</button></div></aside></div>
+
+    <div class="modal-backdrop case-backdrop hidden" id="caseModal"><aside class="case-panel"><div class="case-header"><h2 id="caseTitle">第 1 题结果</h2><button class="close" data-close="caseModal">×</button></div><div class="case-body"><h3>问题</h3><p class="case-question" id="caseQuestion"></p><div class="case-meta"><div class="case-meta-item"><span>执行状态</span><strong id="caseStatus"></strong></div><div class="case-meta-item"><span>终止原因</span><strong id="caseReason"></strong></div><div class="case-meta-item"><span>响应耗时</span><strong id="caseDuration"></strong></div><div class="case-meta-item"><span>检索命中</span><strong id="caseHits"></strong></div><div class="case-meta-item"><span>引用数量</span><strong id="caseCitations"></strong></div></div><section class="case-block"><h3>回答</h3><div class="case-answer" id="caseAnswer"></div></section><section class="case-block"><h3>引用资料</h3><ol class="citation-list" id="caseCitationList"></ol></section></div></aside></div>
 
     <script>
       const tasks = [
@@ -212,6 +253,10 @@
       let deleteId = null;
       const statusText = { completed: ["已完成", "success"], running: ["执行中", "warning"], failed: ["执行失败", "danger"], pending: ["待执行", "neutral"] };
       const conclusionText = { passed: ["通过", "success"], failed: ["不通过", "danger"], indeterminate: ["无法判定", "warning"] };
+      const caseResults = {
+        1: { question: "请简单介绍一下医签通", status: "已完成", statusClass: "success", reason: "—", duration: "1200ms", hits: "5", citations: "3", answer: "医签通是一款面向企业的电子签名与合同管理产品，支持文件发起、多人签署、身份核验、签署过程留痕和结果归档，帮助企业提升签署效率并降低纸质文件管理成本。", sources: ["医签通产品介绍 · 产品概览", "电子签名服务说明 · 核心能力", "企业合同管理指南 · 业务价值"] },
+        2: { question: "扫码签名具体怎么操作？", status: "降级", statusClass: "warning", reason: "fallback", duration: "2600ms", hits: "5", citations: "3", answer: "发起签署后，签署人打开手机扫码页面，完成身份确认并按照页面提示签名。当前回答由降级策略生成，建议结合具体签署流程进一步确认。", sources: ["电子签名服务说明 · 扫码签名", "签署操作手册 · 移动端签署", "常见问题 · 身份核验"] },
+      };
       function show(id) { document.getElementById(id).classList.remove("hidden"); }
       function hide(id) { document.getElementById(id).classList.add("hidden"); }
       function render() {
@@ -228,6 +273,10 @@
         }).join("") || '<tr><td colspan="9" style="padding:50px;text-align:center;color:var(--muted)">暂无评测任务</td></tr>';
       }
       function openResult(id) { const task = tasks.find((item) => item.id === id); document.getElementById("resultTitle").textContent = `${task.name} · 第 3 次运行`; show("resultModal"); }
+      function openCaseDetail(caseNo) { const item = caseResults[caseNo]; document.getElementById("caseTitle").textContent = `第 ${caseNo} 题结果`; document.getElementById("caseQuestion").textContent = item.question; document.getElementById("caseStatus").innerHTML = `<span class="tag ${item.statusClass}">${item.status}</span>`; document.getElementById("caseReason").textContent = item.reason; document.getElementById("caseDuration").textContent = item.duration; document.getElementById("caseHits").textContent = item.hits; document.getElementById("caseCitations").textContent = item.citations; document.getElementById("caseAnswer").textContent = item.answer; document.getElementById("caseCitationList").innerHTML = item.sources.map((source) => `<li>${source}</li>`).join(""); show("caseModal"); }
+      function openOptimize() { show("optimizeModal"); }
+      document.getElementById("retestButton").addEventListener("click", () => { const button = document.getElementById("retestButton"); const status = document.getElementById("retestStatus"); button.disabled = true; button.textContent = "复测中..."; status.textContent = "正在使用同一批测试问题复测，请稍候..."; setTimeout(() => { document.getElementById("retestRecall").textContent = "90%"; document.getElementById("retestLatency").textContent = "2.8 秒"; status.innerHTML = '<span class="tag success">建议采用</span> 复测完成，Recall@5 提升 10%，响应时间增加 0.7 秒，需人工确认后保存。'; button.classList.add("hidden"); document.getElementById("saveDraftButton").classList.remove("hidden"); }, 900); });
+      document.getElementById("saveDraftButton").addEventListener("click", () => { document.getElementById("retestStatus").textContent = "已保存为优化草稿，可在问答配置中继续审核和发布。"; document.getElementById("saveDraftButton").disabled = true; });
       function runTask(id) { const task = tasks.find((item) => item.id === id); task.status = "running"; render(); setTimeout(() => { task.status = "completed"; task.conclusion = "passed"; task.time = "2026年07月25日 10:45:00"; render(); }, 1400); }
       function openDelete(id) { deleteId = id; show("deleteModal"); }
       document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => hide(button.dataset.close)));
