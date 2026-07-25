@@ -22,7 +22,9 @@ async def get(db, **kwargs: Any) -> dict[str, Any] | None:
     return await db_api.get(db, Conversation, **kwargs)
 
 
-async def list(db, **kwargs: Any) -> list[dict[str, Any]]:
+async def list(db, keyword: str | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+    if keyword:
+        kwargs["title__ilike"] = f"%{keyword}%"
     return await db_api.list(
         db,
         Conversation,

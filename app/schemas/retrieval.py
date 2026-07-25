@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-RetrievalMode = Literal["vector"]
+RetrievalMode = Literal["vector", "keyword", "hybrid"]
 
 
 class RetrievalRequest(BaseModel):

@@ -156,14 +156,6 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
             token_type=current_user.token_type,
         )
 
-    try:
-        environment = CONF.default.environment
-        dev_user_id = CONF.default.dev_user_id
-    except AttributeError:
-        environment, dev_user_id = "development", None
-    if environment == "development" and dev_user_id:
-        return CurrentUser(user_id=dev_user_id)
-
     raise BusiException("未认证", status_code=401)
 
 

@@ -38,6 +38,8 @@ async def retrieve_knowledge_result(call: ToolCall, context: AgentContext) -> To
             context.kb_id,
             payload.query,
             top_k=payload.top_k,
+            config=context.qa_config,
+            index_version_id=context.index_version_id,
         )
     except BusiException as exc:
         return ToolResult(

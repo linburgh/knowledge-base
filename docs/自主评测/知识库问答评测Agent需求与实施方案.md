@@ -126,7 +126,6 @@ evaluation:
 ```
 
 两个模式都使用同一个评测入口，区别只在于 `questions.source` 和 `questions.file`。
-```
 
 #### 问题配置入口
 
@@ -156,6 +155,10 @@ evaluation:
 第一阶段支持独立 YAML 配置文件；后续可以由管理页面或评测任务 API 生成同一份配置对象。无论入口如何变化，Agent 内部只接收统一的 `EvaluationConfig`，避免出现多套配置规则。
 
 ### 3.3 默认门禁配置
+
+门禁配置就是评测结果的合格标准，也可以理解为评测通过条件。系统会将实际指标与门禁中的阈值和比较符进行比较，所有强制门禁通过后，评测总体结论才可以判定为“通过”。例如，`success_rate >= 0.95` 表示成功率必须达到 95%，`error_rate <= 0.01` 表示错误率不能超过 1%。
+
+“默认门禁配置”是系统预先提供的通用合格标准。评测任务可以直接使用默认门禁，也可以根据知识库、业务场景或测试目的在任务配置中覆盖默认值。门禁不等同于指标本身：指标是实际测量结果，门禁是判断该结果是否合格的标准。
 
 ```yaml
 evaluation:
@@ -308,6 +311,164 @@ Recall@K、MRR、NDCG、Answer Correctness 等需要标准文档、标准分块�
 
 评测 Agent 可以按需调用检索接口获取高级检索指标，但该接口只作为观测和指标计算用途；基础模式只需要调用知识库问答 Agent。问答结果必须来自知识库问答 Agent，不能在评测 Agent 内部创建第二套普通 RAG 主链路。
 
+### 5.1 工作流实现方式
+
+评测 Agent 使用 LangGraph 作为任务编排框架。评测任务具有多步骤、可恢复、可分支、可并发和需要持久化状态的特点，适合用有状态图表达；知识库问答仍由现有知识库问答 Agent 负责，评测 Agent 不复制检索、重排、Prompt 和回答逻辑。
+
+选择 LangGraph 的原因：
+
+- 使用显式状态保存评测任务、运行编号、问题列表、逐题结果和当前阶段。
+- 使用条件边区分外部导入问题、Agent 生成问题、配置错误和运行失败。
+- 使用 `Send` 或等价的并发分发机制执行多个测试问题，同时受配置中的并发数限制。
+- 单题失败时记录错误并回收为逐题结果，默认继续执行其他问题，不因一题失败导致整批任务丢失。
+- 支持节点级超时、重试、取消和运行状态更新，便于平台页面查看执行进度。
+- 汇总节点统一计算指标、执行门禁并生成总体结论，避免在多个接口中重复计算。
+- 通过 Checkpointer 或持久化运行状态支持异常恢复；最终业务结果仍以评测运行表和逐题结果表为准。
+
+评测 Agent 不采用另一套普通 RAG Chain，也不直接在评测图中拼接客户答案。每道题的问答节点只能调用知识库问答 Agent 的公开结构化协议：输入问题和评测用户上下文，输出答案、引用、状态、终止原因、命中数和耗时。
+
+### 5.2 评测 Agent 工作流程图
+
+```mermaid
+flowchart TD
+    A[平台管理员提交执行请求] --> B[创建评测运行记录 pending]
+    B --> C[LangGraph 加载任务配置]
+    C --> D{配置和知识库校验}
+    D -- 失败 --> E[运行失败并保存错误]
+    D -- 通过 --> F{问题来源}
+    F -- imported --> G[读取并校验问题文件]
+    F -- generated --> H[读取业务描述和知识库内容]
+    H --> I[生成 N 个测试问题并去重]
+    G --> J[冻结问题列表和配置快照]
+    I --> J
+    J --> K[更新运行状态 running]
+    K --> L[并发分发测试问题]
+    L --> M[调用知识库问答 Agent]
+    M --> N{单题结果}
+    N -- 成功 --> O[记录答案、引用和耗时]
+    N -- 降级 --> P[记录降级结果]
+    N -- 超时或错误 --> Q[记录错误结果并继续]
+    O --> R[汇总逐题结果]
+    P --> R
+    Q --> R
+    R --> S[计算指标]
+    S --> T[执行门禁判断]
+    T --> U[保存指标、结论和报告]
+    U --> V[运行完成 completed]
+    E --> W[运行失败 failed]
+```
+
+### 5.2.1 LangGraph 内部流程图
+
+下面是评测 Agent 在 LangGraph 中的实际图结构。`execute_case` 通过 `Send` 按问题拆分为多个并行分支，所有分支完成后再回到 `collect_results` 汇总；单题异常不会直接走全局失败分支，而是转换为逐题结果后继续汇总。
+
+```mermaid
+flowchart TD
+    START((START)) --> load_task[load_task\n读取任务和运行记录]
+    load_task --> validate_task[validate_task\n校验任务、知识库和配置]
+    validate_task --> validate_route{校验是否通过}
+    validate_route -- 否 --> fail_task[fail_task\n保存任务级错误]
+    fail_task --> END_FAILED((END\nfailed))
+    validate_route -- 是 --> prepare_questions[prepare_questions\n导入或生成问题]
+    prepare_questions --> prepare_route{问题是否有效}
+    prepare_route -- 否 --> fail_dataset[fail_dataset\n记录 DATASET_INVALID]
+    fail_dataset --> END_DATASET((END\nfailed))
+    prepare_route -- 是 --> freeze_run[freeze_run\n冻结问题和配置快照]
+    freeze_run --> dispatch_cases[dispatch_cases\n使用 Send 分发问题]
+    dispatch_cases --> execute_case_1[execute_case\n调用知识库问答 Agent]
+    dispatch_cases --> execute_case_2[execute_case\n调用知识库问答 Agent]
+    dispatch_cases --> execute_case_n[execute_case\n调用知识库问答 Agent]
+    execute_case_1 --> case_result_1[collect_case_result\n保存逐题结果]
+    execute_case_2 --> case_result_2[collect_case_result\n保存逐题结果]
+    execute_case_n --> case_result_n[collect_case_result\n保存逐题结果]
+    case_result_1 --> collect_results[collect_results\nReducer 汇总所有分支]
+    case_result_2 --> collect_results
+    case_result_n --> collect_results
+    collect_results --> join_results{全部问题是否完成}
+    join_results -- 否，等待剩余分支 --> collect_results
+    join_results -- 是 --> calculate_metrics[calculate_metrics\n计算指标]
+    calculate_metrics --> evaluate_gates[evaluate_gates\n执行门禁判断]
+    evaluate_gates --> persist_report[persist_report\n保存指标和结论]
+    persist_report --> END_COMPLETED((END\ncompleted))
+
+    execute_case_1 -. 单题异常 .-> case_result_1
+    execute_case_2 -. 超时或降级 .-> case_result_2
+    execute_case_n -. 单题异常 .-> case_result_n
+```
+
+对应的 LangGraph 编排关系为：
+
+```text
+START
+  -> load_task
+  -> validate_task
+  -> prepare_questions
+  -> freeze_run
+  -> dispatch_cases
+       ├─ Send(execute_case, case_1) -> collect_case_result
+       ├─ Send(execute_case, case_2) -> collect_case_result
+       └─ Send(execute_case, case_N) -> collect_case_result
+  -> calculate_metrics
+  -> evaluate_gates
+  -> persist_report
+  -> END
+```
+
+关键实现约束：
+
+- `dispatch_cases` 只负责分发，不执行问答；并发数量由 `execution.concurrency` 控制。
+- `execute_case` 只能调用知识库问答 Agent 的公开结构化入口，不能在评测图中创建新的 RAG Chain。
+- `collect_case_result` 负责把成功、降级、超时和异常统一转换为 `CaseEvaluationResult`。
+- 汇总节点只有在所有已分发问题都产生结果后才能继续，避免提前计算总体指标。
+- `calculate_metrics` 和 `evaluate_gates` 是独立节点，指标计算与合格判断不能混在问答节点中。
+- 任务级异常进入 `fail_task`；单题异常进入逐题结果，不直接终止整张图。
+
+### 5.3 LangGraph 状态设计
+
+评测图的状态只保存评测编排所需的数据，不保存无关的模型内部消息：
+
+| 状态字段 | 说明 |
+|---|---|
+| `evaluation_id` | 评测运行 ID |
+| `task_id` | 评测任务 ID |
+| `config_snapshot` | 本次运行冻结的配置 |
+| `questions` | 已导入或生成并校验后的问题列表 |
+| `question_index` | 当前处理位置或分发进度 |
+| `case_results` | 已完成问题的逐题结果摘要 |
+| `metrics` | 指标计算结果 |
+| `conclusion` | `passed`、`failed` 或 `indeterminate` |
+| `error` | 任务级错误摘要 |
+| `status` | 当前运行状态 |
+
+逐题执行时，单题状态应包含 `case_no`、问题、来源、答案状态、引用摘要、耗时、错误编码和指标结果。完整答案是否保存由任务配置和数据保留策略决定。
+
+### 5.4 工作流节点职责
+
+| 节点 | 职责 | 失败处理 |
+|---|---|---|
+| `load_task` | 读取任务和配置快照 | 任务不存在则结束为 `failed` |
+| `validate_task` | 校验超级管理员发起的运行、知识库和配置 | 配置错误则不进入问答阶段 |
+| `prepare_questions` | 导入问题或调用生成器得到 N 个问题 | 记录 `DATASET_INVALID` |
+| `freeze_run` | 固化问题列表、模型和门禁配置 | 落库失败则结束为 `failed` |
+| `dispatch_cases` | 按并发限制分发逐题执行 | 不直接生成答案 |
+| `execute_case` | 调用唯一知识库问答 Agent | 单题错误转为逐题失败结果 |
+| `collect_case_result` | 保存逐题结果并更新进度 | 单题落库失败记录任务级错误 |
+| `calculate_metrics` | 计算基础和可用高级指标 | 无法计算的指标标记 `indeterminate` |
+| `evaluate_gates` | 比较实际值与门禁阈值 | 门禁不通过但任务仍正常完成 |
+| `persist_report` | 保存总体指标、结论和运行结束时间 | 持久化失败则运行标记 `failed` |
+
+### 5.5 平台接口与工作流的关系
+
+平台接口不直接等待全部模型调用完成。执行接口的处理方式为：
+
+1. Service 校验当前用户是 `p_super_admin`，校验任务状态和是否已有运行中的批次。
+2. Service 在事务中创建 `t_evaluation_run`，初始状态为 `pending`，返回 `run_id`。
+3. Worker 或受控后台任务启动 LangGraph，更新运行状态为 `running`。
+4. 前端按 `run_id` 查询运行详情和逐题进度，展示状态和已完成数量。
+5. LangGraph 完成后写入指标、门禁结果和总体结论，运行状态更新为 `completed` 或 `failed`。
+
+这样可以避免 HTTP 请求超时，也可以让平台管理员离开详情页后继续执行。Worker 只负责调度评测图，不承载新的业务问答链路。
+
 ## 6. Agent 目录设计
 
 ```text
@@ -322,6 +483,8 @@ app/agents/
 └── evaluation/
     ├── __init__.py
     ├── agent.py                     # 评测 Agent 编排入口
+    ├── graph.py                     # LangGraph 图定义和节点编排
+    ├── state.py                     # 评测图状态协议
     ├── config.py                    # 加载并校验 etc/evaluation.yaml
     ├── models.py                    # 评测任务、问题、门禁和报告模型
     ├── dataset.py                   # 问题文件加载和校验
@@ -330,6 +493,8 @@ app/agents/
     ├── metrics.py                   # 指标聚合和门禁判断
     ├── report.py                    # JSON/Markdown 报告生成
     └── policies.py                  # 评测权限、并发、超时和数据脱敏策略
+workers/
+└── evaluation.py                    # 评测图后台调度入口
 ```
 
 ### 6.1 与知识库问答 Agent 的边界
@@ -603,10 +768,127 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 ### 12.6 数据和状态设计
 
-建议新增两类持久化数据：
+自主评测需要持久化“任务定义、执行批次和逐题结果”三类数据。建议新增以下三张表，统一维护在 `scripts/db/data_table_ddl.sql` 中。表之间只保存业务关联字段，不创建数据库外键约束，由 Service 层负责关联完整性、租户边界和删除策略。
 
-- 评测任务：保存名称、知识库 ID、问题配置、业务范围、执行配置、门禁配置、创建人、状态和删除时间。
-- 评测运行：保存任务 ID、运行状态、配置快照、开始/结束时间、总体结论、指标 JSON、逐题结果 JSON、错误信息和执行人。
+#### 12.6.1 评测任务表 `t_evaluation_task`
+
+一条记录代表一个可重复执行的评测任务，保存任务配置，不保存某次执行的临时状态。
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| `id` | `bigint generated by default as identity` | 是 | 评测任务主键 |
+| `name` | `varchar(255)` | 是 | 评测任务名称 |
+| `kb_id` | `bigint` | 是 | 目标知识库 ID，逻辑关联 `t_knowledge_base.id` |
+| `question_source` | `varchar(32)` | 是 | `imported` 外部导入，`generated` Agent 生成 |
+| `question_file` | `text` | 否 | 外部问题文件标识或存储路径；不得保存不必要的本机绝对路径 |
+| `question_count` | `integer` | 是 | 本次计划执行的问题数量 |
+| `business_scope_source` | `varchar(64)` | 是 | `description`、`knowledge_base` 或 `description_and_knowledge_base` |
+| `business_scope_description` | `text` | 否 | 外部业务范围和测试目标 |
+| `question_instruction` | `text` | 否 | 问题生成补充要求 |
+| `execution_config` | `jsonb` | 是 | 用户、并发、超时、重试和会话策略 |
+| `gate_config` | `jsonb` | 是 | 指标门禁、比较符和阈值快照 |
+| `status` | `varchar(32)` | 是 | `active` 或 `deleted` |
+| `created_by` | `bigint` | 是 | 创建人用户 ID |
+| `created_at` | `timestamptz` | 是 | 创建时间 |
+| `updated_at` | `timestamptz` | 是 | 更新时间 |
+| `deleted_at` | `timestamptz` | 否 | 逻辑删除时间 |
+
+建议索引：
+
+- `idx_t_evaluation_task_kb_status`：`(kb_id, status)`，按知识库筛选有效任务。
+- `idx_t_evaluation_task_status_created`：`(status, created_at)`，支持任务列表分页。
+- `idx_t_evaluation_task_created_by`：`(created_by)`，支持按创建人查询。
+
+#### 12.6.2 评测运行表 `t_evaluation_run`
+
+一条记录代表评测任务的一次执行。同一个任务可以有多次运行，每次运行必须保留独立配置快照和结果，不能覆盖历史运行。
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| `id` | `bigint generated by default as identity` | 是 | 评测运行主键 |
+| `task_id` | `bigint` | 是 | 评测任务 ID，逻辑关联 `t_evaluation_task.id` |
+| `run_no` | `integer` | 是 | 任务内递增的运行序号 |
+| `status` | `varchar(32)` | 是 | `pending`、`running`、`completed`、`failed` 或 `cancelled` |
+| `conclusion` | `varchar(32)` | 否 | `passed`、`failed` 或 `indeterminate` |
+| `config_snapshot` | `jsonb` | 是 | 本次执行使用的完整配置快照 |
+| `question_count` | `integer` | 是 | 本次实际执行的问题数量 |
+| `success_count` | `integer` | 是 | 成功完成问答的问题数 |
+| `error_count` | `integer` | 是 | 错误或超时的问题数 |
+| `fallback_count` | `integer` | 是 | 降级回答的问题数 |
+| `metrics` | `jsonb` | 否 | 总体指标、中文名称、实际值、阈值和判断结果 |
+| `error_message` | `text` | 否 | 执行失败时的错误摘要 |
+| `started_at` | `timestamptz` | 否 | 开始执行时间 |
+| `finished_at` | `timestamptz` | 否 | 执行结束时间 |
+| `executed_by` | `bigint` | 是 | 发起执行的用户 ID |
+| `created_at` | `timestamptz` | 是 | 运行记录创建时间 |
+| `updated_at` | `timestamptz` | 是 | 运行记录更新时间 |
+
+建议约束和索引：
+
+- 唯一约束 `unique (task_id, run_no)`，保证任务内运行序号不重复。
+- 同一 `task_id` 同时只能存在一条 `pending` 或 `running` 运行记录，具体由 Service 层在事务中校验。
+- `idx_t_evaluation_run_task_created`：`(task_id, created_at)`，查询任务运行历史。
+- `idx_t_evaluation_run_status`：`(status)`，查询执行中的任务。
+- `idx_t_evaluation_run_conclusion`：`(conclusion)`，按评测结论筛选。
+
+#### 12.6.3 逐题结果表 `t_evaluation_case_result`
+
+一条记录代表一次运行中的一道测试题。逐题结果单独建表，支持结果分页、失败样品筛选和详情查看，避免把全部结果只塞进运行表的 JSON 中。
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| `id` | `bigint generated by default as identity` | 是 | 逐题结果主键 |
+| `run_id` | `bigint` | 是 | 评测运行 ID，逻辑关联 `t_evaluation_run.id` |
+| `case_no` | `integer` | 是 | 本次运行内的问题序号 |
+| `question` | `text` | 是 | 测试问题 |
+| `question_hash` | `varchar(128)` | 是 | 问题摘要哈希，用于去重和脱敏检索 |
+| `question_source` | `varchar(32)` | 是 | `imported` 或 `generated` |
+| `question_basis` | `varchar(64)` | 否 | `description`、`knowledge_base` 或 `both` |
+| `answer` | `text` | 否 | 回答内容，受报告保留策略控制 |
+| `case_status` | `varchar(32)` | 是 | `completed`、`error`、`timeout` 或 `fallback` |
+| `termination_reason` | `varchar(128)` | 否 | Agent 终止原因 |
+| `citation_count` | `integer` | 是 | 返回引用数量 |
+| `retrieval_hit_count` | `integer` | 是 | 检索命中数量 |
+| `duration_ms` | `integer` | 否 | 单题耗时 |
+| `metrics` | `jsonb` | 否 | 单题指标，如忠实度、相关性、引用准确率 |
+| `error_code` | `varchar(64)` | 否 | 错误编码 |
+| `error_message` | `text` | 否 | 错误摘要，不保存敏感信息 |
+| `metadata` | `jsonb` | 否 | 扩展信息，如会话组、检索摘要和模型版本 |
+| `created_at` | `timestamptz` | 是 | 创建时间 |
+
+建议约束和索引：
+
+- 唯一约束 `unique (run_id, case_no)`，保证一道题在一次运行中只有一条结果。
+- `idx_t_evaluation_case_run_status`：`(run_id, case_status)`，筛选失败、超时和降级样品。
+- `idx_t_evaluation_case_run_no`：`(run_id, case_no)`，按题号查询结果。
+- `idx_t_evaluation_case_question_hash`：`(question_hash)`，支持重复问题识别。
+
+#### 12.6.4 数据关系
+
+```text
+t_evaluation_task
+        1
+        │
+        └── N  t_evaluation_run
+                    │
+                    └── N  t_evaluation_case_result
+```
+
+逻辑关系和删除规则：
+
+- 创建运行前，Service 校验任务存在、状态为 `active`，且目标知识库有效。
+- 删除任务使用逻辑删除，将任务状态改为 `deleted`，同时禁止新增运行。
+- 删除任务时，其运行记录和逐题结果默认保留，便于审计；正常列表不再展示该任务。
+- 查询运行详情时必须先校验任务归属，不能通过任意 `run_id` 越权读取其他任务结果。
+- 任务配置发生修改时创建新配置版本或新任务，不直接改变已经完成运行的配置快照。
+
+#### 12.6.5 数据库维护要求
+
+- 三张表的 DDL 统一维护在 `scripts/db/data_table_ddl.sql`。
+- 菜单、操作权限和 `p_super_admin` 授权关系统一维护在 `scripts/db/data_table_dml.sql`。
+- 不创建实际数据库外键，关联完整性由 Service / DB Repository 保证。
+- 所有时间字段使用 `timestamptz`，所有主键使用 `bigint generated by default as identity primary key`。
+- `jsonb` 只保存结构化评测配置和指标，不保存密码、Token、API Key 或本机绝对路径。
 
 任务状态：`active`、`deleted`。
 
@@ -639,7 +921,43 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 ## 13. 实施阶段
 
-### 阶段一：问题文件和配置
+### 阶段一：原型设计与评审
+
+自主评测模块必须先完成原型设计，原型评审通过后才能进入接口和代码开发。原型设计不是前端编码的附属步骤，而是本项目的正式开发阶段和后续实现依据。
+
+原型稿至少需要覆盖：
+
+- 平台管理 / 自主评测列表页：页面标题、查询条件、分页、列表字段、状态展示和操作列。
+- 新增自主评测表单：问题来源切换、知识库选择、问题文件或生成数量、业务范围、执行参数和指标门禁。
+- 执行中的状态反馈：执行按钮禁用、运行状态、重复执行限制和失败提示。
+- 评测结果详情：总体结论、指标卡片、配置快照、逐题结果、失败样品和长文本滚动区域。
+- 删除确认和空状态、加载状态、错误状态、无权限状态。
+- 平台超级管理员与其他角色的菜单、路由和操作按钮差异。
+
+独立原型稿：[自主评测模块原型设计.md](自主评测模块原型设计.md)。自主评测相关后续设计文档统一放在当前 `docs/自主评测/` 目录下。
+
+原型评审输出：
+
+1. 页面原型稿或可交互原型。
+2. 页面字段、状态和交互说明。
+3. 页面与 `platform_evaluations` 菜单、`evaluation:*` 操作权限的对应关系。
+4. 评测任务列表、任务详情和评测运行详情的信息层级。
+
+原型阶段验收条件：页面流程完整覆盖“新增 → 执行 → 查看结果 → 删除”，查询和分页方案明确，异常和权限状态明确，产品或需求负责人评审通过并形成评审记录。
+
+### 阶段二：设计文档与接口协议
+
+原型评审通过后，补充并冻结以下设计内容：
+
+- 需求设计：任务、运行、结果、状态和异常规则。
+- 数据设计：评测任务、评测运行、逐题结果和审计字段。
+- 权限设计：菜单、页面操作、后端超级管理员校验和前端 `v-permission` 绑定。
+- 接口设计：新增、分页查询、执行、删除、运行记录和结果详情接口。
+- 评测 Agent 协议：配置输入、问题生成、问答调用、指标输出和报告结构。
+
+接口文档中的字段名称、状态编码、错误码、分页结构和权限编码必须与原型稿保持一致。该阶段完成后才能开始后端、Agent 和前端代码开发。
+
+### 阶段三：问题文件和配置
 
 - 将现有知识库问答 Agent 从 `app/agents/` 根目录迁移到 `app/agents/knowledge/`，保持对外调用协议不变。
 - 建立 `app/agents/evaluation/` 独立目录。
@@ -650,15 +968,18 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 验收：两个 Agent 均有独立目录和入口；空问题和非法文件能够被拒绝，导入问题和自动生成的问题都能够生成评测任务。
 
-### 阶段二：执行编排
+### 阶段四：执行编排
 
-- 接入唯一知识库问答 Agent 入口。
-- 实现 N 个问题的批量执行、超时、并发、重试和错误记录。
+- 使用 LangGraph 实现评测图、状态协议和节点编排。
+- 接入唯一知识库问答 Agent 入口，评测图不得创建第二套普通 RAG 主链路。
+- 实现 Worker 或受控后台任务启动评测图，平台接口只创建运行记录并返回 `run_id`。
+- 实现 N 个问题的批量执行、超时、并发、重试、进度更新和错误记录。
+- 实现单题失败继续、任务级失败终止和运行状态恢复。
 - 按需接入检索观测接口。
 
-验收：外部导入和 Agent 自动生成两种方式都能够完成一批测试问题，并保存每题原始结果。
+验收：外部导入和 Agent 自动生成两种方式都能够启动 LangGraph 评测流程，完成一批测试问题，并保存每题原始结果和运行进度。
 
-### 阶段三：指标和门禁
+### 阶段五：指标和门禁
 
 - 先接入成功率、错误率、降级率、引用率和响应时间等基础指标。
 - 对存在标准答案的问题，再接入检索、生成和拒答指标。
@@ -667,7 +988,7 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 验收：每个可计算指标都有实际值、阈值、通过状态和样本数；无法计算的高级指标明确标记为“无法评估”。
 
-### 阶段四：报告和对比
+### 阶段六：报告和对比
 
 - 生成 JSON 和 Markdown 报告。
 - 支持基线报告与调优报告对比。
@@ -675,7 +996,7 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 验收：用户只提供问题文件、知识库 ID 和可选门禁配置即可得到基础评测结论。
 
-### 阶段五：生产化治理
+### 阶段七：生产化治理
 
 - 增加评测任务历史、版本和审计记录。
 - 增加人工复核结果回流。
@@ -683,7 +1004,7 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 验收：任务配置和每次运行结果可追溯，敏感信息不会进入评测报告，删除任务后不再出现在正常查询结果中。
 
-### 阶段六：平台管理自主评测模块
+### 阶段八：平台管理自主评测模块
 
 - 新增 `platform_evaluations` 菜单、`evaluation:*` 页面操作和仅 `p_super_admin` 的授权关系。
 - 新增评测任务、评测运行和结果明细的数据模型及 DDL/DML。
@@ -693,6 +1014,26 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 - 执行中的任务禁止重复执行和删除，历史运行结果只读保存。
 
 验收：平台超级管理员可以完成“新增 → 执行 → 查看结果 → 删除”闭环；其他角色访问菜单和接口均被拒绝。
+
+各阶段必须严格遵守以下开发顺序：
+
+```text
+原型设计
+    ↓
+原型评审
+    ↓
+需求、数据、权限和接口文档
+    ↓
+评测 Agent 与后端接口实现
+    ↓
+前端页面与控件权限绑定
+    ↓
+前后端联调
+    ↓
+测试、评审和验收
+```
+
+未完成原型评审和接口文档冻结前，不得直接开始自主评测模块的前端页面编码。
 
 ## 14. 验收标准
 

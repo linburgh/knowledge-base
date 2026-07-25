@@ -25,7 +25,7 @@ def _validate(kb_id: int, query: str, top_k: int, mode: str) -> str:
         raise BusiException("query 不能为空")
     if top_k < 1 or top_k > MAX_TOP_K:
         raise BusiException("top_k 必须在 1 到 50 之间")
-    if mode != "vector":
+    if mode not in {"vector", "keyword", "hybrid"}:
         raise BusiException("检索模式不合法")
     return normalized_query
 
@@ -43,6 +43,8 @@ async def search(
     query: str,
     top_k: int | None = None,
     mode: str = "vector",
+    config: dict[str, Any] | None = None,
+    index_version_id: int | None = None,
 ) -> RetrievalResponse:
     """检索指定知识库中的相关文档分块。
 
@@ -53,7 +55,7 @@ async def search(
         kb_id: 要检索的知识库 ID。权限过滤的入口也应放在这里或更早的位置。
         query: 用户问题或关键词。会先去除首尾空白，空问题直接拒绝。
         top_k: 本次最多返回多少个分块；不传时使用知识库配置的 retrieval_top_k。
-        mode: 当前固定为 vector，使用 pgvector 余弦距离。
+        mode: vector、keyword 或 hybrid。
 
     Returns:
         包含统一检索结果结构的 RetrievalResponse，供 Search API 或 Chat Service 使用。
@@ -67,29 +69,84 @@ async def search(
         raise BusiException("知识库不存在", status_code=404)
 
     # top_k 未传时沿用知识库配置，显式传入时则覆盖默认值，并统一限制范围。
-    limit = _top_k(top_k, knowledge_base)
+    retrieval_config = (config or {}).get("retrieval", {})
+    configured_top_k = retrieval_config.get("top_k")
+    limit = _top_k(top_k or configured_top_k, knowledge_base)
+    configured_mode = retrieval_config.get("mode") or mode
+    mode = configured_mode
     normalized_query = _validate(kb_id, query, limit, mode)
 
-    # 先把问题转换成向量，再交给 pgvector 按余弦距离排序。
-    # 这里使用知识库保存的 embedding_model，保证问题向量与分块向量模型一致。
-    vectors = await embeddings.embed_texts(
-        [normalized_query],
-        model=knowledge_base.get("embedding_model"),
-    )
-    if not vectors or not vectors[0]:
-        raise BusiException("查询向量为空")
     candidate_limit = limit
-    if CONF.rag.rerank_enabled:
+    rerank_config = (config or {}).get("rerank", {})
+    rerank_enabled = bool(rerank_config.get("enabled", CONF.rag.rerank_enabled))
+    if rerank_enabled:
         candidate_limit = min(
             MAX_TOP_K,
-            limit * max(1, int(CONF.rag.rerank_candidate_multiplier)),
+            int(
+                rerank_config.get("candidate_count")
+                or limit * max(1, int(CONF.rag.rerank_candidate_multiplier))
+            ),
         )
-    chunks = await retrievers.vector_search(db, kb_id, vectors[0], candidate_limit)
-    if CONF.rag.rerank_enabled:
+    vector_chunks: list[dict[str, Any]] = []
+    keyword_chunks: list[dict[str, Any]] = []
+    if mode in {"vector", "hybrid"}:
+        vectors = await embeddings.embed_texts(
+            [normalized_query],
+            model=knowledge_base.get("embedding_model"),
+        )
+        if not vectors or not vectors[0]:
+            raise BusiException("查询向量为空")
+        vector_chunks = await retrievers.vector_search(
+            db,
+            kb_id,
+            vectors[0],
+            candidate_limit,
+            index_version_id=index_version_id,
+        )
+    if mode in {"keyword", "hybrid"}:
+        keyword_chunks = await retrievers.keyword_search(
+            db,
+            kb_id,
+            normalized_query,
+            candidate_limit,
+            index_version_id=index_version_id,
+        )
+    if mode == "vector":
+        chunks = vector_chunks
+    elif mode == "keyword":
+        chunks = keyword_chunks[:limit]
+    else:
+        keyword_weight = int(retrieval_config.get("keyword_weight") or 0)
+        chunks = retrievers.merge_hybrid_results(
+            vector_chunks,
+            keyword_chunks,
+            candidate_limit,
+            keyword_weight,
+        )
+    similarity_threshold = retrieval_config.get("similarity_threshold")
+    if similarity_threshold is not None and mode != "keyword":
+        chunks = [
+            chunk
+            for chunk in chunks
+            if float(chunk.get("score") or 0) >= float(similarity_threshold)
+        ]
+    if rerank_enabled:
         try:
-            chunks = await rerank(normalized_query, chunks, limit)
+            chunks = await rerank(
+                normalized_query,
+                chunks,
+                int(rerank_config.get("final_return_count") or limit),
+                model=rerank_config.get("model"),
+                timeout_seconds=rerank_config.get("timeout_seconds"),
+            )
         except BusiException:
-            if not CONF.rag.rerank_fail_open:
+            fail_strategy = rerank_config.get("fail_strategy")
+            fail_open = (
+                fail_strategy == "使用向量结果"
+                if fail_strategy
+                else CONF.rag.rerank_fail_open
+            )
+            if not fail_open:
                 raise
             LOG.exception(
                 "Rerank unavailable, using vector candidates kb_id={} model={}",

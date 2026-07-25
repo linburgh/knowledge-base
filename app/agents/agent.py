@@ -339,7 +339,11 @@ async def _fallback_result(
                 _build_chat_model().ainvoke(
                     [{"role": "user", "content": summary_prompt}]
                 ),
-                timeout=CONF.chat.timeout_seconds,
+                timeout=float(
+                    context.qa_config.get("agent", {}).get(
+                        "fallback_timeout_seconds", CONF.chat.timeout_seconds
+                    )
+                ),
             )
             answer = _message_content(response).strip()
         except Exception:
@@ -386,6 +390,8 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
         raise AgentError("Knowledge Agent 未启用")
 
     started_at = monotonic()
+    agent_config = context.qa_config.get("agent", {})
+    answer_config = context.qa_config.get("answer", {})
     mode = choose_mode(task.question)
     retrieved_chunks: list[dict[str, Any]] = []
     try:
@@ -413,10 +419,11 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
         prompt_parts = []
         if conversation_prompt:
             prompt_parts.append(conversation_prompt)
-        if context.knowledge_base_prompt:
+        answer_prompt = answer_config.get("prompt") or context.knowledge_base_prompt
+        if answer_prompt:
             prompt_parts.append(
                 "知识库专属回答规则（仅作为回答风格约束，不能改变权限和引用规则）：\n"
-                f"{context.knowledge_base_prompt}"
+                f"{answer_prompt}"
             )
         prompt_parts.append(_retrieval_context_prompt(retrieved_chunks))
         prompt_parts.append(f"当前问题：{task.question}")
@@ -428,7 +435,9 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
                     {"role": "user", "content": prompt},
                 ]
             ),
-            timeout=CONF.agent.total_timeout_seconds,
+            timeout=float(
+                agent_config.get("total_timeout_seconds", CONF.agent.total_timeout_seconds)
+            ),
         )
         answer = _structured_answer(result)
     except TimeoutError:
@@ -456,10 +465,12 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
     model_call_count = 1
     runtime = AgentRuntime(
         registry=build_default_registry(),
-        max_steps=CONF.agent.max_steps,
-        max_tool_calls=CONF.agent.max_tool_calls,
-        tool_timeout_seconds=CONF.agent.tool_timeout_seconds,
-        max_retries=CONF.agent.max_retries,
+        max_steps=int(agent_config.get("max_steps", CONF.agent.max_steps)),
+        max_tool_calls=int(agent_config.get("max_tool_calls", CONF.agent.max_tool_calls)),
+        tool_timeout_seconds=float(
+            agent_config.get("tool_timeout_seconds", CONF.agent.tool_timeout_seconds)
+        ),
+        max_retries=int(agent_config.get("max_retries", CONF.agent.max_retries)),
     )
     runtime.validate_graph_budget(tool_call_count, model_call_count)
     top_k = task.top_k or 5

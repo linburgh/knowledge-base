@@ -46,13 +46,6 @@ database_url = Opt(
     default="sqlite:///./data/app.db",
 )
 
-dev_user_id = Opt(
-    name="dev_user_id",
-    description="Development-only fallback user id",
-    schema=StrictStr,
-    default="dev-user",
-)
-
 http_trust_env = Opt(
     name="http_trust_env",
     description="Whether outbound HTTP clients should trust proxy environment variables",
@@ -96,7 +89,6 @@ ALL_OPTS = (
     log_file,
     log_level,
     database_url,
-    dev_user_id,
     http_trust_env,
     request_id_header,
     db_connect_on_startup,

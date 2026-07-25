@@ -5,7 +5,6 @@ default:
   log_file: app.log
   log_level: INFO
   database_url: "${KB_DEFAULT_DATABASE_URL}"
-  dev_user_id: dev-user
   http_trust_env: false
   request_id_header: X-Request-ID
   db_connect_on_startup: true
@@ -61,6 +60,3 @@ embedding:
   api_key: "${KB_EMBEDDING_API_KEY}"
   base_url: "${KB_EMBEDDING_BASE_URL}"
   timeout_seconds: 30
-
-security:
-  dev_user_id: dev-user

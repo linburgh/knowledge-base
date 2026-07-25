@@ -61,11 +61,19 @@
     .stat { padding:18px 20px; border:1px solid var(--line); border-radius:14px; background:#fff; }
     .stat strong { display:block; margin-top:8px; font-size:24px; }
     .chat { display:grid; min-height:510px; grid-template-columns:220px 1fr 290px; gap:18px; }
-    .sessions { padding:20px 14px; border-right:1px solid var(--line); }
-    .session-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; font-weight:700; }
-    .session-new { width:100%; margin-bottom:17px; padding:10px; border:1px solid #dce2ed; border-radius:8px; color:var(--blue); background:#fff; }
+    .sessions { display:flex; min-height:0; flex-direction:column; padding:20px 14px; border-right:1px solid var(--line); background:#fff; }
+    .session-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; font-weight:700; }
+    .session-search { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+    .session-search input { min-width:0; flex:1; padding:9px 10px; border:1px solid #dce2ed; border-radius:8px; font:inherit; }
+    .session-search input:focus { border-color:var(--blue); outline:0; box-shadow:0 0 0 3px rgba(93,108,240,.1); }
+    .session-search button { padding:9px 10px; color:#53617b; background:#eef1f7; font-size:12px; }
+    .session-list { min-height:0; flex:1; overflow:auto; padding-right:3px; background:#fff; }
+    .session-list.is-loading { opacity:.6; pointer-events:none; }
+    .session-empty { padding:16px 8px; color:var(--muted); font-size:12px; text-align:center; }
+    .session-new { width:100%; margin-bottom:17px; padding:10px; border:1px solid #dce2ed; border-radius:8px; color:var(--blue); background:#fff; appearance:none; }
+    .session-new.active { color:var(--blue); background:#eef0ff; }
     .session-group { padding:11px 8px 7px; color:#a0a9b8; font-size:12px; }
-    .session-item { padding:10px 8px; border-radius:8px; color:var(--blue); background:#eef0ff; font-size:13px; }
+    .session-item { display:flex; align-items:center; justify-content:space-between; padding:10px 8px; border-radius:8px; color:var(--blue); background:#fff; font-size:13px; }
     .messages { padding:20px; }
     .bubble { max-width:78%; margin:13px 0; padding:13px 16px; border-radius:13px; background:#f0f3f8; line-height:1.7; }
     .bubble.user { margin-left:auto; color:#fff; background:var(--blue); }
@@ -73,6 +81,12 @@
     .composer textarea { width:100%; min-height:75px; padding:12px; border:1px solid #dce2ed; border-radius:9px; resize:none; font:inherit; }
     .composer .row { display:flex; padding:10px 0 0; }
     .citations { padding:20px; border-left:1px solid var(--line); }
+    .chat-empty { display:flex; min-height:300px; flex-direction:column; align-items:center; justify-content:center; color:#9aa8c3; }
+    .empty-icon { color:#7483f1; font-size:32px; line-height:1; }
+    .chat-empty p { margin-top:18px; font-size:15px; }
+    .citation-head { display:flex; align-items:center; justify-content:space-between; }
+    .citation-head h2 { margin:0; font-size:16px; }
+    .citation-empty { padding-top:58px; color:#9aa8c3; font-size:13px; text-align:center; }
     .citation { padding:13px 0; border-bottom:1px solid var(--line); }
     .link-button, .link-danger { margin-right:14px; padding:0; background:transparent; font-size:13px; }
     .refresh-button { margin-left:8px; }
@@ -248,7 +262,7 @@
 
         <div id="workspace-docs" class="hidden"><div class="toolbar" style="margin-bottom:16px"><div><h2>当前知识库文档</h2><p>这里只显示“<span class="kb-label">企业制度库</span>”中的文档。</p></div><button onclick="openDrawer('upload')">＋ 上传文档</button></div><div class="filter-bar"><span class="filter-label">文档名称</span><input placeholder="搜索文档名称" /><span class="filter-label">文档状态</span><select><option>全部状态</option><option>待处理</option><option>处理中</option><option>已完成</option><option>失败</option></select><button>查询</button><button class="ghost">重置</button></div><div class="card"><div class="table-head"><span>文档名称</span><span>类型 / 大小</span><span>文档状态</span><span>操作</span></div><div class="row"><div><strong>员工手册.pdf</strong></div><span class="muted">PDF · 2.4 MB</span><span class="tag">ready</span><span><button class="link-button" onclick="viewDocument('员工手册.pdf')">查看</button> <button class="link-danger" onclick="deleteDocument('员工手册.pdf')">删除</button></span></div><div class="row"><div><strong>报销制度.md</strong></div><span class="muted">Markdown · 18 KB</span><span class="tag warn">processing</span><span><button class="link-button" onclick="viewDocument('报销制度.md')">查看</button> <button class="link-danger" onclick="deleteDocument('报销制度.md')">删除</button></span></div><div class="row"><div><strong>旧版报销制度.pdf</strong></div><span class="muted">PDF · 1.1 MB</span><span class="tag fail">failed</span><span><button class="link-button" onclick="viewDocument('旧版报销制度.pdf')">查看</button> <button class="link-button" onclick="reindexDocument('旧版报销制度.pdf')">重新索引</button> <button class="link-danger" onclick="deleteDocument('旧版报销制度.pdf')">删除</button></span></div><div class="pagination"><span>共 18 条</span><button>上一页</button><button class="active">1</button><button>2</button><button>下一页</button><select><option>10 条/页</option><option>20 条/页</option><option>50 条/页</option></select></div></div></div>
 
-        <div id="workspace-chat" class="hidden"><div class="toolbar" style="margin-bottom:16px"><div><h2>当前知识库问答</h2><p>回答只基于“<span class="kb-label">企业制度库</span>”中已完成索引的文档。</p></div></div><div class="card chat"><aside class="sessions"><div class="session-head"><span>会话</span></div><button class="session-new" onclick="startNewConversation()">＋ 新建会话</button><div class="session-group">今天</div><div class="session-item">当前对话</div><div class="session-group">历史会话</div><p class="muted">问答后会自动保存会话</p></aside><div class="messages"><div class="bubble user">报销流程需要哪些材料？</div><div class="bubble">根据当前知识库资料，报销需要准备发票、费用明细和直属负责人审批单。</div><div class="composer"><textarea placeholder="输入问题，开始问答" onkeydown="if(event.key === 'Enter' && !event.shiftKey){event.preventDefault();sendQuestion();}"></textarea><div class="row"><span class="muted">Enter 发送 · Shift+Enter 换行</span><button onclick="sendQuestion()">发送问题</button></div></div></div><div class="citations"><h2>参考资料</h2><div class="citation"><strong>[1] 报销制度.md</strong><p class="muted">员工提交报销时，需要准备发票、费用明细和直属负责人审批单。</p></div></div></div></div>
+        <div id="workspace-chat" class="hidden"><div class="toolbar" style="margin-bottom:16px"><div><h2>当前知识库问答</h2><p>回答只基于“<span class="kb-label">医签通产品与使用指南</span>”中已完成索引的文档。</p></div><button class="ghost" onclick="openQaConfig()">问答配置</button></div><div class="card chat"><aside class="sessions"><div class="session-head"><span>会话</span><button class="link-button" onclick="startNewConversation()">＋ 新建会话</button></div><div class="session-search"><input id="session-keyword" placeholder="快速查找会话" onkeydown="if(event.key === 'Enter'){event.preventDefault();searchConversations();}" /></div><button class="session-new active" onclick="startNewConversation()">新会话</button><div id="session-list" class="session-list"><div class="session-item">你是谁 你可以为我做什么 <button class="link-button" onclick="showSessionMenu(event)">···</button></div></div></aside><div class="messages"><div class="chat-empty"><div class="empty-icon">✦</div><p>输入一个问题，开始探索知识库</p></div><div class="composer"><textarea placeholder="输入问题，开始问答" onkeydown="if(event.key === 'Enter' && !event.shiftKey){event.preventDefault();sendQuestion();}"></textarea><div class="row"><span class="muted">Enter 发送 · Shift+Enter 换行</span><button onclick="sendQuestion()">发送问题</button></div></div></div><div class="citations"><div class="citation-head"><h2>参考资料</h2><span class="muted">0 条</span></div><div class="citation-empty">回答后显示参考资料</div></div></div></div>
       </section>
 
       <section id="page-platform" class="hidden">
@@ -302,10 +316,14 @@
     function editKb(name) { openDrawer('kb'); document.getElementById('drawer-title').textContent = '修改知识库'; document.getElementById('drawer-name').value = name; document.getElementById('drawer-tenant').value = '1'; document.getElementById('drawer-description').value = '当前知识库描述'; }
     function deleteKb(name) { if (window.confirm('确认删除“' + name + '”吗？')) window.alert('原型：已提交删除操作'); }
     function sendQuestion() { window.alert('原型：已发送问题'); }
+    function openQaConfig() { window.alert('原型：打开问答配置'); }
+    function showSessionMenu(event) { event.stopPropagation(); window.alert('原型：显示会话重命名、删除操作'); }
     function viewDocument(name) { openDrawer('detail'); document.querySelector('#detail-form > p').textContent = '文档：' + name + '　·　状态：ready'; }
     function reindexDocument(name) { window.alert('原型：重新索引“' + name + '”'); }
     function deleteDocument(name) { if (window.confirm('确认删除“' + name + '”吗？')) window.alert('原型：已提交删除操作'); }
     function startNewConversation() { window.alert('原型：已创建新会话'); }
+    let conversationSearchTimer;
+    function searchConversations() { window.clearTimeout(conversationSearchTimer); const keyword = document.getElementById('session-keyword').value.trim(); const list = document.getElementById('session-list'); list.classList.add('is-loading'); window.setTimeout(() => { list.classList.remove('is-loading'); window.alert(keyword ? '原型：已远程查询“' + keyword + '”' : '原型：已加载全部会话'); }, 350); }
     function selectKb(name) { selectedKnowledgeBase = name; document.getElementById('kb-name').textContent = name; document.querySelectorAll('.kb-label').forEach(el => el.textContent = name); showPage('workspace'); showWorkspaceTab('overview'); }
     function showPage(page) { ['kbs','workspace','platform'].forEach(name => document.getElementById('page-' + name).classList.toggle('hidden', name !== page)); document.getElementById('nav-kbs').classList.toggle('active', page === 'kbs' || page === 'workspace'); document.getElementById('nav-platform').classList.toggle('active', page === 'platform'); if (page === 'platform') showPlatformTab('overview'); }
     function showPlatformTab(tab) { ['overview','users','tenants','orgs','developer'].forEach(name => { document.getElementById('platform-' + name).classList.toggle('hidden', name !== tab); document.getElementById('platform-tab-' + name).classList.toggle('active', name === tab); }); simplifyTenantTable(); addDeleteActions('platform-users', deleteUser); addDeleteActions('platform-tenants', deleteTenant); addUserViewActions(); if (tab === 'orgs') showOrgTree(); if (tab === 'developer') selectDeveloperApi('list'); }

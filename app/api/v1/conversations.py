@@ -36,12 +36,14 @@ async def list(
     kb_id: int | None = None,
     user_id: str | None = None,
     status: str | None = None,
+    keyword: str | None = None,
 ) -> Any:
     try:
         return await conversation_service.list(
             kb_id=kb_id,
             user_id=user_id,
             status=status,
+            keyword=keyword,
         )
     except BusiException as exc:
         common_utils.raise_http_exception(exc)

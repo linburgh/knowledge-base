@@ -46,6 +46,8 @@ def _build_conditions(table: Any, **kwargs: Any) -> list[Any]:
         # 支持 status__ne 这类通用排除条件，供列表默认隐藏逻辑删除数据。
         if key.endswith("__ne"):
             conditions.append(getattr(table.c, key[:-4]) != value)
+        elif key.endswith("__ilike"):
+            conditions.append(getattr(table.c, key[:-7]).ilike(value))
         else:
             conditions.append(getattr(table.c, key) == value)
     return conditions

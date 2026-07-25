@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, literal, or_, select
 
 from app.db.models import Document, DocumentChunk
 
 DOCUMENT_STATUS_READY = "ready"
+
+
+def _keyword_tokens(query: str) -> list[str]:
+    return list(
+        dict.fromkeys(
+            re.findall(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*|[\u4e00-\u9fff]+", query)
+        )
+    )
+
+
 def _chunk_columns() -> list[Any]:
     return [
         DocumentChunk.c.id,
@@ -23,7 +34,15 @@ def _chunk_columns() -> list[Any]:
     ]
 
 
-def _base_query(kb_id: int):
+def _base_query(kb_id: int, index_version_id: int | None = None):
+    conditions = [
+        DocumentChunk.c.kb_id == kb_id,
+        Document.c.kb_id == kb_id,
+        Document.c.status == DOCUMENT_STATUS_READY,
+        func.length(func.trim(DocumentChunk.c.content)) > 0,
+    ]
+    if index_version_id is not None:
+        conditions.append(DocumentChunk.c.index_version_id == index_version_id)
     return (
         select(*_chunk_columns())
         .select_from(
@@ -32,12 +51,7 @@ def _base_query(kb_id: int):
                 Document.c.id == DocumentChunk.c.document_id,
             )
         )
-        .where(
-            DocumentChunk.c.kb_id == kb_id,
-            Document.c.kb_id == kb_id,
-            Document.c.status == DOCUMENT_STATUS_READY,
-            func.length(func.trim(DocumentChunk.c.content)) > 0,
-        )
+        .where(*conditions)
     )
 
 
@@ -54,6 +68,7 @@ async def vector_search(
     kb_id: int,
     query_embedding: list[float],
     top_k: int,
+    index_version_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """使用 pgvector 从指定知识库召回最相似的文档分块。
 
@@ -93,7 +108,7 @@ async def vector_search(
     #          t_document_chunk.chunk_index ASC
     # LIMIT :top_k;
     statement = (
-        _base_query(kb_id)
+        _base_query(kb_id, index_version_id)
         # 额外返回原始距离和相似度，供接口响应和后续排序/引用使用。
         .add_columns(distance_expression.label("vector_distance"), score_expression)
         # 只保留已经生成 embedding 的分块，避免 NULL 无法参与向量计算。
@@ -121,4 +136,74 @@ async def vector_search(
     return result
 
 
-__all__ = ("vector_search",)
+async def keyword_search(
+    db,
+    kb_id: int,
+    query: str,
+    top_k: int,
+    index_version_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """使用关键词匹配召回分块，适合产品名、编号和专业术语。"""
+    tokens = _keyword_tokens(query)
+    if not tokens:
+        return []
+    match_conditions = [DocumentChunk.c.content.ilike(f"%{token}%") for token in tokens]
+    score_expression = sum(
+        (
+            case(
+                (DocumentChunk.c.content.ilike(f"%{token}%"), 1),
+                else_=0,
+            )
+            for token in tokens
+        ),
+        literal(0),
+    ).label("keyword_score")
+    statement = (
+        _base_query(kb_id, index_version_id)
+        .add_columns(score_expression)
+        .where(or_(*match_conditions))
+        .order_by(score_expression.desc(), DocumentChunk.c.chunk_index.asc())
+        .limit(top_k)
+    )
+    rows = await db.fetch_all(statement)
+    denominator = float(len(tokens))
+    result = []
+    for row in rows:
+        data = dict(row)
+        score = float(data.pop("keyword_score", 0) or 0) / denominator
+        result.append(_serialize_chunk(data, score))
+    return result
+
+
+def merge_hybrid_results(
+    vector_chunks: list[dict[str, Any]],
+    keyword_chunks: list[dict[str, Any]],
+    top_k: int,
+    keyword_weight: int,
+) -> list[dict[str, Any]]:
+    """按关键词权重合并两路结果，返回统一排序结果。"""
+    weight = max(0, min(100, keyword_weight)) / 100
+    vector_max = max((float(item.get("score") or 0) for item in vector_chunks), default=0.0)
+    keyword_max = max((float(item.get("score") or 0) for item in keyword_chunks), default=0.0)
+    merged: dict[int, dict[str, Any]] = {}
+    for item in vector_chunks:
+        chunk = dict(item)
+        chunk["vector_score"] = float(item.get("score") or 0)
+        chunk["keyword_score"] = 0.0
+        merged[int(item["id"])] = chunk
+    for item in keyword_chunks:
+        chunk_id = int(item["id"])
+        chunk = merged.setdefault(chunk_id, dict(item))
+        chunk["vector_score"] = float(chunk.get("vector_score") or 0)
+        chunk["keyword_score"] = float(item.get("score") or 0)
+    for chunk in merged.values():
+        vector_score = chunk["vector_score"] / vector_max if vector_max else 0.0
+        keyword_score = chunk["keyword_score"] / keyword_max if keyword_max else 0.0
+        chunk["score"] = (1 - weight) * vector_score + weight * keyword_score
+    return sorted(
+        merged.values(),
+        key=lambda item: (-float(item["score"]), int(item["id"])),
+    )[:top_k]
+
+
+__all__ = ("keyword_search", "merge_hybrid_results", "vector_search")

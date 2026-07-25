@@ -33,7 +33,7 @@ def actor_from_request(authorization: str | None) -> str:
             return auth.parse_token(authorization.removeprefix("Bearer ").strip()).user_id
         except Exception:
             return "anonymous"
-    return "dev-user"
+    return "anonymous"
 
 
 def _safe(value: Any) -> Any:

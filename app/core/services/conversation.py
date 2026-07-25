@@ -173,6 +173,7 @@ async def list(
     kb_id: int | None = None,
     user_id: str | None = None,
     status: str | None = None,
+    keyword: str | None = None,
 ) -> list[dict[str, Any]]:
     if status is not None and status not in ALLOWED_STATUSES:
         raise BusiException("status 不合法")
@@ -182,7 +183,8 @@ async def list(
         filters["status__ne"] = STATUS_DELETED
     else:
         filters["status"] = status
-    return await conversation_db.list(DB.get(), **filters)
+    normalized_keyword = keyword.strip() if keyword and keyword.strip() else None
+    return await conversation_db.list(DB.get(), keyword=normalized_keyword, **filters)
 
 
 @check_db_connected

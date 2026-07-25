@@ -6,9 +6,11 @@ from app.agents.agent import run_knowledge_agent
 from app.agents.runtime import AgentError
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
+from app.core.services import knowledge_base_qa_config as qa_config_service
 from app.db import conversation as conversation_db
 from app.db import conversation_message as conversation_message_db
 from app.db import knowledge_base as knowledge_base_db
+from app.db import knowledge_base_qa_config as qa_config_db
 from app.db import message_citation as message_citation_db
 from app.db.api import check_db_connected
 from app.db.base import DB
@@ -52,10 +54,21 @@ async def _get_or_create_conversation(
             raise BusiException("会话不存在", status_code=404)
         return conversation
 
+    published_config = await qa_config_db.get_version(
+        db,
+        kb_id=kb_id,
+        status=qa_config_service.CONFIG_PUBLISHED,
+    )
+    knowledge_base = await knowledge_base_db.get(db, id=kb_id)
+    active_index_version_id = (
+        knowledge_base.get("active_index_version_id") if knowledge_base else None
+    )
     new_id = await conversation_db.insert_(
         db,
         kb_id=kb_id,
         user_id=user_id,
+        qa_config_version_id=published_config["id"] if published_config else None,
+        index_version_id=active_index_version_id,
         title=question[:255],
         status=STATUS_ACTIVE,
     )
@@ -80,6 +93,8 @@ async def _save_message(
         role=role,
         content=content,
         metadata=metadata,
+        qa_config_version_id=conversation.get("qa_config_version_id"),
+        index_version_id=conversation.get("index_version_id"),
     )
     message = await conversation_message_db.get(db, id=message_id)
     if message is None:
@@ -109,12 +124,20 @@ async def _build_agent_context(
     knowledge_base = await knowledge_base_db.get(db, id=conversation["kb_id"])
     if knowledge_base is None or knowledge_base.get("status") == STATUS_DELETED:
         raise BusiException("知识库不存在", status_code=404)
+    qa_config = await qa_config_service.get_effective_config(
+        db,
+        conversation["kb_id"],
+        knowledge_base.get("system_prompt") or "",
+        version_id=conversation.get("qa_config_version_id"),
+    )
     return AgentContext(
         tenant_id=knowledge_base.get("tenant_id"),
         user_id=user_id,
         kb_id=conversation["kb_id"],
         conversation_id=conversation["id"],
+        index_version_id=conversation.get("index_version_id"),
         knowledge_base_prompt=knowledge_base.get("system_prompt"),
+        qa_config=qa_config,
     )
 
 

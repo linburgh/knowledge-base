@@ -45,6 +45,9 @@ async def rerank(
     query: str,
     chunks: list[dict[str, Any]],
     limit: int,
+    *,
+    model: str | None = None,
+    timeout_seconds: int | float | None = None,
 ) -> list[dict[str, Any]]:
     """调用外部重排服务对向量候选集进行二次排序。
 
@@ -54,7 +57,7 @@ async def rerank(
     if not chunks:
         return []
     request = {
-        "model": CONF.rag.rerank_model,
+        "model": model or CONF.rag.rerank_model,
         "query": query,
         "documents": [str(chunk.get("content") or "") for chunk in chunks],
         "top_n": limit,
@@ -64,7 +67,7 @@ async def rerank(
         headers["Authorization"] = f"Bearer {CONF.rag.rerank_api_key}"
     try:
         async with httpx.AsyncClient(
-            timeout=CONF.rag.rerank_timeout_seconds,
+            timeout=timeout_seconds or CONF.rag.rerank_timeout_seconds,
             trust_env=False,
         ) as client:
             response = await client.post(_endpoint_url(), json=request, headers=headers)

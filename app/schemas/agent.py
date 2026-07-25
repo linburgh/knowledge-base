@@ -34,7 +34,9 @@ class AgentContext(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=128)
     kb_id: int = Field(..., gt=0)
     conversation_id: int | None = Field(default=None, gt=0)
+    index_version_id: int | None = Field(default=None, gt=0)
     knowledge_base_prompt: str | None = None
+    qa_config: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolCall(BaseModel):

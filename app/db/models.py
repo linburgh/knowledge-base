@@ -271,6 +271,7 @@ KnowledgeBase = sa.Table(
     sa.Column("chunk_size", sa.Integer, nullable=False),
     sa.Column("chunk_overlap", sa.Integer, nullable=False),
     sa.Column("retrieval_top_k", sa.Integer, nullable=False),
+    sa.Column("active_index_version_id", sa.BigInteger),
     sa.Column("system_prompt", sa.Text, nullable=False, server_default=sa.text("''")),
     sa.Column("system_prompt_version", sa.Integer, nullable=False, server_default=sa.text("1")),
     sa.Column(
@@ -305,6 +306,71 @@ KnowledgeBasePrompt = sa.Table(
     ),
     sa.UniqueConstraint("kb_id", "version", name="uq_t_knowledge_base_prompt_kb_version"),
     sa.Index("idx_t_knowledge_base_prompt_kb_version", "kb_id", "version"),
+)
+
+
+KnowledgeBaseQaConfigVersion = sa.Table(
+    "t_knowledge_base_qa_config_version",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("version_no", sa.Integer, nullable=False),
+    sa.Column("status", sa.String(20), nullable=False),
+    sa.Column("config_json", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column(
+        "change_summary_json", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    ),
+    sa.Column("requires_reindex", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("affected_document_count", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("created_by", sa.BigInteger, nullable=False),
+    sa.Column("published_by", sa.BigInteger),
+    sa.Column("published_at", sa.DateTime(timezone=True)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("kb_id", "version_no", name="uq_t_knowledge_base_qa_config_kb_version"),
+    sa.Index("idx_t_knowledge_base_qa_config_kb_status", "kb_id", "status"),
+)
+
+
+KnowledgeBaseQaConfigAudit = sa.Table(
+    "t_knowledge_base_qa_config_audit",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("config_version_id", sa.BigInteger),
+    sa.Column("action", sa.String(32), nullable=False),
+    sa.Column("actor_id", sa.BigInteger, nullable=False),
+    sa.Column("before_json", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("after_json", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("result", sa.String(20), nullable=False),
+    sa.Column("error_message", sa.Text),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_knowledge_base_qa_config_audit_kb_created", "kb_id", "created_at"),
+)
+
+
+KnowledgeBaseIndexVersion = sa.Table(
+    "t_knowledge_base_index_version",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("generation", sa.String(64), nullable=False),
+    sa.Column("config_version_id", sa.BigInteger),
+    sa.Column("status", sa.String(20), nullable=False),
+    sa.Column("vector_collection", sa.String(255), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column("activated_at", sa.DateTime(timezone=True)),
+    sa.Column("retired_at", sa.DateTime(timezone=True)),
+    sa.UniqueConstraint("kb_id", "generation", name="uq_t_knowledge_base_index_kb_generation"),
+    sa.Index("idx_t_knowledge_base_index_kb_status", "kb_id", "status"),
 )
 
 
@@ -383,6 +449,7 @@ DocumentChunk = sa.Table(
     sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("embedding_model", sa.String(128), nullable=False),
     sa.Column("embedding", Vector()),
+    sa.Column("index_version_id", sa.BigInteger),
     sa.Column(
         "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),
@@ -399,6 +466,8 @@ IndexingTask = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("document_id", sa.BigInteger, nullable=False),
     sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("config_version_id", sa.BigInteger),
+    sa.Column("index_version_id", sa.BigInteger),
     sa.Column("task_type", sa.String(32), nullable=False),
     sa.Column("status", sa.String(32), nullable=False),
     sa.Column("attempts", sa.Integer, nullable=False, server_default=sa.text("0")),
@@ -424,6 +493,8 @@ Conversation = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("kb_id", sa.BigInteger, nullable=False),
     sa.Column("user_id", sa.String(128), nullable=False),
+    sa.Column("qa_config_version_id", sa.BigInteger),
+    sa.Column("index_version_id", sa.BigInteger),
     sa.Column("title", sa.String(255)),
     sa.Column("status", sa.String(32), nullable=False),
     sa.Column(
@@ -447,6 +518,8 @@ ConversationMessage = sa.Table(
     sa.Column("role", sa.String(32), nullable=False),
     sa.Column("content", sa.Text, nullable=False),
     sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("qa_config_version_id", sa.BigInteger),
+    sa.Column("index_version_id", sa.BigInteger),
     sa.Column(
         "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     ),

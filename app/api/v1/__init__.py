@@ -8,6 +8,7 @@ from app.api.v1 import (
     guest,
     health,
     knowledge_base_overview,
+    knowledge_base_qa_config,
     knowledge_bases,
     organizations,
     platform_overview,
@@ -22,6 +23,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(health.router, prefix="/health", tags=["Health"])
 api_router.include_router(knowledge_bases.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])
 api_router.include_router(knowledge_base_overview.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])
+api_router.include_router(knowledge_base_qa_config.router, prefix="/knowledge-bases", tags=["KnowledgeBaseQaConfig"])
 api_router.include_router(tenants.router, prefix="/tenants", tags=["Tenant"])
 api_router.include_router(users.router, prefix="/users", tags=["User"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["Organization"])
