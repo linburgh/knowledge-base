@@ -167,6 +167,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "dataset": str(args.dataset),
         "case_count": len(cases),
+        "rerank": {
+            "enabled": os.getenv("KB_RAG_RERANK_ENABLED", "true").lower() == "true",
+            "model": os.getenv(
+                "KB_RAG_RERANK_MODEL",
+                "hans-tech/bge-reranker-v2-m3:260522",
+            ),
+            "base_url": os.getenv(
+                "KB_RAG_RERANK_BASE_URL",
+                "http://127.0.0.1:11434",
+            ),
+            "endpoint": os.getenv("KB_RAG_RERANK_ENDPOINT", "/api/rerank"),
+        },
         "retrieval": {
             "recall_at_1": sum(
                 any(is_relevant(chunk, case) for chunk in row["chunks"][:1])

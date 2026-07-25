@@ -4,6 +4,7 @@ from typing import Any
 
 from app.config import CONF
 from app.core.common.exception import BusiException
+from app.core.common.log import LOG
 from app.db import knowledge_base as knowledge_base_db
 from app.db.api import check_db_connected
 from app.db.base import DB
@@ -85,7 +86,17 @@ async def search(
         )
     chunks = await retrievers.vector_search(db, kb_id, vectors[0], candidate_limit)
     if CONF.rag.rerank_enabled:
-        chunks = rerank(normalized_query, chunks, limit)
+        try:
+            chunks = await rerank(normalized_query, chunks, limit)
+        except BusiException:
+            if not CONF.rag.rerank_fail_open:
+                raise
+            LOG.exception(
+                "Rerank unavailable, using vector candidates kb_id={} model={}",
+                kb_id,
+                CONF.rag.rerank_model,
+            )
+            chunks = chunks[:limit]
 
     # 无论底层使用关键词还是向量，向上层暴露相同的数据结构，方便后续 Chat Service 复用。
     return RetrievalResponse(

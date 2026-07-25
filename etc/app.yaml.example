@@ -21,7 +21,14 @@ rag:
   chunk_size: 600
   chunk_overlap: 100
   retrieval_top_k: 5
-  rerank_enabled: false
+  rerank_enabled: "${KB_RAG_RERANK_ENABLED}"
+  rerank_model: "${KB_RAG_RERANK_MODEL}"
+  rerank_base_url: "${KB_RAG_RERANK_BASE_URL}"
+  rerank_endpoint: "${KB_RAG_RERANK_ENDPOINT}"
+  rerank_api_key: "${KB_RAG_RERANK_API_KEY}"
+  rerank_timeout_seconds: "${KB_RAG_RERANK_TIMEOUT_SECONDS}"
+  rerank_fail_open: "${KB_RAG_RERANK_FAIL_OPEN}"
+  rerank_candidate_multiplier: "${KB_RAG_RERANK_CANDIDATE_MULTIPLIER}"
   max_context_length: 8000
 
 storage:
