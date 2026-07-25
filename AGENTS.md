@@ -54,6 +54,40 @@
 - `scripts/db/`：统一维护 DDL。
 - `etc/`：配置样例和部署配置。
 
+## Agent Harness 工程约束
+
+`app/agents/` 下的每个 Agent 都必须是独立的 Harness 子工程。后续新增 Agent 时，必须新建独立目录，不得把新的 Agent 主入口、运行循环、工具或技能文件直接堆放在 `app/agents/` 根目录，也不得复用其他 Agent 的私有入口、Prompt、Runtime 或工具注册表。
+
+标准目录结构以现有知识库问答 Agent Harness 为基础：
+
+```text
+app/agents/<agent_name>/
+├── __init__.py
+├── agent.py                 # 独立 Agent 入口和结构化调用协议
+├── runtime.py               # 执行循环、超时、预算、重试和失败收敛
+├── policies.py              # 权限、数据范围、工具白名单和安全策略
+├── tools/
+│   ├── __init__.py
+│   ├── registry.py          # 显式工具注册
+│   └── ...                  # 该 Agent 专属工具
+└── skills/
+    └── .../SKILL.md        # 该 Agent 专属技能指导
+```
+
+Agent 可以根据自身业务在独立目录内增加 `graph.py`、`state.py`、`config.py`、`models.py`、`dataset.py`、`generator.py`、`executor.py`、`metrics.py`、`report.py` 等领域模块，但不能因此省略 Harness 的入口、运行时、策略和工具边界。Agent 专属配置、状态、数据集和报告逻辑必须留在该 Agent 目录内；跨层请求、响应和内部协议统一放在 `app/schemas/`。
+
+每个 Agent 必须满足以下约束：
+
+- 具有独立入口，例如 `app/agents/knowledge/agent.py`、`app/agents/evaluation/agent.py`。
+- 具有独立 `runtime.py`、`policies.py` 和 `tools/registry.py`，执行预算、权限策略和工具注册不可跨 Agent 隐式共享。
+- 工具调用必须经过本 Agent 的显式注册、权限校验、数据范围校验和资源预算校验。
+- Agent 之间只能通过公开的结构化协议调用，不得导入对方的私有 Prompt、私有函数、模型实例或内部状态。
+- Agent 不负责 HTTP 请求解析、数据库事务编排或前端响应转换；调用方向保持为 `API -> Service -> Agent -> Tools / RAG / DB`。
+- 不在 `app/agents/` 根目录新增通用主入口，不创建无法归属具体 Agent 的工具或技能。
+- 未经明确设计，不新增 `contracts/`、`prompts/`、`guardrails/`、`tracing/`、`evals/` 等绕开既有 Harness 边界的目录；相关职责分别由 Schema、Agent、Runtime、Policies、工具注册和结构化日志承担。
+
+自主评测 Agent 必须遵守该约束，目录固定为 `app/agents/evaluation/`，并与 `app/agents/knowledge/` 使用两个完整、独立的 Harness 结构。评测 Agent 的 LangGraph、状态、数据集、指标、报告和优化模块只能作为其 Harness 内的领域模块存在。
+
 ## 开发约定
 
 - 遵守调用方向：`API -> Service -> DB / RAG / 外部服务`。
@@ -82,6 +116,16 @@
 - 方案文档应覆盖完整业务流程、页面/模块、接口、状态、异常、权限、扩展性和实施计划；不能擅自用 MVP 代替完整方案。
 - 不得在用户未提出或未确认的情况下扩展需求范围；监控、告警、报表、性能优化、运营能力和其他配套设计只能在用户明确要求或确认后写入方案。
 - 对可能有价值但不属于当前范围的内容，只能作为待确认建议单独提出，不得直接纳入实施阶段、验收标准或交付物。
+
+## 测试用例文档约束
+
+- 每个新增模块、业务能力、Agent、接口、页面或重大交互设计，必须同步编写测试用例，不能只写需求、原型和实施方案。
+- 测试用例统一放在 `docs/测试用例/` 下；不得散落在 `docs/` 根目录、通用原型目录或业务实施文档中。
+- 前后端职责不同的模块，至少分别编写前端测试用例和后端测试用例；涉及 Agent、Worker、数据库、接口、权限或联调时，必须覆盖对应测试范围。
+- 测试用例必须覆盖正常流程、边界条件、异常处理、权限校验、状态变化、数据一致性和验收标准；不能只列成功场景。
+- 测试用例中的编号、前置条件、测试数据、操作步骤、预期结果和验收状态必须可执行、可追踪，并与需求、原型、接口和实施方案中的字段及状态保持一致。
+- 需求或设计发生变更时，必须同步更新测试用例；测试用例未同步完成前，不得将对应能力标记为已完成或进入前后端联调验收。
+- `docs/测试用例/` 应维护索引 README，新增测试用例文件必须登记到索引中。
 
 ## 前端项目约束
 

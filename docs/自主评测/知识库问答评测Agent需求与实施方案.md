@@ -483,6 +483,10 @@ app/agents/
 └── evaluation/
     ├── __init__.py
     ├── agent.py                     # 评测 Agent 编排入口
+    ├── runtime.py                   # 评测 Agent 运行时、预算、超时和失败收敛
+    ├── policies.py                  # 评测权限、并发、超时和数据脱敏策略
+    ├── tools/                       # 评测 Agent 专属工具和 registry.py
+    ├── skills/                      # 评测 Agent 专属技能指导
     ├── graph.py                     # LangGraph 图定义和节点编排
     ├── state.py                     # 评测图状态协议
     ├── config.py                    # 加载并校验 etc/evaluation.yaml
@@ -491,11 +495,12 @@ app/agents/
     ├── generator.py                 # 基于知识库内容生成测试问题
     ├── executor.py                  # 检索与问答调用编排
     ├── metrics.py                   # 指标聚合和门禁判断
-    ├── report.py                    # JSON/Markdown 报告生成
-    └── policies.py                  # 评测权限、并发、超时和数据脱敏策略
+    └── report.py                    # JSON/Markdown 报告生成
 workers/
 └── evaluation.py                    # 评测图后台调度入口
 ```
+
+`app/agents/` 下的每个 Agent 都必须是独立的 Harness 子工程。除 `agent.py`、`runtime.py`、`policies.py`、`tools/registry.py` 和 `skills/` 外，可以在 Agent 自身目录增加业务领域模块，但不得把 Agent 主入口、运行时、工具或技能文件放在 `app/agents/` 根目录，也不得复用其他 Agent 的私有入口、Prompt、Runtime 或工具注册表。自主评测 Agent 的 LangGraph、状态、配置、数据集、指标、报告和优化逻辑均属于 `app/agents/evaluation/` Harness。
 
 ### 6.1 与知识库问答 Agent 的边界
 
