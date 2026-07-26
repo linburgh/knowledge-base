@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pathlib import Path
 
@@ -13,15 +14,44 @@ from app.core.common.log import LOG
 from app.core.common.log import setup as log_setup
 from app.db import setup as db_setup
 from app.types import constants
+from workers import evaluation as evaluation_worker
+from workers import indexing as indexing_worker
+
+indexing_stop_event = asyncio.Event()
+indexing_worker_task: asyncio.Task | None = None
+evaluation_stop_event = asyncio.Event()
+evaluation_worker_task: asyncio.Task | None = None
 
 
 async def on_startup() -> None:
+    global evaluation_worker_task, indexing_worker_task
     configure("app")
     log_setup(
         Path(CONF.default.log_dir).joinpath(CONF.default.log_file),
         debug=CONF.default.debug,
     )
     await db_setup()
+    indexing_stop_event.clear()
+    evaluation_stop_event.clear()
+    indexing_worker_task = asyncio.create_task(
+        indexing_worker.run_forever(indexing_stop_event),
+        name="document-indexing-worker",
+    )
+    evaluation_worker_task = asyncio.create_task(
+        evaluation_worker.run_forever(evaluation_stop_event),
+        name="autonomous-evaluation-worker",
+    )
+
+
+async def on_shutdown() -> None:
+    evaluation_stop_event.set()
+    indexing_stop_event.set()
+    if indexing_worker_task is not None:
+        indexing_worker_task.cancel()
+        await asyncio.gather(indexing_worker_task, return_exceptions=True)
+    if evaluation_worker_task is not None:
+        evaluation_worker_task.cancel()
+        await asyncio.gather(evaluation_worker_task, return_exceptions=True)
 
 app = None
 
@@ -31,13 +61,15 @@ if environment == "production":
     app = FastAPI(
         title=constants.PROJECT_NAME,
         on_startup=[on_startup],
+        on_shutdown=[on_shutdown],
         docs_url=None, 
         redoc_url=None,
         openapi_url=None)
 else:
     app = FastAPI(
         title=constants.PROJECT_NAME,
-        on_startup=[on_startup]
+        on_startup=[on_startup],
+        on_shutdown=[on_shutdown],
     )
 
 app.include_router(api_router, prefix=constants.API_PREFIX)

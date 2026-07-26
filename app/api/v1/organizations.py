@@ -8,6 +8,7 @@ from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import organization as organization_service
+from app.api.v1.dependencies import require_platform_super_admin
 from app.schemas.organization import (
     OrganizationCreateRequest,
     OrganizationDto,
@@ -18,7 +19,7 @@ from app.schemas.organization import (
 )
 from app.schemas.organization_member import OrganizationMemberBatchRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_platform_super_admin)])
 current_user_dependency = Depends(auth.get_current_user)
 
 

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
+from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import tenant as tenant_service
+from app.api.v1.dependencies import require_platform_super_admin
 from app.core.services import tenant_member as tenant_member_service
 from app.core.services import tenant_resource as tenant_resource_service
 from app.schemas.tenant import TenantCreateRequest, TenantDto, TenantModifyRequest
@@ -17,7 +19,7 @@ from app.schemas.tenant_member import (
 )
 from app.schemas.tenant_resource import ResourceBatchRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_platform_super_admin)])
 
 
 @router.get("/{id}/organization-candidates/page")

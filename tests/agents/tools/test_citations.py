@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.agents.tools.citations import _build_candidates, validate_citations
+from app.agents.knowledge.tools.citations import _build_candidates, validate_citations
 
 
 class CitationToolTest(unittest.TestCase):

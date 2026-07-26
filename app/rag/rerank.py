@@ -56,11 +56,12 @@ async def rerank(
     """
     if not chunks:
         return []
+    requested_limit = min(max(int(limit), 1), len(chunks))
     request = {
         "model": model or CONF.rag.rerank_model,
         "query": query,
         "documents": [str(chunk.get("content") or "") for chunk in chunks],
-        "top_n": limit,
+        "top_n": requested_limit,
     }
     headers = {"Content-Type": "application/json"}
     if CONF.rag.rerank_api_key:
@@ -75,7 +76,7 @@ async def rerank(
             payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
         raise BusiException("重排模型调用失败") from exc
-    return _parse_results(payload, chunks)[:limit]
+    return _parse_results(payload, chunks)[:requested_limit]
 
 
 __all__ = ("rerank",)

@@ -46,6 +46,8 @@ cd /home/linburgh/workspace/ai-llm/knowledge-base
 tests/test_knowledge_base_crud.sh all
 ```
 
+脚本默认使用 `TENANT_ID=3`，并支持通过 `AUTH_TOKEN` 传入登录令牌；新增知识库的 `owner_id` 应使用数据库中的账号（例如 `linburgh`），服务端会解析为数字 `created_by`。
+
 `all` 会依次执行：
 
 1. 新增知识库。

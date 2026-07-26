@@ -81,17 +81,18 @@ evaluation:
     source: description_and_knowledge_base
     description: "客户希望了解我公司的产品能力、部署方式、使用流程和售后服务。"
   execution:
-    user_id: evaluation-user
+    # 可选：数据库 t_user.id；省略时默认使用当前已登录的平台超级管理员用户 ID。
+    user_id: null
     concurrency: 3
     request_timeout_seconds: 120
     retry_count: 0
     keep_conversation: false
   gates:
-    success_rate: {operator: ">=", value: 0.95}
-    error_rate: {operator: "<=", value: 0.01}
-    fallback_rate: {operator: "<=", value: 0.05}
-    citation_rate: {operator: ">=", value: 0.95}
-    p95_duration_ms: {operator: "<=", value: 8000}
+    success_rate: { operator: ">=", value: 0.95 }
+    error_rate: { operator: "<=", value: 0.01 }
+    fallback_rate: { operator: "<=", value: 0.05 }
+    citation_rate: { operator: ">=", value: 0.95 }
+    p95_duration_ms: { operator: "<=", value: 8000 }
 ```
 
 实际文件可从 `etc/evaluation.yaml.example` 复制。`app.yaml` 继续只负责服务启动、数据库、模型、Embedding、Rerank 等运行时配置；评测 Agent 不读取或修改其中的评测问题、业务范围和门禁配置。
@@ -131,21 +132,21 @@ evaluation:
 
 `questions` 控制测试问题如何产生：
 
-| 配置项 | 说明 |
-|---|---|
-| `source` | `imported` 外部导入，或 `generated` Agent 生成 |
-| `count` | 生成或执行的问题数量 |
-| `file` | 外部问题文件路径或文件标识，导入模式使用 |
+| 配置项        | 说明                                               |
+| ------------- | -------------------------------------------------- |
+| `source`      | `imported` 外部导入，或 `generated` Agent 生成     |
+| `count`       | 生成或执行的问题数量                               |
+| `file`        | 外部问题文件路径或文件标识，导入模式使用           |
 | `instruction` | 问题生成补充要求，自然语言传入，不使用固定分类枚举 |
 
 #### 业务范围配置入口
 
 `business_scope` 控制 Agent 根据什么内容生成问题：
 
-| `source` | 说明 |
-|---|---|
-| `description` | 只根据外部业务描述生成问题 |
-| `knowledge_base` | 只根据指定知识库内容生成问题 |
+| `source`                         | 说明                             |
+| -------------------------------- | -------------------------------- |
+| `description`                    | 只根据外部业务描述生成问题       |
+| `knowledge_base`                 | 只根据指定知识库内容生成问题     |
 | `description_and_knowledge_base` | 结合外部描述和知识库内容生成问题 |
 
 `description` 是可编辑的自然语言业务范围，例如客户关注点、产品范围、测试目标或场景说明。系统不在代码中预设业务分类。
@@ -164,11 +165,11 @@ evaluation:
 evaluation:
   kb_id: 28
   gates:
-    success_rate: {operator: ">=", value: 0.95}
-    error_rate: {operator: "<=", value: 0.01}
-    fallback_rate: {operator: "<=", value: 0.05}
-    citation_rate: {operator: ">=", value: 0.95}
-    p95_duration_ms: {operator: "<=", value: 8000}
+    success_rate: { operator: ">=", value: 0.95 }
+    error_rate: { operator: "<=", value: 0.01 }
+    fallback_rate: { operator: "<=", value: 0.05 }
+    citation_rate: { operator: ">=", value: 0.95 }
+    p95_duration_ms: { operator: "<=", value: 8000 }
 ```
 
 也可以不提供门禁配置，使用系统默认门槛。用户可以选择提供问题文件，或者只提供 `kb_id` 和生成数量。
@@ -211,11 +212,11 @@ evaluation:
 
 生成依据规则：
 
-| 输入情况 | 生成依据 |
-|---|---|
-| 只有 `kb_id` | 根据知识库文档内容生成 |
-| 只有外部描述 | 根据外部描述生成，用于测试知识库是否覆盖该业务范围 |
-| `kb_id` 和外部描述都有 | 结合外部目标和知识库内容生成，并识别资料覆盖情况 |
+| 输入情况               | 生成依据                                           |
+| ---------------------- | -------------------------------------------------- |
+| 只有 `kb_id`           | 根据知识库文档内容生成                             |
+| 只有外部描述           | 根据外部描述生成，用于测试知识库是否覆盖该业务范围 |
+| `kb_id` 和外部描述都有 | 结合外部目标和知识库内容生成，并识别资料覆盖情况   |
 
 系统不预设产品、功能、流程、权限等固定业务分类。问题类型、数量和表达方式由外部描述及知识库内容动态决定；如需控制风格，可以在请求中额外提供自然语言说明，而不是写死枚举分类。
 
@@ -243,25 +244,25 @@ evaluation:
 
 ### 4.1 检索指标
 
-| 指标 | 中文名称 | 说明 |
-|---|---|---|
-| Recall@K | 前 K 召回率 | 正确文档或分块是否出现在前 K 条结果中 |
-| Precision@K | 前 K 精确率 | 前 K 条结果中相关结果的比例 |
-| MRR | 平均倒数排名 | 第一个相关结果排名越靠前，得分越高 |
-| NDCG@K | 归一化折损累计增益 | 综合衡量结果相关性和排序位置 |
-| Context Precision | 上下文精确率 | 送入回答模型的上下文中有效内容的比例 |
-| Context Recall | 上下文召回率 | 回答所需信息是否被完整召回 |
+| 指标              | 中文名称           | 说明                                  |
+| ----------------- | ------------------ | ------------------------------------- |
+| Recall@K          | 前 K 召回率        | 正确文档或分块是否出现在前 K 条结果中 |
+| Precision@K       | 前 K 精确率        | 前 K 条结果中相关结果的比例           |
+| MRR               | 平均倒数排名       | 第一个相关结果排名越靠前，得分越高    |
+| NDCG@K            | 归一化折损累计增益 | 综合衡量结果相关性和排序位置          |
+| Context Precision | 上下文精确率       | 送入回答模型的上下文中有效内容的比例  |
+| Context Recall    | 上下文召回率       | 回答所需信息是否被完整召回            |
 
 ### 4.2 生成和引用指标
 
-| 指标 | 中文名称 | 说明 |
-|---|---|---|
-| Faithfulness | 忠实度 | 答案是否基于检索资料，是否存在无依据内容 |
-| Answer Relevancy | 答案相关性 | 答案是否直接回应问题 |
-| Answer Correctness | 答案正确性 | 答案与标准答案或人工要点的一致程度 |
-| Citation Accuracy | 引用准确率 | 引用文档是否属于实际检索结果且支持答案 |
-| Abstention Accuracy | 拒答准确率 | 无资料问题是否正确拒答 |
-| Must-contain Rate | 必答要点命中率 | `must_contain` 要点被答案覆盖的比例 |
+| 指标                | 中文名称       | 说明                                     |
+| ------------------- | -------------- | ---------------------------------------- |
+| Faithfulness        | 忠实度         | 答案是否基于检索资料，是否存在无依据内容 |
+| Answer Relevancy    | 答案相关性     | 答案是否直接回应问题                     |
+| Answer Correctness  | 答案正确性     | 答案与标准答案或人工要点的一致程度       |
+| Citation Accuracy   | 引用准确率     | 引用文档是否属于实际检索结果且支持答案   |
+| Abstention Accuracy | 拒答准确率     | 无资料问题是否正确拒答                   |
+| Must-contain Rate   | 必答要点命中率 | `must_contain` 要点被答案覆盖的比例      |
 
 ### 4.3 性能和稳定性指标
 
@@ -427,35 +428,35 @@ START
 
 评测图的状态只保存评测编排所需的数据，不保存无关的模型内部消息：
 
-| 状态字段 | 说明 |
-|---|---|
-| `evaluation_id` | 评测运行 ID |
-| `task_id` | 评测任务 ID |
-| `config_snapshot` | 本次运行冻结的配置 |
-| `questions` | 已导入或生成并校验后的问题列表 |
-| `question_index` | 当前处理位置或分发进度 |
-| `case_results` | 已完成问题的逐题结果摘要 |
-| `metrics` | 指标计算结果 |
-| `conclusion` | `passed`、`failed` 或 `indeterminate` |
-| `error` | 任务级错误摘要 |
-| `status` | 当前运行状态 |
+| 状态字段          | 说明                                  |
+| ----------------- | ------------------------------------- |
+| `evaluation_id`   | 评测运行 ID                           |
+| `task_id`         | 评测任务 ID                           |
+| `config_snapshot` | 本次运行冻结的配置                    |
+| `questions`       | 已导入或生成并校验后的问题列表        |
+| `question_index`  | 当前处理位置或分发进度                |
+| `case_results`    | 已完成问题的逐题结果摘要              |
+| `metrics`         | 指标计算结果                          |
+| `conclusion`      | `passed`、`failed` 或 `indeterminate` |
+| `error`           | 任务级错误摘要                        |
+| `status`          | 当前运行状态                          |
 
 逐题执行时，单题状态应包含 `case_no`、问题、来源、答案状态、引用摘要、耗时、错误编码和指标结果。完整答案是否保存由任务配置和数据保留策略决定。
 
 ### 5.4 工作流节点职责
 
-| 节点 | 职责 | 失败处理 |
-|---|---|---|
-| `load_task` | 读取任务和配置快照 | 任务不存在则结束为 `failed` |
-| `validate_task` | 校验超级管理员发起的运行、知识库和配置 | 配置错误则不进入问答阶段 |
-| `prepare_questions` | 导入问题或调用生成器得到 N 个问题 | 记录 `DATASET_INVALID` |
-| `freeze_run` | 固化问题列表、模型和门禁配置 | 落库失败则结束为 `failed` |
-| `dispatch_cases` | 按并发限制分发逐题执行 | 不直接生成答案 |
-| `execute_case` | 调用唯一知识库问答 Agent | 单题错误转为逐题失败结果 |
-| `collect_case_result` | 保存逐题结果并更新进度 | 单题落库失败记录任务级错误 |
-| `calculate_metrics` | 计算基础和可用高级指标 | 无法计算的指标标记 `indeterminate` |
-| `evaluate_gates` | 比较实际值与门禁阈值 | 门禁不通过但任务仍正常完成 |
-| `persist_report` | 保存总体指标、结论和运行结束时间 | 持久化失败则运行标记 `failed` |
+| 节点                  | 职责                                   | 失败处理                           |
+| --------------------- | -------------------------------------- | ---------------------------------- |
+| `load_task`           | 读取任务和配置快照                     | 任务不存在则结束为 `failed`        |
+| `validate_task`       | 校验超级管理员发起的运行、知识库和配置 | 配置错误则不进入问答阶段           |
+| `prepare_questions`   | 导入问题或调用生成器得到 N 个问题      | 记录 `DATASET_INVALID`             |
+| `freeze_run`          | 固化问题列表、模型和门禁配置           | 落库失败则结束为 `failed`          |
+| `dispatch_cases`      | 按并发限制分发逐题执行                 | 不直接生成答案                     |
+| `execute_case`        | 调用唯一知识库问答 Agent               | 单题错误转为逐题失败结果           |
+| `collect_case_result` | 保存逐题结果并更新进度                 | 单题落库失败记录任务级错误         |
+| `calculate_metrics`   | 计算基础和可用高级指标                 | 无法计算的指标标记 `indeterminate` |
+| `evaluate_gates`      | 比较实际值与门禁阈值                   | 门禁不通过但任务仍正常完成         |
+| `persist_report`      | 保存总体指标、结论和运行结束时间       | 持久化失败则运行标记 `failed`      |
 
 ### 5.5 平台接口与工作流的关系
 
@@ -506,15 +507,15 @@ workers/
 
 `app/agents/__init__.py` 只保留顶层包声明，不放置任何 Agent 主入口。知识库问答 Agent 的入口固定为 `app/agents/knowledge/agent.py`，评测 Agent 的入口固定为 `app/agents/evaluation/agent.py`。评测 Agent 只能通过知识库问答 Agent 的公开结构化调用协议执行问答，不得导入其内部 Prompt、私有方法或直接调用聊天模型。
 
-| 维度 | 知识库问答 Agent | 知识库问答评测 Agent |
-|---|---|---|
-| 目标 | 回答用户问题 | 评估问答系统质量 |
-| 输入 | 单个用户问题 | N 个问题、知识库 ID 和可选门禁 |
-| 输出 | 答案和引用 | 指标、逐题结果和合格结论 |
-| 是否生成客户答案 | 是 | 不负责生成业务答案 |
-| 是否调用检索 | 内部受控调用 | 调用观测接口并采集结果 |
-| 是否修改知识库 | 否 | 否 |
-| 运行方式 | 在线请求 | 离线任务或受控评测任务 |
+| 维度             | 知识库问答 Agent | 知识库问答评测 Agent           |
+| ---------------- | ---------------- | ------------------------------ |
+| 目标             | 回答用户问题     | 评估问答系统质量               |
+| 输入             | 单个用户问题     | N 个问题、知识库 ID 和可选门禁 |
+| 输出             | 答案和引用       | 指标、逐题结果和合格结论       |
+| 是否生成客户答案 | 是               | 不负责生成业务答案             |
+| 是否调用检索     | 内部受控调用     | 调用观测接口并采集结果         |
+| 是否修改知识库   | 否               | 否                             |
+| 运行方式         | 在线请求         | 离线任务或受控评测任务         |
 
 ## 7. 核心模块职责
 
@@ -566,9 +567,9 @@ workers/
 2. 按 `conversation_group` 管理会话 ID。
 3. 调用唯一知识库问答入口。
 4. 按需调用检索观测接口，保存 Top-K 分块和分数。
-4. 记录答案、引用、`status`、`termination_reason` 和响应耗时。
-5. 限制并发、超时、重试和单题资源预算。
-6. 失败时记录错误分类，不伪造答案或指标。
+5. 记录答案、引用、`status`、`termination_reason` 和响应耗时。
+6. 限制并发、超时、重试和单题资源预算。
+7. 失败时记录错误分类，不伪造答案或指标。
 
 ### 7.5 `metrics.py`
 
@@ -743,7 +744,7 @@ workers/
 
 ## 9. 权限与安全
 
-- 评测 Agent 必须使用指定评测用户，不使用管理员身份绕过权限。
+- 评测 Agent 使用数据库用户主键 `t_user.id` 作为评测用户；未指定时默认使用当前已登录且已校验为 `p_super_admin` 的平台超级管理员用户 ID。显式指定时必须校验用户存在且状态有效，不能使用不存在的账号占位符。
 - 每条样品的 `kb_id` 必须经过用户可访问性校验。
 - 评测报告不得保存 Token、API Key、密码和本机绝对路径。
 - 报告默认保存问题摘要、问题哈希和 case_id；是否保存完整答案由配置控制。
@@ -752,16 +753,16 @@ workers/
 
 ## 10. 异常和状态设计
 
-| 状态/错误 | 处理方式 |
-|---|---|
-| `DATASET_INVALID` | 任务不启动，返回样品校验错误 |
-| `KB_NOT_FOUND` | 单题失败并记录，不伪造指标 |
-| `RETRIEVAL_FAILED` | 检索指标标记不可用，继续执行问答或按配置终止 |
-| `MODEL_TIMEOUT` | 单题标记超时，计入性能和错误率 |
-| `AGENT_FALLBACK` | 记录降级，答案质量与正常答案分开统计 |
-| `CITATION_INVALID` | 引用准确率记为失败并记录具体字段 |
+| 状态/错误            | 处理方式                                     |
+| -------------------- | -------------------------------------------- |
+| `DATASET_INVALID`    | 任务不启动，返回样品校验错误                 |
+| `KB_NOT_FOUND`       | 单题失败并记录，不伪造指标                   |
+| `RETRIEVAL_FAILED`   | 检索指标标记不可用，继续执行问答或按配置终止 |
+| `MODEL_TIMEOUT`      | 单题标记超时，计入性能和错误率               |
+| `AGENT_FALLBACK`     | 记录降级，答案质量与正常答案分开统计         |
+| `CITATION_INVALID`   | 引用准确率记为失败并记录具体字段             |
 | `METRIC_UNAVAILABLE` | 指标状态为 `indeterminate`，不能默认判定合格 |
-| `GATE_FAILED` | 任务完成但总体结论为不合格 |
+| `GATE_FAILED`        | 任务完成但总体结论为不合格                   |
 
 ## 11. 运行方式设计
 
@@ -795,19 +796,20 @@ OS_CONFIG_DIR=etc .venv/bin/python -m app.agents.evaluation.agent \
 
 新增系统菜单：
 
-| 层级 | 编码 | 名称 | 路径 | 可见角色 |
-|---|---|---|---|---|
+| 层级           | 编码                   | 名称     | 路径                    | 可见角色           |
+| -------------- | ---------------------- | -------- | ----------------------- | ------------------ |
 | 平台管理子菜单 | `platform_evaluations` | 自主评测 | `/platform/evaluations` | 仅 `p_super_admin` |
 
 新增页面操作：
 
-| 操作编码 | 名称 | 用途 |
-|---|---|---|
-| `evaluation:list` | 查看自主评测 | 查看任务列表和运行记录 |
-| `evaluation:create` | 新增自主评测 | 创建评测任务 |
-| `evaluation:execute` | 执行自主评测 | 启动一次评测运行 |
-| `evaluation:delete` | 删除自主评测 | 删除任务及其历史结果 |
-| `evaluation:detail` | 查看评测结果 | 查看运行明细和逐题结果 |
+| 操作编码             | 名称               | 用途                           |
+| -------------------- | ------------------ | ------------------------------ |
+| `evaluation:list`    | 查看自主评测       | 查看任务列表和运行记录         |
+| `evaluation:create`  | 新增自主评测       | 创建评测任务                   |
+| `evaluation:update`  | 修改未执行自主评测 | 修改没有运行记录的评测任务配置 |
+| `evaluation:execute` | 执行自主评测       | 启动一次评测运行               |
+| `evaluation:delete`  | 删除自主评测       | 删除任务及其历史结果           |
+| `evaluation:detail`  | 查看评测结果       | 查看运行明细和逐题结果         |
 
 这些操作只授权给平台角色 `p_super_admin`。即使未来平台角色菜单授权配置发生变化，Service 仍须额外校验当前用户是否拥有有效的 `p_super_admin` 角色，形成双重保护。
 
@@ -818,12 +820,12 @@ OS_CONFIG_DIR=etc .venv/bin/python -m app.agents.evaluation.agent \
 列表必须提供查询条件和分页，查询条件与列表字段保持一致：
 
 | 查询条件 | 对应列表字段 |
-|---|---|
-| 评测名称 | 评测名称 |
-| 知识库 | 知识库名称 |
-| 执行状态 | 执行状态 |
+| -------- | ------------ |
+| 评测名称 | 评测名称     |
+| 知识库   | 知识库名称   |
+| 执行状态 | 执行状态     |
 | 评测结论 | 最新评测结论 |
-| 创建时间 | 创建时间 |
+| 创建时间 | 创建时间     |
 
 列表字段建议包括：评测名称、知识库名称、问题来源、问题数量、最新执行状态、最新结论、最近执行时间、创建人、创建时间和操作。
 
@@ -865,15 +867,16 @@ OS_CONFIG_DIR=etc .venv/bin/python -m app.agents.evaluation.agent \
 
 接口统一挂载在 `/api/v1/platform/evaluations`，所有接口均要求登录并由 Service 层校验 `p_super_admin`：
 
-| 方法 | 路径 | 用途 |
-|---|---|---|
-| `GET` | `/platform/evaluations/page` | 分页查询评测任务 |
-| `POST` | `/platform/evaluations` | 新增评测任务 |
-| `GET` | `/platform/evaluations/{id}` | 查看任务配置和最新摘要 |
-| `POST` | `/platform/evaluations/{id}/runs` | 执行一次评测 |
-| `GET` | `/platform/evaluations/{id}/runs` | 查看任务的执行记录 |
-| `GET` | `/platform/evaluations/{id}/runs/{run_id}` | 查看单次评测结果和逐题明细 |
-| `DELETE` | `/platform/evaluations/{id}` | 删除任务及其结果 |
+| 方法     | 路径                                       | 用途                       |
+| -------- | ------------------------------------------ | -------------------------- |
+| `GET`    | `/platform/evaluations/page`               | 分页查询评测任务           |
+| `POST`   | `/platform/evaluations`                    | 新增评测任务               |
+| `GET`    | `/platform/evaluations/{id}`               | 查看任务配置和最新摘要     |
+| `PUT`    | `/platform/evaluations/{id}`               | 修改没有运行记录的评测任务 |
+| `POST`   | `/platform/evaluations/{id}/runs`          | 执行一次评测               |
+| `GET`    | `/platform/evaluations/{id}/runs`          | 查看任务的执行记录         |
+| `GET`    | `/platform/evaluations/{id}/runs/{run_id}` | 查看单次评测结果和逐题明细 |
+| `DELETE` | `/platform/evaluations/{id}`               | 删除任务及其结果           |
 
 API 层只负责请求解析、认证上下文、参数校验和响应转换；任务编排、状态变更、权限校验、事务和 Agent 调用均由 Service 层完成。
 
@@ -885,24 +888,24 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 一条记录代表一个可重复执行的评测任务，保存任务配置，不保存某次执行的临时状态。
 
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---:|---|
-| `id` | `bigint generated by default as identity` | 是 | 评测任务主键 |
-| `name` | `varchar(255)` | 是 | 评测任务名称 |
-| `kb_id` | `bigint` | 是 | 目标知识库 ID，逻辑关联 `t_knowledge_base.id` |
-| `question_source` | `varchar(32)` | 是 | `imported` 外部导入，`generated` Agent 生成 |
-| `question_file` | `text` | 否 | 外部问题文件标识或存储路径；不得保存不必要的本机绝对路径 |
-| `question_count` | `integer` | 是 | 本次计划执行的问题数量 |
-| `business_scope_source` | `varchar(64)` | 是 | `description`、`knowledge_base` 或 `description_and_knowledge_base` |
-| `business_scope_description` | `text` | 否 | 外部业务范围和测试目标 |
-| `question_instruction` | `text` | 否 | 问题生成补充要求 |
-| `execution_config` | `jsonb` | 是 | 用户、并发、超时、重试和会话策略 |
-| `gate_config` | `jsonb` | 是 | 指标门禁、比较符和阈值快照 |
-| `status` | `varchar(32)` | 是 | `active` 或 `deleted` |
-| `created_by` | `bigint` | 是 | 创建人用户 ID |
-| `created_at` | `timestamptz` | 是 | 创建时间 |
-| `updated_at` | `timestamptz` | 是 | 更新时间 |
-| `deleted_at` | `timestamptz` | 否 | 逻辑删除时间 |
+| 字段                         | 类型                                      | 必填 | 说明                                                                |
+| ---------------------------- | ----------------------------------------- | ---: | ------------------------------------------------------------------- |
+| `id`                         | `bigint generated by default as identity` |   是 | 评测任务主键                                                        |
+| `name`                       | `varchar(255)`                            |   是 | 评测任务名称                                                        |
+| `kb_id`                      | `bigint`                                  |   是 | 目标知识库 ID，逻辑关联 `t_knowledge_base.id`                       |
+| `question_source`            | `varchar(32)`                             |   是 | `imported` 外部导入，`generated` Agent 生成                         |
+| `question_file`              | `text`                                    |   否 | 外部问题文件标识或存储路径；不得保存不必要的本机绝对路径            |
+| `question_count`             | `integer`                                 |   是 | 本次计划执行的问题数量                                              |
+| `business_scope_source`      | `varchar(64)`                             |   是 | `description`、`knowledge_base` 或 `description_and_knowledge_base` |
+| `business_scope_description` | `text`                                    |   否 | 外部业务范围和测试目标                                              |
+| `question_instruction`       | `text`                                    |   否 | 问题生成补充要求                                                    |
+| `execution_config`           | `jsonb`                                   |   是 | 用户、并发、超时、重试和会话策略                                    |
+| `gate_config`                | `jsonb`                                   |   是 | 指标门禁、比较符和阈值快照                                          |
+| `status`                     | `varchar(32)`                             |   是 | `active` 或 `deleted`                                               |
+| `created_by`                 | `bigint`                                  |   是 | 创建人用户 ID                                                       |
+| `created_at`                 | `timestamptz`                             |   是 | 创建时间                                                            |
+| `updated_at`                 | `timestamptz`                             |   是 | 更新时间                                                            |
+| `deleted_at`                 | `timestamptz`                             |   否 | 逻辑删除时间                                                        |
 
 建议索引：
 
@@ -914,25 +917,25 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 一条记录代表评测任务的一次执行。同一个任务可以有多次运行，每次运行必须保留独立配置快照和结果，不能覆盖历史运行。
 
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---:|---|
-| `id` | `bigint generated by default as identity` | 是 | 评测运行主键 |
-| `task_id` | `bigint` | 是 | 评测任务 ID，逻辑关联 `t_evaluation_task.id` |
-| `run_no` | `integer` | 是 | 任务内递增的运行序号 |
-| `status` | `varchar(32)` | 是 | `pending`、`running`、`completed`、`failed` 或 `cancelled` |
-| `conclusion` | `varchar(32)` | 否 | `passed`、`failed` 或 `indeterminate` |
-| `config_snapshot` | `jsonb` | 是 | 本次执行使用的完整配置快照 |
-| `question_count` | `integer` | 是 | 本次实际执行的问题数量 |
-| `success_count` | `integer` | 是 | 成功完成问答的问题数 |
-| `error_count` | `integer` | 是 | 错误或超时的问题数 |
-| `fallback_count` | `integer` | 是 | 降级回答的问题数 |
-| `metrics` | `jsonb` | 否 | 总体指标、中文名称、实际值、阈值和判断结果 |
-| `error_message` | `text` | 否 | 执行失败时的错误摘要 |
-| `started_at` | `timestamptz` | 否 | 开始执行时间 |
-| `finished_at` | `timestamptz` | 否 | 执行结束时间 |
-| `executed_by` | `bigint` | 是 | 发起执行的用户 ID |
-| `created_at` | `timestamptz` | 是 | 运行记录创建时间 |
-| `updated_at` | `timestamptz` | 是 | 运行记录更新时间 |
+| 字段              | 类型                                      | 必填 | 说明                                                       |
+| ----------------- | ----------------------------------------- | ---: | ---------------------------------------------------------- |
+| `id`              | `bigint generated by default as identity` |   是 | 评测运行主键                                               |
+| `task_id`         | `bigint`                                  |   是 | 评测任务 ID，逻辑关联 `t_evaluation_task.id`               |
+| `run_no`          | `integer`                                 |   是 | 任务内递增的运行序号                                       |
+| `status`          | `varchar(32)`                             |   是 | `pending`、`running`、`completed`、`failed` 或 `cancelled` |
+| `conclusion`      | `varchar(32)`                             |   否 | `passed`、`failed` 或 `indeterminate`                      |
+| `config_snapshot` | `jsonb`                                   |   是 | 本次执行使用的完整配置快照                                 |
+| `question_count`  | `integer`                                 |   是 | 本次实际执行的问题数量                                     |
+| `success_count`   | `integer`                                 |   是 | 成功完成问答的问题数                                       |
+| `error_count`     | `integer`                                 |   是 | 错误或超时的问题数                                         |
+| `fallback_count`  | `integer`                                 |   是 | 降级回答的问题数                                           |
+| `metrics`         | `jsonb`                                   |   否 | 总体指标、中文名称、实际值、阈值和判断结果                 |
+| `error_message`   | `text`                                    |   否 | 执行失败时的错误摘要                                       |
+| `started_at`      | `timestamptz`                             |   否 | 开始执行时间                                               |
+| `finished_at`     | `timestamptz`                             |   否 | 执行结束时间                                               |
+| `executed_by`     | `bigint`                                  |   是 | 发起执行的用户 ID                                          |
+| `created_at`      | `timestamptz`                             |   是 | 运行记录创建时间                                           |
+| `updated_at`      | `timestamptz`                             |   是 | 运行记录更新时间                                           |
 
 建议约束和索引：
 
@@ -946,26 +949,26 @@ API 层只负责请求解析、认证上下文、参数校验和响应转换；�
 
 一条记录代表一次运行中的一道测试题。逐题结果单独建表，支持结果分页、失败样品筛选和详情查看，避免把全部结果只塞进运行表的 JSON 中。
 
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---:|---|
-| `id` | `bigint generated by default as identity` | 是 | 逐题结果主键 |
-| `run_id` | `bigint` | 是 | 评测运行 ID，逻辑关联 `t_evaluation_run.id` |
-| `case_no` | `integer` | 是 | 本次运行内的问题序号 |
-| `question` | `text` | 是 | 测试问题 |
-| `question_hash` | `varchar(128)` | 是 | 问题摘要哈希，用于去重和脱敏检索 |
-| `question_source` | `varchar(32)` | 是 | `imported` 或 `generated` |
-| `question_basis` | `varchar(64)` | 否 | `description`、`knowledge_base` 或 `both` |
-| `answer` | `text` | 否 | 回答内容，受报告保留策略控制 |
-| `case_status` | `varchar(32)` | 是 | `completed`、`error`、`timeout` 或 `fallback` |
-| `termination_reason` | `varchar(128)` | 否 | Agent 终止原因 |
-| `citation_count` | `integer` | 是 | 返回引用数量 |
-| `retrieval_hit_count` | `integer` | 是 | 检索命中数量 |
-| `duration_ms` | `integer` | 否 | 单题耗时 |
-| `metrics` | `jsonb` | 否 | 单题指标，如忠实度、相关性、引用准确率 |
-| `error_code` | `varchar(64)` | 否 | 错误编码 |
-| `error_message` | `text` | 否 | 错误摘要，不保存敏感信息 |
-| `metadata` | `jsonb` | 否 | 扩展信息，如会话组、检索摘要和模型版本 |
-| `created_at` | `timestamptz` | 是 | 创建时间 |
+| 字段                  | 类型                                      | 必填 | 说明                                          |
+| --------------------- | ----------------------------------------- | ---: | --------------------------------------------- |
+| `id`                  | `bigint generated by default as identity` |   是 | 逐题结果主键                                  |
+| `run_id`              | `bigint`                                  |   是 | 评测运行 ID，逻辑关联 `t_evaluation_run.id`   |
+| `case_no`             | `integer`                                 |   是 | 本次运行内的问题序号                          |
+| `question`            | `text`                                    |   是 | 测试问题                                      |
+| `question_hash`       | `varchar(128)`                            |   是 | 问题摘要哈希，用于去重和脱敏检索              |
+| `question_source`     | `varchar(32)`                             |   是 | `imported` 或 `generated`                     |
+| `question_basis`      | `varchar(64)`                             |   否 | `description`、`knowledge_base` 或 `both`     |
+| `answer`              | `text`                                    |   否 | 回答内容，受报告保留策略控制                  |
+| `case_status`         | `varchar(32)`                             |   是 | `completed`、`error`、`timeout` 或 `fallback` |
+| `termination_reason`  | `varchar(128)`                            |   否 | Agent 终止原因                                |
+| `citation_count`      | `integer`                                 |   是 | 返回引用数量                                  |
+| `retrieval_hit_count` | `integer`                                 |   是 | 检索命中数量                                  |
+| `duration_ms`         | `integer`                                 |   否 | 单题耗时                                      |
+| `metrics`             | `jsonb`                                   |   否 | 单题指标，如忠实度、相关性、引用准确率        |
+| `error_code`          | `varchar(64)`                             |   否 | 错误编码                                      |
+| `error_message`       | `text`                                    |   否 | 错误摘要，不保存敏感信息                      |
+| `metadata`            | `jsonb`                                   |   否 | 扩展信息，如会话组、检索摘要和模型版本        |
+| `created_at`          | `timestamptz`                             |   是 | 创建时间                                      |
 
 建议约束和索引：
 
@@ -1005,14 +1008,14 @@ t_evaluation_task
 
 运行状态：`pending`、`running`、`completed`、`failed`、`cancelled`。
 
-运行结论：`passed`（通过）、`failed`（不通过）、`indeterminate`（无法判定）。运行中的任务不能重复执行、删除或修改；历史运行完成后只读，不能被后续执行覆盖。
+运行结论：`passed`（通过）、`failed`（不通过）、`indeterminate`（无法判定）。没有运行记录的任务允许修改；只要存在 `pending`、`running`、`completed`、`failed` 或 `cancelled` 运行记录，任务配置即只读。运行中的任务不能重复执行、删除或修改；历史运行完成后不能被后续执行覆盖。
 
 ### 12.7 异常、审计和安全要求
 
 - 非超级管理员访问任何接口统一返回 403，不泄露任务是否存在。
 - 任务不存在、已删除或知识库无效时返回明确业务错误。
 - 运行失败必须保存错误分类和错误摘要，不能伪造指标或把异常当作通过。
-- 评测调用使用专用评测用户标识，不使用平台超级管理员身份作为问答用户。
+- 评测调用使用解析后的数据库用户 ID；默认解析为当前平台超级管理员用户 ID，并通过该用户的真实权限执行问答，不使用账号字符串占位符。
 - 新增、执行、删除和查看结果均记录审计日志。
 - 删除采用逻辑删除；运行结果是否物理清理由后续数据保留策略决定。
 - 任务执行必须限制并发、超时和资源预算，防止超级管理员误配置造成模型或数据库压力。

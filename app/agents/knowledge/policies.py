@@ -6,7 +6,7 @@ from app.core.common.exception import BusiException
 from app.schemas.agent import AgentContext, AgentResult, ToolCall
 
 if TYPE_CHECKING:
-    from app.agents.tools.registry import ToolRegistry
+    from app.agents.knowledge.tools.registry import ToolRegistry
 
 READ_ONLY_TOOLS = frozenset({"retrieve_knowledge", "load_conversation_history", "build_citations"})
 

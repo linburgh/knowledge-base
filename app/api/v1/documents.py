@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
+from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import document as document_service
@@ -15,7 +16,7 @@ from app.schemas.document import (
     DocumentModifyRequest,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(auth.get_current_user)])
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -95,7 +96,7 @@ async def list(
 async def index(id: int) -> Any:
     try:
         task = await ingestion_service.create_task(id)
-        return await ingestion_service.run_task(task["id"])
+        return task
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

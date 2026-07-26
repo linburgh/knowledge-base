@@ -4,7 +4,7 @@ from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 
-from app.agents.policies import authorize_tool
+from app.agents.knowledge.policies import authorize_tool
 from app.db import conversation as conversation_db
 from app.db import conversation_message as conversation_message_db
 from app.db.base import DB

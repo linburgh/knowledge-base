@@ -18,7 +18,7 @@ from app.schemas.knowledge_base_user import (
     KnowledgeBaseUserRequest,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(auth.get_current_user)])
 current_user_dependency = Depends(auth.get_current_user)
 
 

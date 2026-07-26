@@ -86,8 +86,24 @@ async def remove(tenant_id: int) -> dict[str, Any]:
         raise BusiException("tenant_id 不能为空")
     db = DB.get()
     async with db.transaction():
-        if await tenant_db.get(db, id=tenant_id) is None:
+        tenant = await tenant_db.get_with_stats(db, tenant_id)
+        if tenant is None:
             raise BusiException("租户不存在", status_code=404)
+        dependencies = {
+            "成员": int(tenant.get("member_count") or 0),
+            "组织": int(tenant.get("organization_count") or 0),
+            "知识库": int(tenant.get("knowledge_base_count") or 0),
+        }
+        active_dependencies = [
+            f"{name}{count}条"
+            for name, count in dependencies.items()
+            if count > 0
+        ]
+        if active_dependencies:
+            raise BusiException(
+                "租户仍存在未处理资源，不能删除：" + "、".join(active_dependencies),
+                status_code=409,
+            )
         await tenant_db.update_(
             db,
             {"status": STATUS_DELETED, "updated_at": common_utils.utc_now()},

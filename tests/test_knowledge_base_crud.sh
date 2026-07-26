@@ -5,12 +5,18 @@ set -euo pipefail
 ACTION="${1:-all}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:28003/api/v1}"
 OWNER_ID="${OWNER_ID:-test-user}"
+TENANT_ID="${TENANT_ID:-3}"
 NAME_PREFIX="${NAME_PREFIX:-kb-shell-test}"
 KB_ID="${KB_ID:-}"
 PAGE="${PAGE:-1}"
 PAGE_SIZE="${PAGE_SIZE:-20}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-30}"
+AUTH_TOKEN="${AUTH_TOKEN:-}"
+auth_args=()
+if [[ -n "${AUTH_TOKEN}" ]]; then
+  auth_args=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+fi
 
 ts="$(date +%Y%m%d%H%M%S)"
 kb_name="${NAME_PREFIX}-${ts}"
@@ -30,6 +36,7 @@ Usage:
 Environment:
   BASE_URL   API base url, default: http://127.0.0.1:28003/api/v1
   OWNER_ID   request owner_id, default: test-user
+  TENANT_ID  request tenant_id, default: 3
   KB_ID      target knowledge base id, required for get/modify/remove
   PAGE       list page, default: 1
   PAGE_SIZE  list page size, default: 20
@@ -61,6 +68,7 @@ request() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -H "Content-Type: application/json" \
       -d "${body}" \
       -o "${output}" \
@@ -70,6 +78,7 @@ request() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -o "${output}" \
       -w "%{http_code}")"
     curl_exit=$?
@@ -176,14 +185,15 @@ require_kb_id() {
 }
 
 build_add_body() {
-  python3 - "$kb_name" "$OWNER_ID" <<'PY'
+  python3 - "$kb_name" "$OWNER_ID" "$TENANT_ID" <<'PY'
 import json
 import sys
 
-name, owner_id = sys.argv[1], sys.argv[2]
+name, owner_id, tenant_id = sys.argv[1], sys.argv[2], int(sys.argv[3])
 print(json.dumps({
     "name": name,
     "owner_id": owner_id,
+    "tenant_id": tenant_id,
     "description": "shell crud create",
     "visibility": "private",
     "embedding_model": "text-embedding-3-small",
@@ -195,14 +205,15 @@ PY
 }
 
 build_modify_body() {
-  python3 - "$modified_name" "$OWNER_ID" <<'PY'
+  python3 - "$modified_name" "$OWNER_ID" "$TENANT_ID" <<'PY'
 import json
 import sys
 
-name, owner_id = sys.argv[1], sys.argv[2]
+name, owner_id, tenant_id = sys.argv[1], sys.argv[2], int(sys.argv[3])
 print(json.dumps({
     "name": name,
     "owner_id": owner_id,
+    "tenant_id": tenant_id,
     "description": "shell crud modify",
     "visibility": "private",
     "embedding_model": "text-embedding-3-small",

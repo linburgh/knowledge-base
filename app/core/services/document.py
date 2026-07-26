@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Protocol
@@ -94,6 +93,10 @@ async def upload_file(
         temp_path.unlink(missing_ok=True)
         raise
 
+    if size == 0:
+        temp_path.unlink(missing_ok=True)
+        raise BusiException("上传文件不能为空")
+
     content_hash = hasher.hexdigest()
     # 数据库保存 MinIO object key，例如 documents/1/{sha256}_readme.md。
     object_name = f"documents/{kb_id}/{content_hash}_{filename}"
@@ -130,8 +133,7 @@ async def upload(
         created_by=created_by,
     )
     document = await add(dto)
-    task = await ingestion_service.create_task(document["id"])
-    asyncio.create_task(ingestion_service.run_task(task["id"]))
+    await ingestion_service.create_task(document["id"])
     return document
 
 

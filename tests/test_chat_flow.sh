@@ -15,6 +15,11 @@ EMBEDDING_MODEL="${EMBEDDING_MODEL:-}"
 CONFIG_FILE="${CONFIG_FILE:-etc/app.yaml}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-120}"
+AUTH_TOKEN="${AUTH_TOKEN:-}"
+auth_args=()
+if [[ -n "${AUTH_TOKEN}" ]]; then
+  auth_args=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+fi
 
 ts="$(date +%Y%m%d%H%M%S)"
 tmp_dir="$(mktemp -d)"
@@ -37,7 +42,8 @@ cleanup() {
   if [[ "${CLEANUP}" == "true" && "${created_kb}" == "true" && -n "${KB_ID}" ]]; then
     curl -sS -X DELETE "${BASE_URL}/knowledge-bases/${KB_ID}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
-      --max-time "${CURL_MAX_TIME}" >/dev/null 2>&1 || true
+      --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" >/dev/null 2>&1 || true
   fi
   rm -rf "${tmp_dir}"
 }
@@ -77,6 +83,7 @@ request_json() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -H "Content-Type: application/json" -d "${body}" \
       -o "${output}" -w "%{http_code}")"
     curl_exit=$?
@@ -84,6 +91,7 @@ request_json() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -o "${output}" -w "%{http_code}")"
     curl_exit=$?
   fi
@@ -178,6 +186,7 @@ EOF
   status_code="$(curl -sS -X POST "${BASE_URL}/documents/upload" \
     --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
     --max-time "${CURL_MAX_TIME}" \
+    "${auth_args[@]}" \
     -F "kb_id=${KB_ID}" -F "created_by=${CREATED_BY}" \
     -F "source_type=upload" -F "file=@${file_path};type=text/markdown" \
     -o "${output}" -w "%{http_code}")"

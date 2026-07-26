@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from app.agents.runtime import AgentBudgetExceeded, AgentRuntime
-from app.agents.tools.registry import ToolRegistry
+from app.agents.knowledge.runtime import AgentBudgetExceeded, AgentRuntime
+from app.agents.knowledge.tools.registry import ToolRegistry
 from app.schemas.agent import AgentContext, ToolCall, ToolResult
 
 

@@ -31,6 +31,18 @@ MAX_DESCRIPTION_LENGTH = 500
 MAX_SYSTEM_PROMPT_LENGTH = 10000
 
 
+async def _resolve_created_by(db, owner_id: str) -> int:
+    """Resolve the owner field to the numeric user ID stored in created_by."""
+    user = None
+    try:
+        user = await user_db.get(db, id=int(owner_id))
+    except (TypeError, ValueError):
+        user = await user_db.get(db, username=owner_id)
+    if user is None:
+        raise BusiException("owner_id 对应用户不存在", status_code=404)
+    return int(user["id"])
+
+
 async def _resolve_tenant_scope(
     current_user: CurrentUser,
     tenant_id: int | None,
@@ -105,6 +117,7 @@ async def add(dto: KnowledgeBaseDto) -> Any:
         tenant = await tenant_db.get(db, id=dto.tenant_id)
         if tenant is None or tenant.get("status") == "deleted":
             raise BusiException("租户不存在", status_code=404)
+        values["created_by"] = await _resolve_created_by(db, dto.owner_id)
         knowledge_base_id = await knowledge_base_db.insert_(db, **values)
         await knowledge_base_prompt_db.insert_(
             db,
@@ -155,7 +168,7 @@ async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
                 kb_id=knowledge_base_id,
                 version=values["system_prompt_version"],
                 system_prompt=values["system_prompt"],
-                created_by=dto.owner_id or old["owner_id"],
+                created_by=await _resolve_created_by(db, dto.owner_id or old["owner_id"]),
             )
         await knowledge_base_db.update_(db, values, id=knowledge_base_id)
         rd = await knowledge_base_db.get(db, id=knowledge_base_id)
@@ -164,7 +177,7 @@ async def modify(knowledge_base_id: int, dto: KnowledgeBaseDto) -> Any:
             action="update_knowledge_base",
             target_type="knowledge_base",
             target_id=knowledge_base_id,
-            summary={"changed_fields": list(values), "before": old, "after": rd},
+            summary={"changed_fields": list(values.keys()), "before": old, "after": rd},
         )
     return rd
 

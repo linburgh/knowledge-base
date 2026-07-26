@@ -13,6 +13,11 @@ DOCUMENT_ID="${DOCUMENT_ID:-1}"
 CHUNK_ID="${CHUNK_ID:-1}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-30}"
+AUTH_TOKEN="${AUTH_TOKEN:-}"
+auth_args=()
+if [[ -n "${AUTH_TOKEN}" ]]; then
+  auth_args=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+fi
 
 ts="$(date +%Y%m%d%H%M%S)"
 tmp_dir="$(mktemp -d)"
@@ -65,6 +70,7 @@ request() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -H "Content-Type: application/json" -d "${body}" \
       -o "${output}" -w "%{http_code}")"
     curl_exit=$?
@@ -72,6 +78,7 @@ request() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -o "${output}" -w "%{http_code}")"
     curl_exit=$?
   fi

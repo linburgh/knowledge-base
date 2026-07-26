@@ -32,7 +32,28 @@ timeout_seconds = Opt(
     default=30,
 )
 
+batch_size = Opt(
+    name="batch_size",
+    description="Embedding request batch size",
+    schema=StrictInt,
+    default=10,
+)
+
+concurrency = Opt(
+    name="concurrency",
+    description="Maximum concurrent embedding requests",
+    schema=StrictInt,
+    default=4,
+)
+
+retry_count = Opt(
+    name="retry_count",
+    description="Embedding request retry count",
+    schema=StrictInt,
+    default=2,
+)
+
 GROUP_NAME = __name__.split(".")[-1]
-ALL_OPTS = (model, api_key, base_url, timeout_seconds)
+ALL_OPTS = (model, api_key, base_url, timeout_seconds, batch_size, concurrency, retry_count)
 
 __all__ = ("GROUP_NAME", "ALL_OPTS")

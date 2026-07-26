@@ -4,7 +4,7 @@ from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 
-from app.agents.policies import authorize_tool
+from app.agents.knowledge.policies import authorize_tool
 from app.core.common.exception import BusiException
 from app.core.services import retrieval as retrieval_service
 from app.db import knowledge_base as knowledge_base_db

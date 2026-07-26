@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from app.agents.policies import authorize_tool
-from app.agents.tools.registry import build_default_registry
+from app.agents.knowledge.policies import authorize_tool
+from app.agents.knowledge.tools.registry import build_default_registry
 from app.core.common.exception import BusiException
 from app.schemas.agent import AgentContext, ToolCall
 

@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from itertools import count
 from typing import Any
 
-from app.agents.policies import authorize_tool
-from app.agents.tools.registry import ToolRegistry
+from app.agents.knowledge.policies import authorize_tool
+from app.agents.knowledge.tools.registry import ToolRegistry
 from app.core.common.exception import BusiException
 from app.schemas.agent import AgentContext, ToolCall, ToolResult
 

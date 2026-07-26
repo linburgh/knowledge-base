@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from app.config import CONF
 from app.core import storage as object_storage
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
@@ -113,7 +116,14 @@ async def run_task(task_id: int) -> Any:
             )
 
     try:
-        return await exc_task_body(task_id)
+        return await asyncio.wait_for(
+            exc_task_body(task_id),
+            timeout=max(1, int(CONF.default.indexing_task_timeout_seconds)),
+        )
+    except TimeoutError:
+        message = "索引任务超过最大执行时间"
+        await mark_failed(task_id, message)
+        raise BusiException(message) from None
     except BusiException as exc:
         await mark_failed(task_id, exc.message)
         raise
@@ -177,6 +187,10 @@ async def exc_task_body(task_id: int) -> Any:
         chunks = await embeddings.embed_chunks(
             chunks,
             model=knowledge_base["embedding_model"],
+            batch_size=CONF.embedding.batch_size,
+            concurrency=CONF.embedding.concurrency,
+            retry_count=CONF.embedding.retry_count,
+            progress_callback=lambda completed, total: _touch_task(task_id, completed, total),
         )
         await save_chunks(
             db,
@@ -187,6 +201,48 @@ async def exc_task_body(task_id: int) -> Any:
         )
         rd = await mark_ready(db, task, document)
     return rd
+
+
+@check_db_connected
+async def _touch_task(task_id: int, completed: int | None = None, total: int | None = None) -> None:
+    db = DB.get()
+    await indexing_task_db.update_(
+        db,
+        {"updated_at": common_utils.utc_now()},
+        id=task_id,
+        status=TASK_STATUS_RUNNING,
+    )
+
+
+@check_db_connected
+async def recover_stale_tasks() -> int:
+    """Recover tasks left running by a process restart or worker failure."""
+    db = DB.get()
+    now = common_utils.utc_now()
+    stale_before = now - timedelta(seconds=max(1, int(CONF.default.indexing_stale_after_seconds)))
+    tasks = await indexing_task_db.list(db, status=TASK_STATUS_RUNNING)
+    recovered = 0
+    for task in tasks:
+        updated_at = task.get("updated_at") or task.get("started_at")
+        if updated_at is None or updated_at > stale_before:
+            continue
+        attempts = int(task.get("attempts") or 0)
+        max_attempts = int(task.get("max_attempts") or 3)
+        if attempts >= max_attempts:
+            await mark_failed(task["id"], "索引任务失联且已超过最大重试次数")
+        else:
+            await indexing_task_db.update_(
+                db,
+                {
+                    "status": TASK_STATUS_PENDING,
+                    "error_message": "索引任务失联，已自动重新排队",
+                    "updated_at": now,
+                },
+                id=task["id"],
+                status=TASK_STATUS_RUNNING,
+            )
+        recovered += 1
+    return recovered
 
 
 async def save_chunks(
@@ -351,4 +407,5 @@ __all__ = (
     "save_chunks",
     "mark_ready",
     "mark_failed",
+    "recover_stale_tasks",
 )

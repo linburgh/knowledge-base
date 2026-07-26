@@ -81,6 +81,34 @@ max_upload_size_mb = Opt(
     default=100,
 )
 
+indexing_task_timeout_seconds = Opt(
+    name="indexing_task_timeout_seconds",
+    description="Maximum document indexing task duration",
+    schema=StrictInt,
+    default=1800,
+)
+
+indexing_worker_poll_seconds = Opt(
+    name="indexing_worker_poll_seconds",
+    description="Document indexing worker polling interval",
+    schema=StrictInt,
+    default=2,
+)
+
+indexing_stale_after_seconds = Opt(
+    name="indexing_stale_after_seconds",
+    description="Age after which a running indexing task is recoverable",
+    schema=StrictInt,
+    default=300,
+)
+
+evaluation_worker_poll_seconds = Opt(
+    name="evaluation_worker_poll_seconds",
+    description="Autonomous evaluation worker polling interval",
+    schema=StrictInt,
+    default=2,
+)
+
 GROUP_NAME = __name__.split(".")[-1]
 ALL_OPTS = (
     environment,
@@ -94,6 +122,10 @@ ALL_OPTS = (
     db_connect_on_startup,
     allowed_file_extensions,
     max_upload_size_mb,
+    indexing_task_timeout_seconds,
+    indexing_worker_poll_seconds,
+    indexing_stale_after_seconds,
+    evaluation_worker_poll_seconds,
 )
 
 __all__ = ("GROUP_NAME", "ALL_OPTS")

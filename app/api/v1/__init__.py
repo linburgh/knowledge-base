@@ -5,6 +5,7 @@ from app.api.v1 import (
     chat,
     conversations,
     documents,
+    evaluations,
     guest,
     health,
     knowledge_base_overview,
@@ -34,3 +35,4 @@ api_router.include_router(conversations.router, prefix="/conversations", tags=["
 api_router.include_router(search.router, prefix="/search", tags=["Search"])
 api_router.include_router(chat.router, prefix="/chat", tags=["Chat"])
 api_router.include_router(guest.router, prefix="/guest", tags=["Guest"])
+api_router.include_router(evaluations.router, prefix="/platform/evaluations", tags=["Evaluation"])

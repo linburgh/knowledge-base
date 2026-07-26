@@ -1,3 +1,1 @@
-from .agent import run_knowledge_agent
-
-__all__ = ("run_knowledge_agent",)
+"""Independent Agent Harness packages."""

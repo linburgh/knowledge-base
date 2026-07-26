@@ -1,0 +1,23 @@
+evaluation:
+  kb_id: 1
+  questions:
+    source: imported
+    count: 20
+    file: null
+    instruction: "问题表达自然、避免重复。"
+  business_scope:
+    source: description
+    description: ""
+  execution:
+    # 可选：数据库 t_user.id；省略时默认使用当前已登录的平台超级管理员用户 ID。
+    user_id: null
+    concurrency: 3
+    request_timeout_seconds: 120
+    retry_count: 0
+    keep_conversation: false
+  gates:
+    success_rate: {operator: ">=", value: 0.95}
+    error_rate: {operator: "<=", value: 0.01}
+    fallback_rate: {operator: "<=", value: 0.05}
+    citation_rate: {operator: ">=", value: 0.95}
+    p95_duration_ms: {operator: "<=", value: 8000}

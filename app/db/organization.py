@@ -263,7 +263,12 @@ async def list_member_candidates(
 ) -> list[dict[str, Any]]:
     organization_names = (
         sa.select(sa.func.string_agg(Organization.c.name, sa.literal(", ")))
-        .select_from(OrganizationMember.join(Organization))
+        .select_from(
+            OrganizationMember.join(
+                Organization,
+                OrganizationMember.c.organization_id == Organization.c.id,
+            )
+        )
         .where(
             OrganizationMember.c.user_id == User.c.id,
             OrganizationMember.c.status == "active",
@@ -320,7 +325,12 @@ async def page_member_candidates(
 ) -> PageRecord:
     organization_names = (
         sa.select(sa.func.string_agg(Organization.c.name, sa.literal(", ")))
-        .select_from(OrganizationMember.join(Organization))
+        .select_from(
+            OrganizationMember.join(
+                Organization,
+                OrganizationMember.c.organization_id == Organization.c.id,
+            )
+        )
         .where(
             OrganizationMember.c.user_id == User.c.id,
             OrganizationMember.c.status == "active",

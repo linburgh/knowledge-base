@@ -100,7 +100,20 @@ async def available_page(
     count_query = sa.select(sa.func.count()).select_from(User).where(*conditions)
     total = int(await db.fetch_val(count_query))
     query = (
-        sa.select(User, organization_name.label("organization_name"))
+        sa.select(
+            User.c.id,
+            User.c.username,
+            User.c.email,
+            User.c.phone,
+            User.c.display_name,
+            User.c.avatar,
+            User.c.external_subject,
+            User.c.status,
+            User.c.last_login_at,
+            User.c.created_at,
+            User.c.updated_at,
+            organization_name.label("organization_name"),
+        )
         .select_from(User)
         .where(*conditions)
         .order_by(User.c.display_name.asc(), User.c.id.asc())

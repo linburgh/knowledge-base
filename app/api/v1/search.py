@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
+from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import retrieval as retrieval_service
 from app.schemas.retrieval import RetrievalRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(auth.get_current_user)])
 
 
 async def _search(payload: RetrievalRequest) -> Any:

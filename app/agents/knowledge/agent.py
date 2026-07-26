@@ -18,12 +18,12 @@ from deepagents.middleware.filesystem import FilesystemPermission
 from langchain.agents.structured_output import ToolStrategy
 from langchain_openai import ChatOpenAI
 
-from app.agents.policies import authorize_tool, validate_agent_context
-from app.agents.runtime import AgentError, AgentOutputInvalid, AgentRuntime
-from app.agents.tools import build_default_registry
-from app.agents.tools.citations import _build_candidates
-from app.agents.tools.history import load_conversation_history_result
-from app.agents.tools.retrieval import retrieve_knowledge_result
+from app.agents.knowledge.policies import authorize_tool, validate_agent_context
+from app.agents.knowledge.runtime import AgentError, AgentOutputInvalid, AgentRuntime
+from app.agents.knowledge.tools import build_default_registry
+from app.agents.knowledge.tools.citations import _build_candidates
+from app.agents.knowledge.tools.history import load_conversation_history_result
+from app.agents.knowledge.tools.retrieval import retrieve_knowledge_result
 from app.config import CONF
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG

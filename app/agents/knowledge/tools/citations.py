@@ -4,7 +4,7 @@ from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 
-from app.agents.policies import authorize_tool
+from app.agents.knowledge.policies import authorize_tool
 from app.schemas.agent import (
     AgentContext,
     CitationCandidate,

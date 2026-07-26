@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agents.agent import run_knowledge_agent
-from app.agents.runtime import AgentError
+from app.agents.knowledge.agent import run_knowledge_agent
+from app.agents.knowledge.runtime import AgentError
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import knowledge_base_qa_config as qa_config_service

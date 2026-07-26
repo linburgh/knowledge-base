@@ -5,6 +5,54 @@ from sqlalchemy.dialects.postgresql import JSONB
 metadata = sa.MetaData()
 
 
+EvaluationTask = sa.Table(
+    "t_evaluation_task", metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("name", sa.String(255), nullable=False), sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("config", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("status", sa.String(32), nullable=False, server_default="active"),
+    sa.Column("created_by", sa.String(128), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+)
+
+EvaluationRun = sa.Table(
+    "t_evaluation_run", metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("task_id", sa.BigInteger, nullable=False), sa.Column("run_no", sa.Integer, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False), sa.Column("conclusion", sa.String(32)),
+    sa.Column("config_snapshot", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("metrics", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("report", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("question_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("started_at", sa.DateTime(timezone=True)), sa.Column("finished_at", sa.DateTime(timezone=True)),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    sa.UniqueConstraint("task_id", "run_no"),
+)
+
+EvaluationCaseResult = sa.Table(
+    "t_evaluation_case_result", metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True), sa.Column("run_id", sa.BigInteger, nullable=False),
+    sa.Column("case_no", sa.Integer, nullable=False), sa.Column("question", sa.Text, nullable=False),
+    sa.Column("question_source", sa.String(32), nullable=False), sa.Column("question_basis", sa.String(64)),
+    sa.Column("answer", sa.Text), sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("termination_reason", sa.String(128)), sa.Column("citation_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("hit_count", sa.Integer, nullable=False, server_default="0"), sa.Column("duration_ms", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("error_code", sa.String(64)), sa.Column("error_message", sa.Text), sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.UniqueConstraint("run_id", "case_no"),
+)
+
+EvaluationOptimization = sa.Table(
+    "t_evaluation_optimization", metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True), sa.Column("run_id", sa.BigInteger, nullable=False),
+    sa.Column("suggestion", sa.Text, nullable=False), sa.Column("evidence", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("candidate_config", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")), sa.Column("status", sa.String(32), nullable=False, server_default="suggested"),
+    sa.Column("retest_run_id", sa.BigInteger), sa.Column("before_metrics", JSONB), sa.Column("after_metrics", JSONB),
+    sa.Column("requires_confirmation", sa.Boolean, nullable=False, server_default=sa.text("true")),
+    sa.Column("created_by", sa.String(128), nullable=False), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+)
+
+
 Tenant = sa.Table(
     "t_tenant",
     metadata,

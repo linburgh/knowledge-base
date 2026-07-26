@@ -18,6 +18,7 @@ STATUS_DISABLED = "disabled"
 STATUS_DELETED = "deleted"
 VALID_STATUSES = {STATUS_PENDING, STATUS_ACTIVE, STATUS_DISABLED, STATUS_DELETED}
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 SENSITIVE_FIELDS = {"password_hash"}
 
 
@@ -28,6 +29,8 @@ def validate(dto: UserDto, *, creating: bool = False) -> None:
         raise BusiException("username 不能为空")
     if dto.username is not None and not USERNAME_PATTERN.fullmatch(dto.username):
         raise BusiException("username 只能包含字母、数字、点、下划线和短横线")
+    if dto.email is not None and not EMAIL_PATTERN.fullmatch(dto.email):
+        raise BusiException("email 格式不合法")
     if dto.display_name is not None and not dto.display_name.strip():
         raise BusiException("display_name 不能为空")
     if dto.status is not None and dto.status not in VALID_STATUSES:

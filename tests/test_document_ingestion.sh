@@ -5,6 +5,7 @@ set -euo pipefail
 ACTION="${1:-all}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:28003/api/v1}"
 OWNER_ID="${OWNER_ID:-test-user}"
+TENANT_ID="${TENANT_ID:-3}"
 CREATED_BY="${CREATED_BY:-test-user}"
 NAME_PREFIX="${NAME_PREFIX:-doc-ingestion-test}"
 KB_ID="${KB_ID:-}"
@@ -15,9 +16,14 @@ FILE_EXT="${FILE_EXT:-.md}"
 EMBEDDING_MODEL="${EMBEDDING_MODEL:-}"
 CONFIG_FILE="${CONFIG_FILE:-etc/app.yaml}"
 POLL_INTERVAL="${POLL_INTERVAL:-2}"
-POLL_ATTEMPTS="${POLL_ATTEMPTS:-60}"
+POLL_ATTEMPTS="${POLL_ATTEMPTS:-900}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-120}"
+AUTH_TOKEN="${AUTH_TOKEN:-}"
+auth_args=()
+if [[ -n "${AUTH_TOKEN}" ]]; then
+  auth_args=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+fi
 
 ts="$(date +%Y%m%d%H%M%S)"
 kb_name="${NAME_PREFIX}-${ts}"
@@ -60,7 +66,7 @@ Environment:
   CURL_CONNECT_TIMEOUT  curl connect timeout seconds, default: 5
   CURL_MAX_TIME         curl max request seconds, default: 120
   POLL_INTERVAL         indexing status poll interval seconds, default: 2
-  POLL_ATTEMPTS         maximum indexing status polls, default: 60
+  POLL_ATTEMPTS         maximum indexing status polls, default: 900
 
 Examples:
   $0 all
@@ -89,6 +95,7 @@ request_json() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -H "Content-Type: application/json" \
       -d "${body}" \
       -o "${output}" \
@@ -98,6 +105,7 @@ request_json() {
     status_code="$(curl -sS -X "${method}" "${BASE_URL}${path}" \
       --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
       --max-time "${CURL_MAX_TIME}" \
+      "${auth_args[@]}" \
       -o "${output}" \
       -w "%{http_code}")"
     curl_exit=$?
@@ -117,6 +125,7 @@ request_upload() {
   status_code="$(curl -sS -X POST "${BASE_URL}/documents/upload" \
     --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
     --max-time "${CURL_MAX_TIME}" \
+    "${auth_args[@]}" \
     -F "kb_id=${KB_ID}" \
     -F "created_by=${CREATED_BY}" \
     -F "source_type=upload" \
@@ -248,14 +257,15 @@ PY
 }
 
 build_kb_body() {
-  python3 - "$kb_name" "$OWNER_ID" "$EMBEDDING_MODEL" <<'PY'
+  python3 - "$kb_name" "$OWNER_ID" "$TENANT_ID" "$EMBEDDING_MODEL" <<'PY'
 import json
 import sys
 
-name, owner_id, embedding_model = sys.argv[1], sys.argv[2], sys.argv[3]
+name, owner_id, tenant_id, embedding_model = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
 print(json.dumps({
     "name": name,
     "owner_id": owner_id,
+    "tenant_id": tenant_id,
     "description": "document ingestion shell test",
     "visibility": "private",
     "embedding_model": embedding_model,
