@@ -206,7 +206,7 @@ async def get_auth_context(
         .where(
             TenantMember.c.user_id == user_id,
             TenantMember.c.status == "active",
-            Tenant.c.status != "deleted",
+            Tenant.c.status.not_in(("disabled", "deleted")),
         )
         .order_by(TenantMember.c.is_primary.desc(), TenantMember.c.created_at.asc())
     )
@@ -235,10 +235,13 @@ async def get_auth_context(
     )
     tenants = [dict(row) for row in tenant_rows]
     organizations = [dict(row) for row in organization_rows]
-    current_tenant = next(
-        (tenant for tenant in tenants if tenant_id is not None and tenant["id"] == tenant_id),
-        tenants[0] if tenants else None,
-    )
+    if tenant_id is None:
+        current_tenant = tenants[0] if tenants else None
+    else:
+        current_tenant = next(
+            (tenant for tenant in tenants if tenant["id"] == tenant_id),
+            None,
+        )
     if current_tenant is not None:
         organizations = [
             organization

@@ -13,7 +13,7 @@ class ChatRequest(BaseModel):
 
 class GuestChatRequest(BaseModel):
     kb_id: int = Field(..., gt=0, description="知识库 ID")
-    question: str = Field(..., min_length=1, max_length=8000, description="用户问题")
+    question: str = Field(..., min_length=1, max_length=500, description="用户问题")
     conversation_id: int | None = Field(default=None, gt=0, description="已有会话 ID")
     top_k: int | None = Field(default=None, ge=1, le=50, description="召回数量")
 

@@ -22,11 +22,20 @@ async def get(db, **kwargs: Any) -> dict[str, Any] | None:
 
 
 async def get_with_stats(db, tenant_id: int) -> dict[str, Any] | None:
+    organization_count = (
+        sa.select(sa.func.count(sa.distinct(Organization.c.id)))
+        .where(
+            Organization.c.tenant_id == Tenant.c.id,
+            Organization.c.status != "deleted",
+        )
+        .scalar_subquery()
+    )
     query = (
         sa.select(
             Tenant,
             sa.func.count(sa.distinct(TenantMember.c.user_id)).label("member_count"),
             sa.func.count(sa.distinct(KnowledgeBase.c.id)).label("knowledge_base_count"),
+            organization_count.label("organization_count"),
         )
         .select_from(Tenant)
         .outerjoin(

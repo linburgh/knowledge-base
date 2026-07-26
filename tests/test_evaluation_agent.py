@@ -14,6 +14,7 @@ from app.agents.evaluation.models import (
 )
 from app.agents.evaluation.runtime import EvaluationRuntime
 from app.schemas.agent import AgentResult
+from workers.evaluation import _load_generation_context
 
 
 def config(**kwargs) -> EvaluationConfig:
@@ -92,6 +93,27 @@ class EvaluationAgentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[1].error_code, "CASE_EXECUTION_ERROR")
         self.assertEqual(results[2].status, "completed")
 
+    async def test_runtime_retries_a_transient_failure(self) -> None:
+        attempts = 0
+
+        async def execute(case_no: int, question: EvaluationQuestion) -> CaseResult:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("temporary model failure")
+            return CaseResult(
+                case_no=case_no,
+                question=question.question,
+                question_source=question.source,
+                status="completed",
+            )
+
+        results = await EvaluationRuntime(1, 1, retry_count=1).run(
+            [EvaluationQuestion(question="可重试问题")], execute
+        )
+        self.assertEqual(attempts, 2)
+        self.assertEqual(results[0].status, "completed")
+
     async def test_executor_maps_fallback_result(self) -> None:
         async def runner(task, context):
             return AgentResult(
@@ -123,6 +145,43 @@ class EvaluationAgentTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(metrics.metrics["fallback_rate"].value, 0.5)
         self.assertEqual(metrics.conclusion, "passed")
+
+    def test_generated_knowledge_mode_requires_knowledge_context(self) -> None:
+        import asyncio
+
+        with self.assertRaisesRegex(ValueError, "knowledge text is required"):
+            asyncio.run(
+                generate_questions(
+                    config(
+                        business_scope_source="knowledge_base",
+                        business_description=None,
+                    ),
+                    None,
+                )
+            )
+
+    async def test_worker_loads_knowledge_chunks_for_generation(self) -> None:
+        class ChunkDB:
+            async def list(self, db, **kwargs):
+                self.kwargs = kwargs
+                return [{"content": " 报销需要发票。 "}, {"content": ""}]
+
+        import workers.evaluation as worker
+
+        original = worker.document_chunk_db.list
+        worker.document_chunk_db.list = ChunkDB().list
+        try:
+            context = await _load_generation_context(
+                object(),
+                config(
+                    business_scope_source="knowledge_base",
+                    business_description=None,
+                ),
+                None,
+            )
+        finally:
+            worker.document_chunk_db.list = original
+        self.assertEqual(context, "报销需要发票。")
 
 
 if __name__ == "__main__":

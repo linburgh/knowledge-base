@@ -18,8 +18,10 @@ from app.api.v1 import (
     tenants,
     users,
 )
+from app.api.open import router as open_router
 
 api_router = APIRouter()
+api_router.include_router(open_router)
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(health.router, prefix="/health", tags=["Health"])
 api_router.include_router(knowledge_bases.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])

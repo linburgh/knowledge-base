@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from sqlalchemy import case, func, literal, or_, select
+from sqlalchemy import Integer, case, cast, func, literal_column, or_, select
 
 from app.db.models import Document, DocumentChunk
 
@@ -148,16 +148,23 @@ async def keyword_search(
     if not tokens:
         return []
     match_conditions = [DocumentChunk.c.content.ilike(f"%{token}%") for token in tokens]
-    score_expression = sum(
-        (
+    score_terms = [
+        cast(
             case(
-                (DocumentChunk.c.content.ilike(f"%{token}%"), 1),
-                else_=0,
-            )
-            for token in tokens
-        ),
-        literal(0),
-    ).label("keyword_score")
+                (
+                    DocumentChunk.c.content.ilike(f"%{token}%"),
+                    literal_column("1"),
+                ),
+                else_=literal_column("0"),
+            ),
+            Integer,
+        )
+        for token in tokens
+    ]
+    score_expression = score_terms[0]
+    for term in score_terms[1:]:
+        score_expression = score_expression + term
+    score_expression = score_expression.label("keyword_score")
     statement = (
         _base_query(kb_id, index_version_id)
         .add_columns(score_expression)

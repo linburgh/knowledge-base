@@ -358,6 +358,20 @@ async def save_optimization_draft(
 
 
 @check_db_connected
+async def get_optimization(
+    task_id: int,
+    run_id: int,
+    optimization_id: int,
+    current_user: CurrentUser,
+) -> dict[str, Any]:
+    await run_detail(task_id, run_id, current_user)
+    optimization = await optimization_db.get(DB.get(), id=optimization_id, run_id=run_id)
+    if optimization is None:
+        raise BusiException("优化方案不存在", status_code=404)
+    return optimization
+
+
+@check_db_connected
 async def retest_optimization(
     task_id: int,
     run_id: int,

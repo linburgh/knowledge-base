@@ -10,14 +10,31 @@ from app.agents.evaluation.report import build_report
 from app.agents.knowledge.agent import run_knowledge_agent
 from app.config import CONF
 from app.db import evaluation_case_result as case_db
+from app.db import evaluation_optimization as optimization_db
 from app.db import evaluation_run as run_db
 from app.db import evaluation_task as task_db
+from app.db import document_chunk as document_chunk_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 
 
 def _now():
     return datetime.now(UTC)
+
+
+async def _load_generation_context(db, config, fallback: str | None) -> str | None:
+    if config.business_scope_source not in {
+        "knowledge_base",
+        "description_and_knowledge_base",
+    }:
+        return fallback
+    chunks = await document_chunk_db.list(db, kb_id=config.kb_id)
+    knowledge_text = "\n".join(
+        str(chunk.get("content") or "").strip()
+        for chunk in chunks
+        if str(chunk.get("content") or "").strip()
+    )
+    return knowledge_text or fallback
 
 
 @check_db_connected
@@ -48,7 +65,11 @@ async def run_evaluation(run_id: int) -> int:
 
             questions = await generate_questions(
                 config,
-                task["config"].get("business_description"),
+                await _load_generation_context(
+                    db,
+                    config,
+                    task["config"].get("business_description"),
+                ),
             )
         results, metrics = await EvaluationAgent(run_knowledge_agent).run(config, questions)
         report = build_report(config, results, metrics)
@@ -67,6 +88,19 @@ async def run_evaluation(run_id: int) -> int:
                 },
                 id=run_id,
             )
+            optimization_id = report.get("optimization_id") if isinstance(report, dict) else None
+            if optimization_id:
+                serialized_metrics = metrics.model_dump(mode="json").get("metrics") or {}
+                after_metrics = {
+                    name: metric.get("value")
+                    for name, metric in serialized_metrics.items()
+                    if isinstance(metric, dict) and metric.get("value") is not None
+                }
+                await optimization_db.update_(
+                    db,
+                    {"after_metrics": after_metrics, "status": "suggested"},
+                    id=int(optimization_id),
+                )
     except Exception as exc:
         await run_db.update_(
             db,

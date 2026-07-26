@@ -12,6 +12,7 @@ from app.core.common import audit as audit_context
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
 from app.core.common.log import setup as log_setup
+from app.core.common import utils as common_utils
 from app.db import setup as db_setup
 from app.types import constants
 from workers import evaluation as evaluation_worker
@@ -102,11 +103,39 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         request.url.path,
         exc.errors(),
     )
+    if request.url.path.startswith("/api/v1/open/"):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "request_id": audit_context.get_context().get("request_id") or common_utils.new_request_id(),
+                "code": "VALIDATION_ERROR",
+                "message": "请求参数校验失败",
+                "retryable": False,
+                "detail": exc.errors(),
+            },
+        )
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 
 @app.exception_handler(BusiException)
 async def business_exception_handler(request: Request, exc: BusiException):
+    if request.url.path.startswith("/api/v1/open/"):
+        code = "RATE_LIMITED" if exc.status_code == 429 else (
+            "UNAUTHORIZED" if exc.status_code == 401 else (
+                "RESOURCE_FORBIDDEN" if exc.status_code == 403 else (
+                    "RESOURCE_NOT_FOUND" if exc.status_code == 404 else "BUSINESS_ERROR"
+                )
+            )
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "request_id": audit_context.get_context().get("request_id") or common_utils.new_request_id(),
+                "code": code,
+                "message": exc.message,
+                "retryable": exc.status_code in {408, 429, 500, 502, 503, 504},
+            },
+        )
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
 
 
@@ -117,4 +146,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         request.method,
         request.url.path,
     )
+    if request.url.path.startswith("/api/v1/open/"):
+        return JSONResponse(
+            status_code=500,
+            content={
+                "request_id": audit_context.get_context().get("request_id") or common_utils.new_request_id(),
+                "code": "INTERNAL_ERROR",
+                "message": "服务器内部错误",
+                "retryable": True,
+            },
+        )
     return JSONResponse(status_code=500, content={"detail": "服务器内部错误"})

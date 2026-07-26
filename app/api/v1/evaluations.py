@@ -154,6 +154,19 @@ async def save_optimization_draft(
         utils.raise_http_exception(exc)
 
 
+@router.get("/{task_id}/runs/{run_id}/optimizations/{optimization_id}")
+async def get_optimization(
+    task_id: int,
+    run_id: int,
+    optimization_id: int,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await service.get_optimization(task_id, run_id, optimization_id, current_user)
+    except BusiException as exc:
+        utils.raise_http_exception(exc)
+
+
 @router.post("/{task_id}/runs/{run_id}/optimizations/{optimization_id}/retest")
 async def retest_optimization(
     task_id: int,

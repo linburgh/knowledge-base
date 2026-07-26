@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import sqlalchemy as sa
+
 from app.config import CONF
 from app.core.common import utils as common_utils
 from app.core.common.auth import CurrentUser
@@ -18,6 +20,7 @@ from app.db import tenant_member as tenant_member_db
 from app.db import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
+from app.db.models import Conversation, Document
 from app.schemas.knowledge_base import KnowledgeBaseDto
 
 STATUS_ACTIVE = "active"
@@ -193,6 +196,39 @@ async def remove(knowledge_base_id: int) -> Any:
         old = await knowledge_base_db.get(db, id=knowledge_base_id)
         if old is None:
             raise BusiException("知识库不存在", status_code=404)
+
+        document_count = int(
+            await db.fetch_val(
+                sa.select(sa.func.count())
+                .select_from(Document)
+                .where(
+                    Document.c.kb_id == knowledge_base_id,
+                    Document.c.status != STATUS_DELETED,
+                )
+            )
+            or 0
+        )
+        conversation_count = int(
+            await db.fetch_val(
+                sa.select(sa.func.count())
+                .select_from(Conversation)
+                .where(
+                    Conversation.c.kb_id == knowledge_base_id,
+                    Conversation.c.status != STATUS_DELETED,
+                )
+            )
+            or 0
+        )
+        if document_count or conversation_count:
+            dependencies = []
+            if document_count:
+                dependencies.append(f"文档{document_count}条")
+            if conversation_count:
+                dependencies.append(f"会话{conversation_count}条")
+            raise BusiException(
+                "知识库仍存在未处理资源，不能删除：" + "、".join(dependencies),
+                status_code=409,
+            )
 
         await knowledge_base_db.update_(
             db,

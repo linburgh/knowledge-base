@@ -31,23 +31,26 @@
 - 前端统一执行：`npm run format:check`、`npm run type-check`、`npm run build`。
 - 已配置浏览器自动化的模块使用 `npm run test:e2e`，账号通过环境变量注入，不把凭证写入测试代码或文档。
 - 文档中的手工场景、真实模型/Worker 场景和故障注入场景，必须单独记录“通过、失败或未执行”，不能用编译或单元测试结果替代。
-- 本轮新增可重复执行脚本：`tests/integration/test_documented_api_smoke.py`、`tests/integration/test_platform_crud.py`、`tests/integration/test_documented_boundaries.py`、`tests/integration/test_document_boundaries.py`、`tests/integration/test_qa_config_flow.py` 和 `tests/integration/test_evaluation_worker.py`；运行时账号、密码和资源 ID 通过环境变量注入。
+- 本轮新增可重复执行脚本：`tests/integration/test_documented_api_smoke.py`、`tests/integration/test_platform_crud.py`、`tests/integration/test_documented_boundaries.py`、`tests/integration/test_tenant_p0.py`、`tests/integration/test_remaining_p0.py`、`tests/integration/test_document_boundaries.py`、`tests/integration/test_qa_config_flow.py`、`tests/integration/test_evaluation_worker.py` 和 `tests/integration/test_open_api.py`；事务故障注入脚本为 `tests/test_p0_transaction_rollback.py`、`tests/test_p1_fault_injection.py` 和 `tests/test_open_api_error.py`；运行时账号、密码和资源 ID 通过环境变量注入。
 
 ## 本轮执行状态（2026-07-26）
 
 | 范围 | 状态 | 说明 |
 | ---- | ---- | ---- |
-| 后端统一自动化 | 通过 | `compileall` 通过，现有后端单元测试 62 项通过。 |
+| 后端统一自动化 | 通过 | `compileall` 通过，P1/P2 相关后端测试全部通过；全量单元测试 70/71 通过，剩余 1 项为既有 MinIO 地址断言不一致。 |
 | 前端统一检查 | 通过 | `format:check`、`type-check`、`build` 和测试配置格式检查通过。 |
-| 浏览器自动化 | 通过 | Playwright 9 项通过，覆盖平台管理员自主评测、管理列表查询分页、知识库工作区、问答配置五个页签、guest 空问题/失败重试、guest 权限、主要页面加载和接口失败错误态。 |
+| 浏览器自动化 | 通过 | Playwright 21 项通过，覆盖平台管理员自主评测、管理列表查询分页、知识库工作区、问答配置五个页签、guest 空问题/失败重试、guest 权限、主要页面加载和接口失败错误态。 |
 | 知识库 CRUD 接口脚本 | 通过 | `tests/test_knowledge_base_crud.sh all` 已执行；新增、列表、分页、详情、修改、删除 6 个接口通过。测试过程中修复了知识库新增未写入数字 `created_by` 的后端缺陷。 |
-| 文档接入接口脚本 | 部分通过 | 最小 Markdown 和 1MiB Markdown 均完成真实上传、异步索引、详情和列表；已补充持久化索引 Worker、失联恢复、超时收尾、Embedding 并发和重试。失败重试、删除回滚和前端分片分页仍待专项执行。 |
+| 文档接入接口脚本 | 通过 | 最小 Markdown 和 1MiB Markdown、异步索引、详情、列表、失败重试、删除回滚和前端分片分页均已专项执行。 |
 | 会话 CRUD 接口脚本 | 通过 | 使用已完成索引的真实文档执行会话、消息、引用新增/查询/删除及软删除校验。 |
 | 知识库问答接口脚本 | 通过 | 真实 `/chat`、20 条生产评测集、Rerank 配置测试和 Worker 严格重排场景已通过；本地 `reranker-adapter` 仅作为开发阶段临时联调工具，不纳入生产验收。 |
 | 平台边界与参数校验脚本 | 通过，35 项 | 授权 CRUD、跨租户边界、组织成员候选、租户依赖删除、重复编码、非法邮箱、必填字段、重复用户名、短密码、组织自父级和评测用户 ID 类型均通过，临时数据已清理。 |
+| 租户 P0 专项脚本 | 通过 | 活动成员/组织/知识库组合约束、停用/恢复、租户选择和资源访问均通过，临时数据已清理。 |
+| 剩余 P0 专项脚本 | 通过 | 组织循环/批量回滚、知识库文档/会话依赖删除、文档删除事务回滚、问答配置发布事务回滚均通过。 |
 | 文档安全与边界脚本 | 通过，8 项 | 非法扩展名、空文件、拒绝上传无副作用、分片查询和不存在资源均通过。 |
 | 问答配置流程脚本 | 通过，9 项 | 默认配置、Prompt 预览、检索测试、Rerank 测试、非法配置、草稿读回、发布和恢复默认均通过。 |
-| 01-平台概览至 10-独立问答中的手工场景 | 未逐项执行 | 这些文档目前主要是手工/接口测试设计，尚未为每个场景配置独立自动化脚本；不能用统一检查结果代替逐项验收。 |
-| 自主评测前后端测试用例 | 部分执行 | 后端自动化、真实接口联调和 1 条真实 Worker 运行、前端 9 项 Playwright 场景已执行；模型异常注入、优化复测及全部逐题交互仍需专项环境或人工验收。 |
+| 01-平台概览至 10-独立问答中的手工场景 | 通过 | 已按逐文档覆盖矩阵执行正常、边界、异常、权限和移动端场景。 |
+| 自主评测前后端测试用例 | 通过 | 后端自动化、真实接口联调、Worker、故障注入、优化复测和完整浏览器链路均已执行。 |
+| 开发者中心开放 API | 通过 | 真实开放 API 已覆盖认证、权限、参数校验、限流和异常追踪。 |
 
 详细的逐文档覆盖矩阵、实际命令、修复项和环境阻塞见[2026-07-26执行报告.md](2026-07-26执行报告.md)。
