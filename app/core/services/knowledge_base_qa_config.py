@@ -31,6 +31,7 @@ CONFIG_ARCHIVED = "archived"
 ACTION_UPDATE_CONFIG = "knowledge_base:update_config"
 
 DOCUMENT_CONFIG_KEYS = {
+    "embedding_model",
     "chunk_size",
     "chunk_overlap",
     "title_preserved",
@@ -51,10 +52,13 @@ def _option(group: str, name: str, default: Any) -> Any:
         return default
 
 
-def default_config(system_prompt: str = "") -> dict[str, Any]:
+def default_config(system_prompt: str = "", embedding_model: str | None = None) -> dict[str, Any]:
     retrieval_top_k = int(_option("rag", "retrieval_top_k", 5))
+    configured_embedding_model = getattr(getattr(CONF, "embedding", None), "model", "")
     return {
         "document": {
+            "embedding_model": embedding_model
+            or str(configured_embedding_model or "text-embedding-3-small"),
             "chunk_size": int(_option("rag", "chunk_size", 600)),
             "chunk_overlap": int(_option("rag", "chunk_overlap", 100)),
             "title_preserved": True,
@@ -132,6 +136,9 @@ def validate_config(config: dict[str, Any]) -> None:
         raise BusiException(f"不支持的配置分组：{', '.join(sorted(unknown_groups))}")
 
     chunk_size = _positive_int(config, "document", "chunk_size")
+    embedding_model = config["document"].get("embedding_model")
+    if not isinstance(embedding_model, str) or not embedding_model.strip():
+        raise BusiException("document.embedding_model 必须是非空模型标识")
     chunk_overlap = config["document"].get("chunk_overlap")
     if not isinstance(chunk_overlap, int) or isinstance(chunk_overlap, bool) or chunk_overlap < 0:
         raise BusiException("document.chunk_overlap 必须是大于等于 0 的整数")
@@ -194,6 +201,30 @@ def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> dict[str, 
     return changed
 
 
+def _embedding_models(knowledge_base: dict[str, Any]) -> list[str]:
+    """Return models available to the knowledge-base selector.
+
+    The platform currently exposes the configured provider model and the
+    knowledge base's existing model. A future model registry can replace this
+    small adapter without changing the configuration contract.
+    """
+    candidates = [
+        str(knowledge_base.get("embedding_model") or "").strip(),
+        str(getattr(getattr(CONF, "embedding", None), "model", "") or "").strip(),
+    ]
+    return list(dict.fromkeys(model for model in candidates if model))
+
+
+def _configured_embedding_model() -> str:
+    return str(getattr(getattr(CONF, "embedding", None), "model", "") or "")
+
+
+def _with_embedding_model(config: dict[str, Any], embedding_model: str) -> dict[str, Any]:
+    result = deepcopy(config)
+    result.setdefault("document", {})["embedding_model"] = embedding_model
+    return result
+
+
 async def get_effective_config(
     db,
     kb_id: int,
@@ -242,6 +273,30 @@ async def _document_count(db, kb_id: int) -> int:
     return int(await db.fetch_val(query))
 
 
+async def _active_index_needs_embedding_reindex(
+    db,
+    knowledge_base: dict[str, Any],
+    target_embedding_model: str,
+) -> bool:
+    active_index_id = knowledge_base.get("active_index_version_id")
+    if not active_index_id:
+        return True
+    active_index = await index_version_db.get(db, id=active_index_id, kb_id=knowledge_base["id"])
+    if active_index is None:
+        return True
+    active_config = await qa_config_db.get_version(
+        db,
+        id=active_index.get("config_version_id"),
+        kb_id=knowledge_base["id"],
+    )
+    active_model = (
+        ((active_config or {}).get("config_json") or {})
+        .get("document", {})
+        .get("embedding_model")
+    )
+    return active_model != target_embedding_model
+
+
 @check_db_connected
 async def get_config(kb_id: int, current_user: CurrentUser) -> dict[str, Any]:
     db = DB.get()
@@ -250,13 +305,26 @@ async def get_config(kb_id: int, current_user: CurrentUser) -> dict[str, Any]:
     draft = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_DRAFT)
     effective = (draft or published or {}).get("config_json")
     if not effective:
-        effective = default_config(knowledge_base.get("system_prompt") or "")
+        effective = default_config(
+            knowledge_base.get("system_prompt") or "",
+            knowledge_base.get("embedding_model"),
+        )
+    else:
+        effective = _with_embedding_model(
+            effective,
+            knowledge_base.get("embedding_model") or _configured_embedding_model(),
+        ) if "embedding_model" not in effective.get("document", {}) else effective
+    index_versions = await index_version_db.list_(db, kb_id=kb_id)
+    latest_index = index_versions[0] if index_versions else None
     return {
         "kb_id": kb_id,
         "published": published,
         "draft": draft,
         "effective": effective,
         "has_draft": draft is not None,
+        "embedding_models": _embedding_models(knowledge_base),
+        "active_embedding_model": knowledge_base.get("embedding_model"),
+        "index_status": latest_index,
     }
 
 
@@ -281,15 +349,34 @@ async def save_draft(
         ):
             raise BusiException("配置版本已变化，请重新加载后再保存", status_code=409)
         base_config = (current_version or {}).get("config_json") or default_config(
-            knowledge_base.get("system_prompt") or ""
+            knowledge_base.get("system_prompt") or "",
+            knowledge_base.get("embedding_model"),
         )
+        base_config = _with_embedding_model(
+            base_config,
+            knowledge_base.get("embedding_model") or _configured_embedding_model(),
+        ) if "embedding_model" not in base_config.get("document", {}) else base_config
         merged = _merge_config(base_config, config)
         validate_config(merged)
+        selected_embedding_model = merged["document"]["embedding_model"]
+        if selected_embedding_model not in _embedding_models(knowledge_base):
+            raise BusiException("document.embedding_model 不是平台已发布的 Embedding 模型")
         published_config = (published or {}).get("config_json") or default_config(
-            knowledge_base.get("system_prompt") or ""
+            knowledge_base.get("system_prompt") or "",
+            knowledge_base.get("embedding_model"),
         )
+        published_config = _with_embedding_model(
+            published_config,
+            knowledge_base.get("embedding_model") or str(CONF.embedding.model or ""),
+        ) if "embedding_model" not in published_config.get("document", {}) else published_config
         changed = _changed_fields(published_config, merged)
         reindex = bool(set(changed.get("document", {})) & DOCUMENT_CONFIG_KEYS)
+        if await _active_index_needs_embedding_reindex(
+            db,
+            knowledge_base,
+            merged["document"]["embedding_model"],
+        ):
+            reindex = True
         affected_count = await _document_count(db, kb_id) if reindex else 0
         summary = {
             "changed_fields": changed,
@@ -363,7 +450,22 @@ async def _create_reindex_version(
             task_type="index",
             status="pending",
         )
+        await document_db.update_(
+            db,
+            {
+                "status": "processing",
+                "error_message": None,
+                "updated_at": common_utils.utc_now(),
+            },
+            id=document["id"],
+        )
     if not documents:
+        config_version = await qa_config_db.get_version(db, id=config_version_id, kb_id=kb_id)
+        target_embedding_model = (
+            ((config_version or {}).get("config_json") or {})
+            .get("document", {})
+            .get("embedding_model")
+        )
         await index_version_db.update_(
             db,
             {
@@ -376,6 +478,11 @@ async def _create_reindex_version(
             db,
             {
                 "active_index_version_id": index_version_id,
+                **(
+                    {"embedding_model": target_embedding_model}
+                    if target_embedding_model
+                    else {}
+                ),
                 "updated_at": common_utils.utc_now(),
             },
             id=kb_id,
@@ -418,6 +525,15 @@ async def publish(
         index_version = None
         if draft.get("requires_reindex"):
             index_version = await _create_reindex_version(db, kb_id, draft["id"])
+        elif draft.get("config_json", {}).get("document", {}).get("embedding_model"):
+            await knowledge_base_db.update_(
+                db,
+                {
+                    "embedding_model": draft["config_json"]["document"]["embedding_model"],
+                    "updated_at": common_utils.utc_now(),
+                },
+                id=kb_id,
+            )
         result = await qa_config_db.get_version(db, id=draft["id"])
         await qa_config_db.insert_audit(
             db,

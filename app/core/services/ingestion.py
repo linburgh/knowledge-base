@@ -76,6 +76,15 @@ async def create_task(document_id: int) -> Any:
             config_version_id=active_index.get("config_version_id") if active_index else None,
             index_version_id=active_index["id"] if active_index else None,
         )
+        await document_db.update_(
+            db,
+            {
+                "status": DOCUMENT_STATUS_PROCESSING,
+                "error_message": None,
+                "updated_at": common_utils.utc_now(),
+            },
+            id=document_id,
+        )
         rd = await indexing_task_db.get(db, id=task_id)
     if rd is None:
         raise BusiException("索引任务创建失败")
@@ -105,7 +114,7 @@ async def run_task(task_id: int) -> Any:
             },
             id=task_id,
         )
-        if await _task_uses_active_index(db, task):
+        if await _task_can_update_document_status(db, task):
             await document_db.update_(
                 db,
                 {
@@ -169,6 +178,7 @@ async def exc_task_body(task_id: int) -> Any:
                 kb_id=document["kb_id"],
             )
         document_config = (config_version or {}).get("config_json", {}).get("document", {})
+        embedding_model = document_config.get("embedding_model") or knowledge_base["embedding_model"]
         chunk_size = int(document_config.get("chunk_size") or knowledge_base["chunk_size"])
         chunk_overlap_value = document_config.get("chunk_overlap")
         chunk_overlap = int(
@@ -186,7 +196,7 @@ async def exc_task_body(task_id: int) -> Any:
 
         chunks = await embeddings.embed_chunks(
             chunks,
-            model=knowledge_base["embedding_model"],
+            model=embedding_model,
             batch_size=CONF.embedding.batch_size,
             concurrency=CONF.embedding.concurrency,
             retry_count=CONF.embedding.retry_count,
@@ -197,6 +207,7 @@ async def exc_task_body(task_id: int) -> Any:
             document,
             knowledge_base,
             chunks,
+            embedding_model=embedding_model,
             index_version_id=task.get("index_version_id"),
         )
         rd = await mark_ready(db, task, document)
@@ -250,6 +261,7 @@ async def save_chunks(
     document: dict[str, Any],
     knowledge_base: dict[str, Any],
     chunks: list[dict[str, Any]],
+    embedding_model: str | None = None,
     index_version_id: int | None = None,
 ) -> None:
     delete_filters = {"document_id": document["id"]}
@@ -274,7 +286,9 @@ async def save_chunks(
                 "token_count": chunk.get("token_count"),
                 "metadata": chunk.get("metadata") or {},
                 "embedding_model": (
-                    chunk.get("embedding_model") or knowledge_base["embedding_model"]
+                    chunk.get("embedding_model")
+                    or embedding_model
+                    or knowledge_base["embedding_model"]
                 ),
                 "embedding": chunk.get("embedding"),
                 "index_version_id": index_version_id,
@@ -299,7 +313,7 @@ async def mark_ready(
         id=task["id"],
     )
     await _activate_index_if_complete(db, task)
-    if await _task_uses_active_index(db, task):
+    if await _task_can_update_document_status(db, task):
         await document_db.update_(
             db,
             {
@@ -312,16 +326,16 @@ async def mark_ready(
     return await indexing_task_db.get(db, id=task["id"])
 
 
-async def _task_uses_active_index(db, task: dict[str, Any]) -> bool:
-    """判断任务是否属于当前生效索引，避免重建期间污染旧索引状态。"""
+async def _task_can_update_document_status(db, task: dict[str, Any]) -> bool:
+    """只允许当前或更新中的索引任务更新文档状态。"""
     index_version_id = task.get("index_version_id")
     if index_version_id is None:
         return True
     knowledge_base = await knowledge_base_db.get(db, id=task["kb_id"])
-    return bool(
-        knowledge_base
-        and knowledge_base.get("active_index_version_id") == index_version_id
-    )
+    if knowledge_base is None:
+        return False
+    active_index_id = knowledge_base.get("active_index_version_id")
+    return active_index_id is None or index_version_id >= active_index_id
 
 
 async def _activate_index_if_complete(db, task: dict[str, Any]) -> None:
@@ -356,10 +370,28 @@ async def _activate_index_if_complete(db, task: dict[str, Any]) -> None:
         db,
         {
             "active_index_version_id": index_version_id,
+            **await _active_index_config_values(db, task),
             "updated_at": common_utils.utc_now(),
         },
         id=task["kb_id"],
     )
+
+
+async def _active_index_config_values(db, task: dict[str, Any]) -> dict[str, Any]:
+    config_version_id = task.get("config_version_id")
+    if not config_version_id:
+        return {}
+    config_version = await qa_config_db.get_version(
+        db,
+        id=config_version_id,
+        kb_id=task["kb_id"],
+    )
+    embedding_model = (
+        ((config_version or {}).get("config_json") or {})
+        .get("document", {})
+        .get("embedding_model")
+    )
+    return {"embedding_model": embedding_model} if embedding_model else {}
 
 
 @check_db_connected
@@ -386,7 +418,7 @@ async def mark_failed(task_id: int, error_message: str) -> Any:
             },
             id=task_id,
         )
-        if await _task_uses_active_index(db, task):
+        if await _task_can_update_document_status(db, task):
             await document_db.update_(
                 db,
                 {

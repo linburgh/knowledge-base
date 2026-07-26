@@ -150,13 +150,14 @@
 
         <section class="tab-panel active" data-panel="document">
           <div class="config-card"><h2>文档处理</h2><p class="section-note">控制文档清洗、解析和分块方式。修改后需要重新处理文档和生成向量。</p><div class="form-grid">
+            <div class="form-item full"><label class="required">向量模型</label><input data-dirty id="embeddingModel" type="text" value="qwen3.7-text-embedding" placeholder="请输入 Embedding 模型标识" /><div class="help">请输入平台已发布且可用的 Embedding 模型标识；服务地址、密钥和向量维度由平台统一管理。切换后需要重新生成当前知识库的文档向量。</div></div>
             <div class="form-item"><label class="required">分块大小</label><input data-dirty type="number" value="600" /><div class="help">单位：字符，建议范围 200～2000。</div></div>
             <div class="form-item"><label class="required">分块重叠</label><input data-dirty type="number" value="100" /><div class="help">必须小于分块大小，建议不超过分块大小的 30%。</div></div>
             <div class="form-item"><label>标题保留</label><div class="switch"><input data-dirty type="checkbox" checked />开启</div></div>
             <div class="form-item"><label>空白清洗</label><div class="switch"><input data-dirty type="checkbox" checked />开启</div></div>
             <div class="form-item"><label>表格处理方式</label><select data-dirty><option>保留文本</option><option>结构化转换</option><option>跳过表格</option></select></div>
             <div class="form-item"><label>重复内容处理</label><select data-dirty><option>标记重复</option><option>保留全部</option><option>跳过重复</option></select></div>
-          </div><div class="impact"><strong>影响提示：</strong>当前知识库有 128 个文档，本次修改预计需要重新索引 128 个文档。</div></div>
+          </div><div class="impact"><strong>影响提示：</strong>当前知识库有 128 个文档；切换向量模型或修改分块参数后，预计需要重新索引 128 个文档。新索引完成前仍使用旧向量索引。</div></div>
         </section>
 
         <section class="tab-panel" data-panel="retrieval"><div class="config-card"><h2>检索配置</h2><p class="section-note">控制问题如何召回和过滤知识库资料，配置发布后即时生效。</p><div class="form-grid">
@@ -213,9 +214,11 @@
       const toast = (message) => { const el = document.getElementById("toast"); el.textContent = message; el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 1800); };
       document.querySelectorAll(".workspace-tabs a").forEach((tab, index) => tab.addEventListener("click", () => { if (index !== 2) { toast(`原型：切换到${tab.textContent}`); return; } document.querySelectorAll(".workspace-tabs a").forEach((item) => item.classList.remove("active")); tab.classList.add("active"); }));
       document.querySelectorAll("[data-config-tab]").forEach((tab) => tab.addEventListener("click", () => { document.querySelectorAll("[data-config-tab]").forEach((item) => item.classList.remove("active")); tab.classList.add("active"); panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === tab.dataset.configTab)); }));
+      let embeddingModelChanged = false;
       document.querySelectorAll("[data-dirty]").forEach((field) => field.addEventListener("change", () => { document.getElementById("dirtyState").textContent = "有未保存修改"; document.getElementById("footerState").textContent = "当前配置：草稿修改中"; }));
+      document.getElementById("embeddingModel").addEventListener("input", () => { embeddingModelChanged = true; });
       document.getElementById("saveDraft").addEventListener("click", () => { document.getElementById("footerState").textContent = "当前配置：草稿 v4"; document.getElementById("dirtyState").textContent = "草稿已保存"; toast("配置草稿已保存"); });
-      document.getElementById("publishConfig").addEventListener("click", () => { document.getElementById("footerState").textContent = "当前配置：已发布 v4"; document.getElementById("dirtyState").textContent = "配置已发布"; toast("配置已发布"); });
+      document.getElementById("publishConfig").addEventListener("click", () => { document.getElementById("footerState").textContent = embeddingModelChanged ? "当前配置：已发布 v4 · 待重建索引" : "当前配置：已发布 v4"; document.getElementById("dirtyState").textContent = embeddingModelChanged ? "配置已发布，等待索引完成" : "配置已发布"; toast(embeddingModelChanged ? "配置已发布，等待重新索引" : "配置已发布"); });
       document.getElementById("resetConfig").addEventListener("click", () => { document.getElementById("dirtyState").textContent = "已恢复默认值，尚未保存"; toast("已恢复默认配置"); });
       document.getElementById("searchTest").addEventListener("click", () => { const query = document.getElementById("searchQuery").value.trim() || "医签通支持哪些签名方式？"; const result = document.getElementById("searchResults"); result.innerHTML = `<div class="result-item"><span class="score">0.92</span><strong>医签通产品说明.pdf</strong><span>${query} · 医疗行业全场景移动签名应用解决方案……</span></div><div class="result-item"><span class="score">0.86</span><strong>医签通使用指南.pdf</strong><span>扫码签名、协同签名和签名平板等相关内容……</span></div>`; result.classList.remove("hidden"); });
       document.getElementById("rerankTest").addEventListener("click", () => { document.getElementById("rerankStatus").textContent = "连接测试成功 · Ollama · 127.0.0.1:11434"; toast("Rerank 服务连接成功"); });

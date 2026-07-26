@@ -6,6 +6,8 @@ from app.config import CONF
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
 from app.db import knowledge_base as knowledge_base_db
+from app.db import knowledge_base_index_version as index_version_db
+from app.db import knowledge_base_qa_config as qa_config_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.rag import embeddings, retrievers
@@ -35,6 +37,31 @@ def _top_k(value: int | None, knowledge_base: dict[str, Any]) -> int:
     if result < 1 or result > MAX_TOP_K:
         raise BusiException("top_k 必须在 1 到 50 之间")
     return result
+
+
+async def _embedding_model_for_index(
+    db,
+    index_version_id: int | None,
+    knowledge_base: dict[str, Any],
+) -> str | None:
+    """Resolve the model that produced the requested index's vectors."""
+    if index_version_id is None:
+        return knowledge_base.get("embedding_model")
+    index_version = await index_version_db.get(db, id=index_version_id, kb_id=knowledge_base["id"])
+    if index_version and index_version.get("config_version_id"):
+        config_version = await qa_config_db.get_version(
+            db,
+            id=index_version["config_version_id"],
+            kb_id=knowledge_base["id"],
+        )
+        model = (
+            ((config_version or {}).get("config_json") or {})
+            .get("document", {})
+            .get("embedding_model")
+        )
+        if model:
+            return model
+    return knowledge_base.get("embedding_model")
 
 
 @check_db_connected
@@ -70,6 +97,15 @@ async def search(
 
     # top_k 未传时沿用知识库配置，显式传入时则覆盖默认值，并统一限制范围。
     retrieval_config = (config or {}).get("retrieval", {})
+    document_config = (config or {}).get("document", {})
+    embedding_model = document_config.get("embedding_model")
+    if index_version_id is not None:
+        embedding_model = await _embedding_model_for_index(
+            db,
+            index_version_id,
+            knowledge_base,
+        )
+    embedding_model = embedding_model or knowledge_base.get("embedding_model")
     configured_top_k = retrieval_config.get("top_k")
     limit = _top_k(top_k or configured_top_k, knowledge_base)
     configured_mode = retrieval_config.get("mode") or mode
@@ -92,7 +128,7 @@ async def search(
     if mode in {"vector", "hybrid"}:
         vectors = await embeddings.embed_texts(
             [normalized_query],
-            model=knowledge_base.get("embedding_model"),
+            model=embedding_model,
         )
         if not vectors or not vectors[0]:
             raise BusiException("查询向量为空")
