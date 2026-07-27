@@ -489,6 +489,8 @@ create table if not exists t_indexing_task (
     index_version_id bigint,
     task_type varchar(32) not null,
     status varchar(32) not null,
+    progress integer not null default 0,
+    current_step varchar(64),
     attempts integer not null default 0,
     max_attempts integer not null default 3,
     error_message text,
@@ -497,6 +499,9 @@ create table if not exists t_indexing_task (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
+
+alter table t_indexing_task add column if not exists progress integer not null default 0;
+alter table t_indexing_task add column if not exists current_step varchar(64);
 
 create index if not exists idx_t_indexing_task_document_id on t_indexing_task (document_id);
 

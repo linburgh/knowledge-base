@@ -78,6 +78,12 @@ pending → running → succeeded
 
 失败流程：
 
+## 5. API 查询与重建
+
+文档列表的“构建进度”调用 GET /api/v1/documents/{document_id}/index-progress?page=1&page_size=10，返回文档摘要、当前任务和按创建时间倒序分页的历史任务。任务记录包含状态、进度、当前阶段、时间、耗时、重试次数和失败原因。接口先校验当前用户对文档所属知识库的访问权限，禁止跨知识库读取任务。
+
+“重建索引”调用 POST /api/v1/documents/{document_id}/index。Service 在创建任务前校验文档权限，并复用索引任务幂等规则；已有 pending 或 running 任务时不重复创建。
+
 ```text
 running → failed
 ```

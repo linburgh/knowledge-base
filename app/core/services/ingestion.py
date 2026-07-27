@@ -73,6 +73,8 @@ async def create_task(document_id: int) -> Any:
             kb_id=document["kb_id"],
             task_type=TASK_TYPE_INDEX,
             status=TASK_STATUS_PENDING,
+            progress=0,
+            current_step="等待处理",
             config_version_id=active_index.get("config_version_id") if active_index else None,
             index_version_id=active_index["id"] if active_index else None,
         )
@@ -108,6 +110,8 @@ async def run_task(task_id: int) -> Any:
             db,
             {
                 "status": TASK_STATUS_RUNNING,
+                "progress": max(int(task.get("progress") or 0), 5),
+                "current_step": "解析原始文件",
                 "started_at": common_utils.utc_now(),
                 "updated_at": common_utils.utc_now(),
                 "attempts": int(task.get("attempts") or 0) + 1,
@@ -170,6 +174,8 @@ async def exc_task_body(task_id: int) -> Any:
         if not parsed_documents:
             raise BusiException("文档解析结果为空")
 
+        await _update_task_progress(task_id, 25, "切分文档内容")
+
         config_version = None
         if task.get("config_version_id"):
             config_version = await qa_config_db.get_version(
@@ -194,6 +200,8 @@ async def exc_task_body(task_id: int) -> Any:
         if not chunks:
             raise BusiException("文档切片结果为空")
 
+        await _update_task_progress(task_id, 40, "生成 Embedding 向量")
+
         chunks = await embeddings.embed_chunks(
             chunks,
             model=embedding_model,
@@ -202,6 +210,7 @@ async def exc_task_body(task_id: int) -> Any:
             retry_count=CONF.embedding.retry_count,
             progress_callback=lambda completed, total: _touch_task(task_id, completed, total),
         )
+        await _update_task_progress(task_id, 90, "写入索引")
         await save_chunks(
             db,
             document,
@@ -217,9 +226,30 @@ async def exc_task_body(task_id: int) -> Any:
 @check_db_connected
 async def _touch_task(task_id: int, completed: int | None = None, total: int | None = None) -> None:
     db = DB.get()
+    values: dict[str, Any] = {
+        "updated_at": common_utils.utc_now(),
+        "current_step": "生成 Embedding 向量",
+    }
+    if completed is not None and total and total > 0:
+        values["progress"] = min(89, 40 + int((completed / total) * 49))
     await indexing_task_db.update_(
         db,
-        {"updated_at": common_utils.utc_now()},
+        values,
+        id=task_id,
+        status=TASK_STATUS_RUNNING,
+    )
+
+
+@check_db_connected
+async def _update_task_progress(task_id: int, progress: int, current_step: str) -> None:
+    db = DB.get()
+    await indexing_task_db.update_(
+        db,
+        {
+            "progress": max(0, min(100, progress)),
+            "current_step": current_step,
+            "updated_at": common_utils.utc_now(),
+        },
         id=task_id,
         status=TASK_STATUS_RUNNING,
     )
@@ -307,6 +337,8 @@ async def mark_ready(
         db,
         {
             "status": TASK_STATUS_SUCCEEDED,
+            "progress": 100,
+            "current_step": "完成",
             "finished_at": now,
             "updated_at": now,
         },

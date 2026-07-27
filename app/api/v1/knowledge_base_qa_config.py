@@ -64,6 +64,23 @@ async def publish(
         common_utils.raise_http_exception(exc)
 
 
+@router.post("/{kb_id}/qa-config/save-and-publish")
+async def save_and_publish(
+    kb_id: int,
+    payload: KnowledgeBaseQaConfigDraftRequest,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await qa_config_service.save_and_publish(
+            kb_id,
+            payload.config,
+            current_user,
+            base_version=payload.base_version,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 @router.post("/{kb_id}/qa-config/reset")
 async def reset(
     kb_id: int,

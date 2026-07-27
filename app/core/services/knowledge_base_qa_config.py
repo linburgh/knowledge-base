@@ -20,6 +20,7 @@ from app.db import knowledge_base_qa_config as qa_config_db
 from app.db import platform_role as platform_role_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN
 from app.db.models import Document
 from app.rag.rerank import rerank
 
@@ -249,7 +250,7 @@ async def _get_kb(db, kb_id: int, current_user: CurrentUser) -> dict[str, Any]:
         raise BusiException("知识库不存在", status_code=404)
     platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
     is_platform_super_admin = any(
-        role.get("code") == "p_super_admin" and role.get("status") == STATUS_ACTIVE
+        role.get("code") == PLATFORM_ROLE_SUPER_ADMIN and role.get("status") == STATUS_ACTIVE
         for role in platform_roles
     )
     if (
@@ -339,86 +340,102 @@ async def save_draft(
     db = DB.get()
     knowledge_base = await _get_kb(db, kb_id, current_user)
     async with db.transaction():
-        published = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_PUBLISHED)
-        draft = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_DRAFT)
-        current_version = draft or published
-        if (
-            base_version is not None
-            and current_version
-            and current_version["version_no"] != base_version
-        ):
-            raise BusiException("配置版本已变化，请重新加载后再保存", status_code=409)
-        base_config = (current_version or {}).get("config_json") or default_config(
-            knowledge_base.get("system_prompt") or "",
-            knowledge_base.get("embedding_model"),
+        result = await _save_draft_in_transaction(
+            db, kb_id, config, current_user, knowledge_base, base_version
         )
-        base_config = _with_embedding_model(
-            base_config,
-            knowledge_base.get("embedding_model") or _configured_embedding_model(),
-        ) if "embedding_model" not in base_config.get("document", {}) else base_config
-        merged = _merge_config(base_config, config)
-        validate_config(merged)
-        selected_embedding_model = merged["document"]["embedding_model"]
-        if selected_embedding_model not in _embedding_models(knowledge_base):
-            raise BusiException("document.embedding_model 不是平台已发布的 Embedding 模型")
-        published_config = (published or {}).get("config_json") or default_config(
-            knowledge_base.get("system_prompt") or "",
-            knowledge_base.get("embedding_model"),
-        )
-        published_config = _with_embedding_model(
-            published_config,
-            knowledge_base.get("embedding_model") or str(CONF.embedding.model or ""),
-        ) if "embedding_model" not in published_config.get("document", {}) else published_config
-        changed = _changed_fields(published_config, merged)
-        reindex = bool(set(changed.get("document", {})) & DOCUMENT_CONFIG_KEYS)
-        if await _active_index_needs_embedding_reindex(
+    if result is None:
+        raise BusiException("配置草稿保存失败")
+    return result
+
+
+async def _save_draft_in_transaction(
+    db,
+    kb_id: int,
+    config: dict[str, Any],
+    current_user: CurrentUser,
+    knowledge_base: dict[str, Any],
+    base_version: int | None = None,
+) -> dict[str, Any]:
+    published = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_PUBLISHED)
+    draft = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_DRAFT)
+    current_version = draft or published
+    if (
+        base_version is not None
+        and current_version
+        and current_version["version_no"] != base_version
+    ):
+        raise BusiException("配置版本已变化，请重新加载后再保存", status_code=409)
+    base_config = (current_version or {}).get("config_json") or default_config(
+        knowledge_base.get("system_prompt") or "",
+        knowledge_base.get("embedding_model"),
+    )
+    base_config = _with_embedding_model(
+        base_config,
+        knowledge_base.get("embedding_model") or _configured_embedding_model(),
+    ) if "embedding_model" not in base_config.get("document", {}) else base_config
+    merged = _merge_config(base_config, config)
+    validate_config(merged)
+    selected_embedding_model = merged["document"]["embedding_model"]
+    if selected_embedding_model not in _embedding_models(knowledge_base):
+        raise BusiException("document.embedding_model 不是平台已发布的 Embedding 模型")
+    published_config = (published or {}).get("config_json") or default_config(
+        knowledge_base.get("system_prompt") or "",
+        knowledge_base.get("embedding_model"),
+    )
+    published_config = _with_embedding_model(
+        published_config,
+        knowledge_base.get("embedding_model") or str(CONF.embedding.model or ""),
+    ) if "embedding_model" not in published_config.get("document", {}) else published_config
+    changed = _changed_fields(published_config, merged)
+    reindex = bool(set(changed.get("document", {})) & DOCUMENT_CONFIG_KEYS)
+    if await _active_index_needs_embedding_reindex(
+        db,
+        knowledge_base,
+        merged["document"]["embedding_model"],
+    ):
+        reindex = True
+    affected_count = await _document_count(db, kb_id) if reindex else 0
+    summary = {
+        "changed_fields": changed,
+        "requires_reindex": reindex,
+        "affected_document_count": affected_count,
+    }
+    if draft:
+        version_id = await qa_config_db.update_version(
             db,
-            knowledge_base,
-            merged["document"]["embedding_model"],
-        ):
-            reindex = True
-        affected_count = await _document_count(db, kb_id) if reindex else 0
-        summary = {
-            "changed_fields": changed,
-            "requires_reindex": reindex,
-            "affected_document_count": affected_count,
-        }
-        if draft:
-            version_id = await qa_config_db.update_version(
-                db,
-                {
-                    "config_json": merged,
-                    "change_summary_json": summary,
-                    "requires_reindex": reindex,
-                    "affected_document_count": affected_count,
-                    "updated_at": common_utils.utc_now(),
-                },
-                id=draft["id"],
-            )
-        else:
-            version_no = await qa_config_db.next_version_no(db, kb_id)
-            version_id = await qa_config_db.insert_version(
-                db,
-                kb_id=kb_id,
-                version_no=version_no,
-                status=CONFIG_DRAFT,
-                config_json=merged,
-                change_summary_json=summary,
-                requires_reindex=reindex,
-                affected_document_count=affected_count,
-                created_by=int(current_user.user_id),
-            )
-        result = await qa_config_db.get_version(db, id=version_id)
-        await qa_config_db.insert_audit(
+            {
+                "config_json": merged,
+                "change_summary_json": summary,
+                "requires_reindex": reindex,
+                "affected_document_count": affected_count,
+                "updated_at": common_utils.utc_now(),
+            },
+            id=draft["id"],
+        )
+    else:
+        version_no = await qa_config_db.next_version_no(db, kb_id)
+        version_id = await qa_config_db.insert_version(
             db,
             kb_id=kb_id,
-            config_version_id=version_id,
-            action="save_draft",
-            actor_id=int(current_user.user_id),
-            before_json=(current_version or {}).get("config_json") or {},
-            after_json=summary,
-            result="success",
+            version_no=version_no,
+            status=CONFIG_DRAFT,
+            config_json=merged,
+            change_summary_json=summary,
+            requires_reindex=reindex,
+            affected_document_count=affected_count,
+            created_by=int(current_user.user_id),
         )
+    result = await qa_config_db.get_version(db, id=version_id)
+    await qa_config_db.insert_audit(
+        db,
+        kb_id=kb_id,
+        config_version_id=version_id,
+        action="save_draft",
+        actor_id=int(current_user.user_id),
+        before_json=(current_version or {}).get("config_json") or {},
+        after_json=summary,
+        result="success",
+    )
     if result is None:
         raise BusiException("配置草稿保存失败")
     return result
@@ -500,54 +517,88 @@ async def publish(
     db = DB.get()
     await _get_kb(db, kb_id, current_user)
     async with db.transaction():
-        draft = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_DRAFT)
-        if draft is None:
-            raise BusiException("没有可发布的配置草稿")
-        if base_version is not None and draft["version_no"] != base_version:
-            raise BusiException("配置版本已变化，请重新加载后再发布", status_code=409)
-        published = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_PUBLISHED)
-        if published:
-            await qa_config_db.update_version(
-                db,
-                {"status": CONFIG_ARCHIVED, "updated_at": common_utils.utc_now()},
-                id=published["id"],
-            )
+        result = await _publish_in_transaction(db, kb_id, current_user, base_version)
+    return result
+
+
+async def _publish_in_transaction(
+    db,
+    kb_id: int,
+    current_user: CurrentUser,
+    base_version: int | None = None,
+) -> dict[str, Any]:
+    draft = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_DRAFT)
+    if draft is None:
+        raise BusiException("没有可发布的配置草稿")
+    if base_version is not None and draft["version_no"] != base_version:
+        raise BusiException("配置版本已变化，请重新加载后再发布", status_code=409)
+    published = await qa_config_db.get_version(db, kb_id=kb_id, status=CONFIG_PUBLISHED)
+    if published:
         await qa_config_db.update_version(
             db,
+            {"status": CONFIG_ARCHIVED, "updated_at": common_utils.utc_now()},
+            id=published["id"],
+        )
+    await qa_config_db.update_version(
+        db,
+        {
+            "status": CONFIG_PUBLISHED,
+            "published_by": int(current_user.user_id),
+            "published_at": common_utils.utc_now(),
+            "updated_at": common_utils.utc_now(),
+        },
+        id=draft["id"],
+    )
+    index_version = None
+    if draft.get("requires_reindex"):
+        index_version = await _create_reindex_version(db, kb_id, draft["id"])
+    elif draft.get("config_json", {}).get("document", {}).get("embedding_model"):
+        await knowledge_base_db.update_(
+            db,
             {
-                "status": CONFIG_PUBLISHED,
-                "published_by": int(current_user.user_id),
-                "published_at": common_utils.utc_now(),
+                "embedding_model": draft["config_json"]["document"]["embedding_model"],
                 "updated_at": common_utils.utc_now(),
             },
-            id=draft["id"],
+            id=kb_id,
         )
-        index_version = None
-        if draft.get("requires_reindex"):
-            index_version = await _create_reindex_version(db, kb_id, draft["id"])
-        elif draft.get("config_json", {}).get("document", {}).get("embedding_model"):
-            await knowledge_base_db.update_(
-                db,
-                {
-                    "embedding_model": draft["config_json"]["document"]["embedding_model"],
-                    "updated_at": common_utils.utc_now(),
-                },
-                id=kb_id,
-            )
-        result = await qa_config_db.get_version(db, id=draft["id"])
-        await qa_config_db.insert_audit(
-            db,
-            kb_id=kb_id,
-            config_version_id=draft["id"],
-            action="publish",
-            actor_id=int(current_user.user_id),
-            before_json=(published or {}).get("config_json") or {},
-            after_json=draft.get("change_summary_json") or {},
-            result="success",
-        )
+    result = await qa_config_db.get_version(db, id=draft["id"])
+    await qa_config_db.insert_audit(
+        db,
+        kb_id=kb_id,
+        config_version_id=draft["id"],
+        action="publish",
+        actor_id=int(current_user.user_id),
+        before_json=(published or {}).get("config_json") or {},
+        after_json=draft.get("change_summary_json") or {},
+        result="success",
+    )
     if result is None:
         raise BusiException("配置发布失败")
     result["index_version"] = index_version
+    return result
+
+
+@check_db_connected
+async def save_and_publish(
+    kb_id: int,
+    config: dict[str, Any],
+    current_user: CurrentUser,
+    base_version: int | None = None,
+) -> dict[str, Any]:
+    """在同一个事务中保存配置草稿并发布，供前端保存并发布操作使用。"""
+    await _require_edit_permission(current_user)
+    db = DB.get()
+    knowledge_base = await _get_kb(db, kb_id, current_user)
+    async with db.transaction():
+        draft = await _save_draft_in_transaction(
+            db, kb_id, config, current_user, knowledge_base, base_version
+        )
+        result = await _publish_in_transaction(
+            db,
+            kb_id,
+            current_user,
+            base_version=draft["version_no"],
+        )
     return result
 
 
@@ -672,6 +723,7 @@ __all__ = (
     "get_config",
     "preview_prompt",
     "publish",
+    "save_and_publish",
     "reset_to_default",
     "save_draft",
     "test_rerank",

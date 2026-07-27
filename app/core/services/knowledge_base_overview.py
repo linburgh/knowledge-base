@@ -12,6 +12,7 @@ from app.db import platform_role as platform_role_db
 from app.db import knowledge_base_overview as overview_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN
 
 
 @check_db_connected
@@ -34,7 +35,7 @@ async def get_overview(
         raise BusiException("当前用户不能为空", status_code=401)
     platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
     is_platform_super_admin = any(
-        role.get("code") == "p_super_admin" and role.get("status") == "active"
+        role.get("code") == PLATFORM_ROLE_SUPER_ADMIN and role.get("status") == "active"
         for role in platform_roles
     )
     if not is_platform_super_admin and knowledge_base.get("tenant_id") != current_user.tenant_id:

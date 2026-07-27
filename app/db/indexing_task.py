@@ -36,4 +36,30 @@ async def list(
     )
 
 
-__all__ = ("insert_", "update_", "delete_", "get", "list")
+async def count(db, **kwargs: Any) -> int:
+    return await db_api.count(db, IndexingTask, **kwargs)
+
+
+async def page(
+    db,
+    page: int = 1,
+    page_size: int = 10,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    result = await db_api.page(
+        db,
+        IndexingTask,
+        page=page,
+        page_size=page_size,
+        order_by=[IndexingTask.c.created_at.desc(), IndexingTask.c.id.desc()],
+        **kwargs,
+    )
+    return {
+        "items": result.rows,
+        "page": result.page,
+        "page_size": result.page_size,
+        "total": result.total,
+    }
+
+
+__all__ = ("insert_", "update_", "delete_", "get", "list", "count", "page")

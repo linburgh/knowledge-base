@@ -6,7 +6,9 @@ from typing import Any, Protocol
 
 from app.config import CONF
 from app.core import storage as object_storage
+from app.core.common import access as access_service
 from app.core.common import utils as common_utils
+from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
 from app.core.services import ingestion as ingestion_service
@@ -22,6 +24,9 @@ STATUS_PENDING = "pending"
 STATUS_DELETED = "deleted"
 TASK_TYPE_INDEX = "index"
 TASK_STATUS_PENDING = "pending"
+TASK_STATUS_RUNNING = "running"
+TASK_STATUS_SUCCEEDED = "succeeded"
+TASK_STATUS_FAILED = "failed"
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
@@ -265,6 +270,75 @@ async def list_chunks(document_id: int) -> list[dict[str, Any]]:
     return await document_chunk_db.list(db, document_id=document_id)
 
 
+def _index_task_response(task: dict[str, Any] | None) -> dict[str, Any] | None:
+    if task is None:
+        return None
+    result = dict(task)
+    result["progress"] = max(0, min(100, int(result.get("progress") or 0)))
+    result["current_step"] = result.get("current_step") or {
+        TASK_STATUS_PENDING: "等待处理",
+        TASK_STATUS_RUNNING: "处理中",
+        TASK_STATUS_SUCCEEDED: "完成",
+        TASK_STATUS_FAILED: "失败",
+    }.get(result.get("status"), "未知")
+    started_at = result.get("started_at")
+    finished_at = result.get("finished_at")
+    if started_at and finished_at:
+        result["duration_seconds"] = max(0, int((finished_at - started_at).total_seconds()))
+    elif started_at:
+        result["duration_seconds"] = max(
+            0,
+            int((common_utils.utc_now() - started_at).total_seconds()),
+        )
+    else:
+        result["duration_seconds"] = 0
+    return result
+
+
+@check_db_connected
+async def get_index_progress(
+    document_id: int,
+    current_user: CurrentUser,
+    page: int = 1,
+    page_size: int = 10,
+) -> dict[str, Any]:
+    if page < 1 or page_size < 1 or page_size > 50:
+        raise BusiException("历史任务分页参数不合法")
+    document = await access_service.require_document_access(current_user, document_id)
+    db = DB.get()
+    history = await indexing_task_db.page(
+        db,
+        page=page,
+        page_size=page_size,
+        document_id=document_id,
+    )
+    current_task = None
+    for status in (TASK_STATUS_PENDING, TASK_STATUS_RUNNING):
+        active_tasks = await indexing_task_db.list(
+            db,
+            document_id=document_id,
+            status=status,
+            limit=1,
+        )
+        if active_tasks:
+            current_task = active_tasks[0]
+            break
+    if current_task is None and history["items"]:
+        current_task = history["items"][0]
+    history["items"] = [_index_task_response(item) for item in history["items"]]
+    return {
+        "document": document,
+        "current_task": _index_task_response(current_task),
+        "history": history,
+    }
+
+
+@check_db_connected
+async def rebuild_index(document_id: int, current_user: CurrentUser) -> dict[str, Any]:
+    await access_service.require_document_access(current_user, document_id)
+    return await ingestion_service.create_task(document_id)
+
+
 __all__ = (
     "validate",
     "upload",
@@ -274,4 +348,6 @@ __all__ = (
     "get",
     "list",
     "list_chunks",
+    "get_index_progress",
+    "rebuild_index",
 )

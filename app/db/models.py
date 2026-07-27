@@ -518,6 +518,8 @@ IndexingTask = sa.Table(
     sa.Column("index_version_id", sa.BigInteger),
     sa.Column("task_type", sa.String(32), nullable=False),
     sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("progress", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.Column("current_step", sa.String(64)),
     sa.Column("attempts", sa.Integer, nullable=False, server_default=sa.text("0")),
     sa.Column("max_attempts", sa.Integer, nullable=False, server_default=sa.text("3")),
     sa.Column("error_message", sa.Text),

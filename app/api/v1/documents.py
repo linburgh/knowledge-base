@@ -8,7 +8,6 @@ from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import document as document_service
-from app.core.services import ingestion as ingestion_service
 from app.schemas.document import (
     DocumentCreateDto,
     DocumentCreateRequest,
@@ -93,10 +92,31 @@ async def list(
 
 
 @router.post("/{id}/index")
-async def index(id: int) -> Any:
+async def index(
+    id: int,
+    current_user: auth.CurrentUser = Depends(auth.get_current_user),
+) -> Any:
     try:
-        task = await ingestion_service.create_task(id)
+        task = await document_service.rebuild_index(id, current_user)
         return task
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/{id}/index-progress")
+async def index_progress(
+    id: int,
+    page: int = 1,
+    page_size: int = 10,
+    current_user: auth.CurrentUser = Depends(auth.get_current_user),
+) -> Any:
+    try:
+        return await document_service.get_index_progress(
+            id,
+            current_user,
+            page=page,
+            page_size=page_size,
+        )
     except BusiException as exc:
         common_utils.raise_http_exception(exc)
 

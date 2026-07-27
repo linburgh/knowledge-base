@@ -15,6 +15,7 @@ from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.organization import OrganizationDto, OrganizationMemberDto
 from app.schemas.organization_member import OrganizationMemberBatchItem
+from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN
 
 STATUS_ACTIVE = "active"
 STATUS_DISABLED = "disabled"
@@ -239,7 +240,7 @@ async def tree(
     db = DB.get()
     platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
     is_platform_super_admin = any(
-        role.get("code") == "p_super_admin" and role.get("status") == STATUS_ACTIVE
+        role.get("code") == PLATFORM_ROLE_SUPER_ADMIN and role.get("status") == STATUS_ACTIVE
         for role in platform_roles
     )
     if not is_platform_super_admin:
@@ -272,7 +273,7 @@ async def page(
     db = DB.get()
     platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
     is_platform_super_admin = any(
-        role.get("code") == "p_super_admin" and role.get("status") == STATUS_ACTIVE
+        role.get("code") == PLATFORM_ROLE_SUPER_ADMIN and role.get("status") == STATUS_ACTIVE
         for role in platform_roles
     )
     if not is_platform_super_admin:

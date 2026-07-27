@@ -6,6 +6,7 @@ from app.db import system_menu as system_menu_db
 from app.db import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN
 
 
 def _role_pairs(context: dict) -> list[tuple[str, str]]:
@@ -35,7 +36,7 @@ def _default_path(context: dict, tree: list[dict]) -> str | None:
     if not items:
         return None
     platform_roles = {role.get("code") for role in context.get("platform_roles", [])}
-    if "p_super_admin" in platform_roles:
+    if PLATFORM_ROLE_SUPER_ADMIN in platform_roles:
         overview = next(
             (item for item in items if item["code"] == "platform_overview"),
             None,
