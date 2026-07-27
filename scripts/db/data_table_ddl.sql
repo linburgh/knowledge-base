@@ -314,6 +314,7 @@ create table if not exists t_knowledge_base (
     system_prompt_updated_at timestamptz not null default now(),
     created_by bigint not null,
     status varchar(32) not null,
+    version bigint not null default 0,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
@@ -489,10 +490,12 @@ create table if not exists t_indexing_task (
     index_version_id bigint,
     task_type varchar(32) not null,
     status varchar(32) not null,
+    version bigint not null default 0,
     progress integer not null default 0,
     current_step varchar(64),
     attempts integer not null default 0,
     max_attempts integer not null default 3,
+    retry_of_task_id bigint,
     error_message text,
     started_at timestamptz,
     finished_at timestamptz,
@@ -502,6 +505,8 @@ create table if not exists t_indexing_task (
 
 alter table t_indexing_task add column if not exists progress integer not null default 0;
 alter table t_indexing_task add column if not exists current_step varchar(64);
+alter table t_indexing_task add column if not exists retry_of_task_id bigint;
+alter table t_indexing_task add column if not exists version bigint not null default 0;
 
 create index if not exists idx_t_indexing_task_document_id on t_indexing_task (document_id);
 
@@ -509,6 +514,7 @@ create index if not exists idx_t_indexing_task_status on t_indexing_task (status
 
 create index if not exists idx_t_indexing_task_kb_status on t_indexing_task (kb_id, status);
 create index if not exists idx_t_indexing_task_kb_index_version on t_indexing_task (kb_id, index_version_id);
+create index if not exists idx_t_indexing_task_retry_of on t_indexing_task (retry_of_task_id);
 
 
 create table if not exists t_conversation (

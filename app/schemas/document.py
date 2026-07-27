@@ -86,6 +86,10 @@ class DocumentModifyRequest(BaseModel):
     error_message: str | None = Field(default=None, description="错误信息")
 
 
+class IndexTaskActionRequest(BaseModel):
+    expected_version: int = Field(..., ge=0, description="客户端读取到的任务版本号")
+
+
 __all__ = (
     "DocumentCreateDto",
     "DocumentModifyDto",
@@ -93,4 +97,5 @@ __all__ = (
     "DocumentChunkDto",
     "DocumentCreateRequest",
     "DocumentModifyRequest",
+    "IndexTaskActionRequest",
 )

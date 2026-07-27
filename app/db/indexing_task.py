@@ -11,6 +11,9 @@ async def insert_(db, **kwargs: Any) -> Any:
 
 
 async def update_(db, values: dict[str, Any], **kwargs: Any) -> Any:
+    # 所有任务更新都采用版本递增，调用方可额外传入 version 做 CAS 校验。
+    values = dict(values)
+    values.setdefault("version", IndexingTask.c.version + 1)
     return await db_api.update_(db, IndexingTask, values, **kwargs)
 
 

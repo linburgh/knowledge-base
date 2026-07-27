@@ -27,7 +27,18 @@ TASK_STATUS_PENDING = "pending"
 TASK_STATUS_RUNNING = "running"
 TASK_STATUS_SUCCEEDED = "succeeded"
 TASK_STATUS_FAILED = "failed"
+TASK_STATUS_INTERRUPTED = "interrupted"
+TASK_STATUS_CANCELED = "canceled"
 UPLOAD_CHUNK_SIZE = 1024 * 1024
+
+TASK_STATUS_LABELS = {
+    TASK_STATUS_PENDING: "等待处理",
+    TASK_STATUS_RUNNING: "处理中",
+    TASK_STATUS_SUCCEEDED: "已完成",
+    TASK_STATUS_FAILED: "失败",
+    TASK_STATUS_INTERRUPTED: "已中断",
+    TASK_STATUS_CANCELED: "已取消",
+}
 
 
 class UploadFileLike(Protocol):
@@ -280,6 +291,8 @@ def _index_task_response(task: dict[str, Any] | None) -> dict[str, Any] | None:
         TASK_STATUS_RUNNING: "处理中",
         TASK_STATUS_SUCCEEDED: "完成",
         TASK_STATUS_FAILED: "失败",
+        TASK_STATUS_INTERRUPTED: "已中断",
+        TASK_STATUS_CANCELED: "已取消",
     }.get(result.get("status"), "未知")
     started_at = result.get("started_at")
     finished_at = result.get("finished_at")
@@ -293,6 +306,17 @@ def _index_task_response(task: dict[str, Any] | None) -> dict[str, Any] | None:
     else:
         result["duration_seconds"] = 0
     return result
+
+
+def _task_state_conflict_message(action: str, task: dict[str, Any]) -> str:
+    status = task.get("status") or "unknown"
+    status_label = TASK_STATUS_LABELS.get(status, "未知")
+    progress = max(0, min(100, int(task.get("progress") or 0)))
+    current_step = task.get("current_step") or "未知阶段"
+    return (
+        f"当前任务状态不可{action}：task_id={task['id']}，"
+        f"当前状态={status}（{status_label}），进度={progress}%，当前阶段={current_step}"
+    )
 
 
 @check_db_connected
@@ -339,6 +363,94 @@ async def rebuild_index(document_id: int, current_user: CurrentUser) -> dict[str
     return await ingestion_service.create_task(document_id)
 
 
+@check_db_connected
+async def interrupt_index(
+    document_id: int,
+    task_id: int,
+    expected_version: int,
+    current_user: CurrentUser,
+) -> dict[str, Any]:
+    await access_service.require_document_access(current_user, document_id)
+    db = DB.get()
+    async with db.transaction():
+        task = await indexing_task_db.get(db, id=task_id, document_id=document_id)
+        if task is None:
+            raise BusiException("索引任务不存在", status_code=404)
+        if task["status"] not in ingestion_service.RUNNING_TASK_STATUSES:
+            raise BusiException(_task_state_conflict_message("中断", task), status_code=409)
+    return await ingestion_service.interrupt_task(task_id, expected_version)
+
+
+@check_db_connected
+async def retry_index(
+    document_id: int,
+    task_id: int,
+    expected_version: int,
+    current_user: CurrentUser,
+) -> dict[str, Any]:
+    document = await access_service.require_document_access(current_user, document_id)
+    db = DB.get()
+    async with db.transaction():
+        source_task = await indexing_task_db.get(db, id=task_id, document_id=document_id)
+        if source_task is None:
+            raise BusiException("索引任务不存在", status_code=404)
+        if source_task["status"] not in {
+            TASK_STATUS_INTERRUPTED,
+            TASK_STATUS_CANCELED,
+        }:
+            raise BusiException(_task_state_conflict_message("重试", source_task), status_code=409)
+        current_version = int(source_task.get("version") or 0)
+        if current_version != expected_version:
+            raise BusiException(
+                f"索引任务已发生变化：task_id={task_id}，当前版本={current_version}，"
+                f"请求版本={expected_version}",
+                status_code=409,
+            )
+        await indexing_task_db.update_(
+            db,
+            {"updated_at": common_utils.utc_now()},
+            id=task_id,
+            status=source_task["status"],
+            version=expected_version,
+        )
+        locked_source = await indexing_task_db.get(db, id=task_id)
+        if not locked_source or int(locked_source.get("version") or 0) != expected_version + 1:
+            raise BusiException("索引任务已发生变化，请刷新后重试", status_code=409)
+        active_tasks = await indexing_task_db.list(
+            db,
+            document_id=document_id,
+            status=TASK_STATUS_PENDING,
+        ) + await indexing_task_db.list(
+            db,
+            document_id=document_id,
+            status=TASK_STATUS_RUNNING,
+        )
+        if active_tasks:
+            raise BusiException("文档已有索引任务正在执行", status_code=409)
+        task_id = await indexing_task_db.insert_(
+            db,
+            document_id=document_id,
+            kb_id=document["kb_id"],
+            task_type=source_task["task_type"],
+            index_version_id=source_task.get("index_version_id"),
+            config_version_id=source_task.get("config_version_id"),
+            retry_of_task_id=source_task["id"],
+            status=TASK_STATUS_PENDING,
+            progress=0,
+            current_step="等待处理",
+        )
+        await document_db.update_(
+            db,
+            {"status": ingestion_service.DOCUMENT_STATUS_PROCESSING,
+             "error_message": None, "updated_at": common_utils.utc_now()},
+            id=document_id,
+        )
+        task = await indexing_task_db.get(db, id=task_id)
+    if task is None:
+        raise BusiException("索引任务创建失败")
+    return task
+
+
 __all__ = (
     "validate",
     "upload",
@@ -350,4 +462,6 @@ __all__ = (
     "list_chunks",
     "get_index_progress",
     "rebuild_index",
+    "interrupt_index",
+    "retry_index",
 )

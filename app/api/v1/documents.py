@@ -13,6 +13,7 @@ from app.schemas.document import (
     DocumentCreateRequest,
     DocumentModifyDto,
     DocumentModifyRequest,
+    IndexTaskActionRequest,
 )
 
 router = APIRouter(dependencies=[Depends(auth.get_current_user)])
@@ -116,6 +117,36 @@ async def index_progress(
             current_user,
             page=page,
             page_size=page_size,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.post("/{id}/index-tasks/{task_id}/interrupt")
+async def interrupt_index(
+    id: int,
+    task_id: int,
+    payload: IndexTaskActionRequest,
+    current_user: auth.CurrentUser = Depends(auth.get_current_user),
+) -> Any:
+    try:
+        return await document_service.interrupt_index(
+            id, task_id, payload.expected_version, current_user
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.post("/{id}/index-tasks/{task_id}/retry")
+async def retry_index(
+    id: int,
+    task_id: int,
+    payload: IndexTaskActionRequest,
+    current_user: auth.CurrentUser = Depends(auth.get_current_user),
+) -> Any:
+    try:
+        return await document_service.retry_index(
+            id, task_id, payload.expected_version, current_user
         )
     except BusiException as exc:
         common_utils.raise_http_exception(exc)

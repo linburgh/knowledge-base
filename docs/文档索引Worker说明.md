@@ -62,7 +62,7 @@ asyncio.create_task(ingestion_service.run_task(task_id))
 | `id` | 索引任务 ID |
 | `document_id` | 对应文档 ID |
 | `kb_id` | 对应知识库 ID |
-| `status` | 任务状态 |
+| `status` | 任务状态：`pending`、`running`、`succeeded`、`failed`、`interrupted` |
 | `attempts` | 已执行次数 |
 | `max_attempts` | 最大执行次数，默认 3 |
 | `error_message` | 最后一次失败原因 |
@@ -80,12 +80,23 @@ pending → running → succeeded
 
 ## 5. API 查询与重建
 
-文档列表的“构建进度”调用 GET /api/v1/documents/{document_id}/index-progress?page=1&page_size=10，返回文档摘要、当前任务和按创建时间倒序分页的历史任务。任务记录包含状态、进度、当前阶段、时间、耗时、重试次数和失败原因。接口先校验当前用户对文档所属知识库的访问权限，禁止跨知识库读取任务。
+文档列表的“构建进度”调用 GET /api/v1/documents/{document_id}/index-progress?page=1&page_size=10，返回文档摘要、当前任务和按创建时间倒序分页的历史任务。任务记录包含状态、进度、当前阶段、时间、耗时、重试次数、版本号和失败原因。接口先校验当前用户对文档所属知识库的访问权限，禁止跨知识库读取任务。
 
 “重建索引”调用 POST /api/v1/documents/{document_id}/index。Service 在创建任务前校验文档权限，并复用索引任务幂等规则；已有 pending 或 running 任务时不重复创建。
 
+“中断”调用 POST /api/v1/documents/{document_id}/index-tasks/{task_id}/interrupt，请求体携带进度查询返回的 `expected_version`，仅接受 `pending` 或 `running` 任务；用户主动中断后进入 `canceled`，服务端失联恢复场景进入 `interrupted`。后端使用任务 ID、状态和版本号做条件更新，版本不一致时返回 409，不覆盖新状态。
+
+“重试”调用 POST /api/v1/documents/{document_id}/index-tasks/{task_id}/retry，请求体同样携带 `expected_version`，仅接受 `interrupted`、`canceled` 任务。`failed` 任务当前继续使用重建索引入口。事务内校验权限、任务归属、版本号和重复任务后创建新的 `pending` 任务，并通过 `retry_of_task_id` 关联原任务。原任务保留为历史记录，不直接覆盖状态或进度。
+
 ```text
 running → failed
+```
+
+中断与重试流程：
+
+```text
+running → interrupted → pending → running → succeeded
+                              └→ failed
 ```
 
 文档状态通常对应为：
@@ -94,6 +105,8 @@ running → failed
 pending → processing → ready
                        └→ failed
 ```
+
+任务因 Worker 失联或进程重启进入 `interrupted` 时，文档进入可重试状态；重试创建新任务后文档回到 `processing`。原中断任务不覆盖、不删除，作为历史任务保留。
 
 只有索引任务成功写入分块和向量后，文档才会进入 `ready`，检索层也只会查询 `ready` 文档的分块。
 
@@ -198,7 +211,7 @@ default:
 
 下次 Worker 轮询时：
 
-- 未达到最大重试次数：重新改为 `pending`。
+- 未达到最大重试次数：标记为 `interrupted`，由用户通过“重试”重新创建任务。
 - 已达到最大重试次数：改为 `failed`。
 
 因此服务重启后，旧的 `running` 任务不会永久卡住。

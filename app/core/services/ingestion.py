@@ -23,11 +23,15 @@ from app.rag import embeddings, loaders, splitters
 DOCUMENT_STATUS_PROCESSING = "processing"
 DOCUMENT_STATUS_READY = "ready"
 DOCUMENT_STATUS_FAILED = "failed"
+DOCUMENT_STATUS_INTERRUPTED = "interrupted"
+DOCUMENT_STATUS_CANCELED = "canceled"
 TASK_TYPE_INDEX = "index"
 TASK_STATUS_PENDING = "pending"
 TASK_STATUS_RUNNING = "running"
 TASK_STATUS_SUCCEEDED = "succeeded"
 TASK_STATUS_FAILED = "failed"
+TASK_STATUS_INTERRUPTED = "interrupted"
+TASK_STATUS_CANCELED = "canceled"
 RUNNING_TASK_STATUSES = {TASK_STATUS_PENDING, TASK_STATUS_RUNNING}
 
 
@@ -105,6 +109,8 @@ async def run_task(task_id: int) -> Any:
             raise BusiException("索引任务不存在", status_code=404)
         if task["status"] == TASK_STATUS_RUNNING:
             return task
+        if task["status"] != TASK_STATUS_PENDING:
+            raise BusiException("当前任务状态不可执行", status_code=409)
 
         await indexing_task_db.update_(
             db,
@@ -138,79 +144,86 @@ async def run_task(task_id: int) -> Any:
         await mark_failed(task_id, message)
         raise BusiException(message) from None
     except BusiException as exc:
-        await mark_failed(task_id, exc.message)
+        latest = await indexing_task_db.get(DB.get(), id=task_id)
+        if latest and latest["status"] not in {TASK_STATUS_INTERRUPTED, TASK_STATUS_CANCELED}:
+            await mark_failed(task_id, exc.message)
         raise
     except Exception as exc:
-        await mark_failed(task_id, str(exc))
+        latest = await indexing_task_db.get(DB.get(), id=task_id)
+        if latest and latest["status"] not in {TASK_STATUS_INTERRUPTED, TASK_STATUS_CANCELED}:
+            await mark_failed(task_id, str(exc))
         raise BusiException("索引任务执行失败") from exc
 
 
 @check_db_connected
 async def exc_task_body(task_id: int) -> Any:
-    rd = None
-
     db = DB.get()
+    task = await indexing_task_db.get(db, id=task_id)
+    if task is None:
+        raise BusiException("索引任务不存在", status_code=404)
+
+    document = await document_db.get(db, id=task["document_id"])
+    if document is None:
+        raise BusiException("文档不存在", status_code=404)
+
+    knowledge_base = await knowledge_base_db.get(db, id=document["kb_id"])
+    if knowledge_base is None:
+        raise BusiException("知识库不存在", status_code=404)
+
+    # document.object_path 保存的是 MinIO object key，解析前先下载到本地临时文件。
+    suffix = Path(document["object_path"]).suffix
+    with TemporaryDirectory() as temp_dir:
+        local_path = Path(temp_dir).joinpath(f"document_{document['id']}{suffix}")
+        await object_storage.download_file(document["object_path"], local_path)
+        local_document = dict(document)
+        local_document["object_path"] = local_path.as_posix()
+        parsed_documents = loaders.load_document(local_document)
+    if not parsed_documents:
+        raise BusiException("文档解析结果为空")
+
+    await _update_task_progress(task_id, 25, "切分文档内容")
+
+    config_version = None
+    if task.get("config_version_id"):
+        config_version = await qa_config_db.get_version(
+            db,
+            id=task["config_version_id"],
+            kb_id=document["kb_id"],
+        )
+    document_config = (config_version or {}).get("config_json", {}).get("document", {})
+    embedding_model = document_config.get("embedding_model") or knowledge_base["embedding_model"]
+    chunk_size = int(document_config.get("chunk_size") or knowledge_base["chunk_size"])
+    chunk_overlap_value = document_config.get("chunk_overlap")
+    chunk_overlap = int(
+        knowledge_base["chunk_overlap"]
+        if chunk_overlap_value is None
+        else chunk_overlap_value
+    )
+    chunks = splitters.split_documents(
+        parsed_documents,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    if not chunks:
+        raise BusiException("文档切片结果为空")
+
+    await _update_task_progress(task_id, 40, "生成 Embedding 向量")
+
+    chunks = await embeddings.embed_chunks(
+        chunks,
+        model=embedding_model,
+        batch_size=CONF.embedding.batch_size,
+        concurrency=CONF.embedding.concurrency,
+        retry_count=CONF.embedding.retry_count,
+        progress_callback=lambda completed, total: _touch_task(task_id, completed, total),
+    )
+    await _update_task_progress(task_id, 90, "写入索引")
+
+    # 仅把分片替换和任务完成放在短事务中，避免网络调用期间长期占用数据库连接。
     async with db.transaction():
-        task = await indexing_task_db.get(db, id=task_id)
-        if task is None:
-            raise BusiException("索引任务不存在", status_code=404)
-
-        document = await document_db.get(db, id=task["document_id"])
-        if document is None:
-            raise BusiException("文档不存在", status_code=404)
-
-        knowledge_base = await knowledge_base_db.get(db, id=document["kb_id"])
-        if knowledge_base is None:
-            raise BusiException("知识库不存在", status_code=404)
-
-        # document.object_path 保存的是 MinIO object key，解析前先下载到本地临时文件。
-        suffix = Path(document["object_path"]).suffix
-        with TemporaryDirectory() as temp_dir:
-            local_path = Path(temp_dir).joinpath(f"document_{document['id']}{suffix}")
-            await object_storage.download_file(document["object_path"], local_path)
-            local_document = dict(document)
-            local_document["object_path"] = local_path.as_posix()
-            parsed_documents = loaders.load_document(local_document)
-        if not parsed_documents:
-            raise BusiException("文档解析结果为空")
-
-        await _update_task_progress(task_id, 25, "切分文档内容")
-
-        config_version = None
-        if task.get("config_version_id"):
-            config_version = await qa_config_db.get_version(
-                db,
-                id=task["config_version_id"],
-                kb_id=document["kb_id"],
-            )
-        document_config = (config_version or {}).get("config_json", {}).get("document", {})
-        embedding_model = document_config.get("embedding_model") or knowledge_base["embedding_model"]
-        chunk_size = int(document_config.get("chunk_size") or knowledge_base["chunk_size"])
-        chunk_overlap_value = document_config.get("chunk_overlap")
-        chunk_overlap = int(
-            knowledge_base["chunk_overlap"]
-            if chunk_overlap_value is None
-            else chunk_overlap_value
-        )
-        chunks = splitters.split_documents(
-            parsed_documents,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
-        if not chunks:
-            raise BusiException("文档切片结果为空")
-
-        await _update_task_progress(task_id, 40, "生成 Embedding 向量")
-
-        chunks = await embeddings.embed_chunks(
-            chunks,
-            model=embedding_model,
-            batch_size=CONF.embedding.batch_size,
-            concurrency=CONF.embedding.concurrency,
-            retry_count=CONF.embedding.retry_count,
-            progress_callback=lambda completed, total: _touch_task(task_id, completed, total),
-        )
-        await _update_task_progress(task_id, 90, "写入索引")
+        current_task = await indexing_task_db.get(db, id=task_id)
+        if current_task is None or current_task["status"] != TASK_STATUS_RUNNING:
+            raise BusiException("索引任务已中断")
         await save_chunks(
             db,
             document,
@@ -219,8 +232,7 @@ async def exc_task_body(task_id: int) -> Any:
             embedding_model=embedding_model,
             index_version_id=task.get("index_version_id"),
         )
-        rd = await mark_ready(db, task, document)
-    return rd
+        return await mark_ready(db, task, document)
 
 
 @check_db_connected
@@ -232,27 +244,29 @@ async def _touch_task(task_id: int, completed: int | None = None, total: int | N
     }
     if completed is not None and total and total > 0:
         values["progress"] = min(89, 40 + int((completed / total) * 49))
-    await indexing_task_db.update_(
-        db,
-        values,
-        id=task_id,
-        status=TASK_STATUS_RUNNING,
-    )
+    async with db.transaction():
+        await indexing_task_db.update_(
+            db,
+            values,
+            id=task_id,
+            status=TASK_STATUS_RUNNING,
+        )
 
 
 @check_db_connected
 async def _update_task_progress(task_id: int, progress: int, current_step: str) -> None:
     db = DB.get()
-    await indexing_task_db.update_(
-        db,
-        {
-            "progress": max(0, min(100, progress)),
-            "current_step": current_step,
-            "updated_at": common_utils.utc_now(),
-        },
-        id=task_id,
-        status=TASK_STATUS_RUNNING,
-    )
+    async with db.transaction():
+        await indexing_task_db.update_(
+            db,
+            {
+                "progress": max(0, min(100, progress)),
+                "current_step": current_step,
+                "updated_at": common_utils.utc_now(),
+            },
+            id=task_id,
+            status=TASK_STATUS_RUNNING,
+        )
 
 
 @check_db_connected
@@ -272,16 +286,7 @@ async def recover_stale_tasks() -> int:
         if attempts >= max_attempts:
             await mark_failed(task["id"], "索引任务失联且已超过最大重试次数")
         else:
-            await indexing_task_db.update_(
-                db,
-                {
-                    "status": TASK_STATUS_PENDING,
-                    "error_message": "索引任务失联，已自动重新排队",
-                    "updated_at": now,
-                },
-                id=task["id"],
-                status=TASK_STATUS_RUNNING,
-            )
+            await interrupt_task(task["id"], "索引任务失联，等待用户重试")
         recovered += 1
     return recovered
 
@@ -343,7 +348,11 @@ async def mark_ready(
             "updated_at": now,
         },
         id=task["id"],
+        status=TASK_STATUS_RUNNING,
     )
+    completed_task = await indexing_task_db.get(db, id=task["id"])
+    if not completed_task or completed_task["status"] != TASK_STATUS_SUCCEEDED:
+        return completed_task
     await _activate_index_if_complete(db, task)
     if await _task_can_update_document_status(db, task):
         await document_db.update_(
@@ -355,7 +364,7 @@ async def mark_ready(
             },
             id=document["id"],
         )
-    return await indexing_task_db.get(db, id=task["id"])
+    return completed_task
 
 
 async def _task_can_update_document_status(db, task: dict[str, Any]) -> bool:
@@ -464,6 +473,49 @@ async def mark_failed(task_id: int, error_message: str) -> Any:
     return rd
 
 
+@check_db_connected
+async def interrupt_task(
+    task_id: int,
+    expected_version: int,
+    error_message: str = "用户手动中断索引任务",
+) -> Any:
+    if not task_id:
+        raise BusiException("task_id 不能为空")
+    db = DB.get()
+    async with db.transaction():
+        task = await indexing_task_db.get(db, id=task_id)
+        if task is None:
+            raise BusiException("索引任务不存在", status_code=404)
+        if task["status"] not in RUNNING_TASK_STATUSES:
+            raise BusiException(
+                f"当前任务状态不可中断：task_id={task_id}，当前状态={task['status']}，"
+                f"进度={task.get('progress') or 0}%",
+                status_code=409,
+            )
+        if int(task.get("version") or 0) != expected_version:
+            raise BusiException(
+                f"索引任务已发生变化：task_id={task_id}，"
+                f"当前版本={task.get('version') or 0}，请求版本={expected_version}",
+                status_code=409,
+            )
+        now = common_utils.utc_now()
+        await indexing_task_db.update_(
+            db,
+            {"status": TASK_STATUS_CANCELED, "error_message": error_message,
+             "finished_at": now, "updated_at": now},
+            id=task_id,
+            status=task["status"],
+            version=expected_version,
+        )
+        await document_db.update_(
+            db,
+            {"status": DOCUMENT_STATUS_CANCELED, "error_message": error_message,
+             "updated_at": now},
+            id=task["document_id"],
+        )
+        return await indexing_task_db.get(db, id=task_id)
+
+
 __all__ = (
     "create_task",
     "run_task",
@@ -471,5 +523,6 @@ __all__ = (
     "save_chunks",
     "mark_ready",
     "mark_failed",
+    "interrupt_task",
     "recover_stale_tasks",
 )
