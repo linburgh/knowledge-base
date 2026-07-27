@@ -24,9 +24,14 @@ EvaluationRun = sa.Table(
     sa.Column("config_snapshot", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("metrics", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("report", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("stage", sa.String(32), nullable=False, server_default="prepare"),
     sa.Column("question_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("completed_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("failed_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("error_message", sa.String(500)),
     sa.Column("started_at", sa.DateTime(timezone=True)), sa.Column("finished_at", sa.DateTime(timezone=True)),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     sa.UniqueConstraint("task_id", "run_no"),
 )
 

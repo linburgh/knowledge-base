@@ -36,7 +36,15 @@ class EvaluationCoreFlowTest(unittest.IsolatedAsyncioTestCase):
                 "gates": {},
             },
         }
-        run = {"id": 11, "task_id": 7, "run_no": 1, "status": "pending"}
+        run = {
+            "id": 11,
+            "task_id": 7,
+            "run_no": 1,
+            "status": "pending",
+            "stage": "prepare",
+            "completed_count": 0,
+            "failed_count": 0,
+        }
         updates: list[dict] = []
         inserted_cases: list[dict] = []
 
@@ -97,8 +105,14 @@ class EvaluationCoreFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(inserted_cases), 1)
         self.assertEqual(inserted_cases[0]["question"], "仓储管理系统有哪些功能？")
         self.assertEqual(updates[0]["status"], "running")
+        self.assertEqual(updates[0]["stage"], "prepare")
+        self.assertEqual(updates[1]["stage"], "execute")
+        self.assertEqual(updates[2]["stage"], "metrics")
         self.assertEqual(updates[-1]["status"], "completed")
+        self.assertEqual(updates[-1]["stage"], "report")
         self.assertEqual(updates[-1]["question_count"], 1)
+        self.assertEqual(updates[-1]["completed_count"], 1)
+        self.assertEqual(updates[-1]["failed_count"], 0)
 
     async def test_task_without_run_is_not_reported_as_running(self) -> None:
         db = FakeDB()

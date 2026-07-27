@@ -1541,8 +1541,7 @@
             <table class="result-table">
               <thead>
                 <tr>
-                  <th>指标中文名</th>
-                  <th>英文标识</th>
+                  <th>指标名称</th>
                   <th>实际值</th>
                   <th>门禁条件</th>
                   <th>样本数</th>
@@ -1552,7 +1551,6 @@
               <tbody>
                 <tr>
                   <td>成功率</td>
-                  <td>success_rate</td>
                   <td>100%</td>
                   <td>&gt;= 95%</td>
                   <td>20</td>
@@ -1560,7 +1558,6 @@
                 </tr>
                 <tr>
                   <td>错误率</td>
-                  <td>error_rate</td>
                   <td>0%</td>
                   <td>&lt;= 1%</td>
                   <td>20</td>
@@ -1568,7 +1565,6 @@
                 </tr>
                 <tr>
                   <td>降级率</td>
-                  <td>fallback_rate</td>
                   <td>0%</td>
                   <td>&lt;= 5%</td>
                   <td>20</td>
@@ -1576,7 +1572,6 @@
                 </tr>
                 <tr>
                   <td>引用率</td>
-                  <td>citation_rate</td>
                   <td>100%</td>
                   <td>&gt;= 95%</td>
                   <td>20</td>
@@ -1584,7 +1579,6 @@
                 </tr>
                 <tr>
                   <td>P95 响应时间</td>
-                  <td>p95_duration_ms</td>
                   <td>3517ms</td>
                   <td>&lt;= 8000ms</td>
                   <td>20</td>
@@ -1731,7 +1725,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td>Recall@5</td>
+                  <td>召回率@5</td>
                   <td>80%</td>
                   <td id="retestRecall">—</td>
                 </tr>
@@ -2059,7 +2053,7 @@
           document.getElementById("executionStageText").textContent =
             "正在整理评测结果";
           document.getElementById("executionMessage").textContent =
-            "评测已完成，报告和逐题结果已生成。点击“查看评测结果”查看本次运行。";
+            "评测已完成，报告和逐题结果已生成。点击“查看评测结果”后将自动关闭执行过程窗口，并打开本次运行结果。";
           document.getElementById("executionDot").classList.add("done");
           document.getElementById("stepExecute").className = "execution-step done";
           document.getElementById("stepMetrics").className = "execution-step done";
@@ -2117,6 +2111,7 @@
       });
       document.getElementById("viewExecutionResult").addEventListener("click", () => {
         if (executionTaskId === null) return;
+        // 先关闭执行过程窗口，再打开结果详情，避免两个面板叠加。
         hide("executionModal");
         openResult(executionTaskId);
       });

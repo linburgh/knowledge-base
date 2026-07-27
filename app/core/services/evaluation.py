@@ -219,6 +219,7 @@ async def create_run(task_id: int, current_user: CurrentUser) -> dict[str, Any]:
             task_id=task_id,
             run_no=run_no,
             status="pending",
+            stage="prepare",
             config_snapshot=task["config"],
             metrics={},
             report={},

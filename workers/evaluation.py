@@ -47,7 +47,11 @@ async def run_evaluation(run_id: int) -> int:
     if task is None:
         await run_db.update_(db, {"status": "failed", "finished_at": _now()}, id=run_id)
         return run_id
-    await run_db.update_(db, {"status": "running", "started_at": _now()}, id=run_id)
+    await run_db.update_(
+        db,
+        {"status": "running", "stage": "prepare", "started_at": _now(), "updated_at": _now()},
+        id=run_id,
+    )
     try:
         config = EvaluationConfig.model_validate(task["config"])
         if config.questions_source == "imported":
@@ -71,7 +75,29 @@ async def run_evaluation(run_id: int) -> int:
                     task["config"].get("business_description"),
                 ),
             )
+        await run_db.update_(
+            db,
+            {
+                "stage": "execute",
+                "question_count": len(questions),
+                "completed_count": 0,
+                "failed_count": 0,
+                "updated_at": _now(),
+            },
+            id=run_id,
+        )
         results, metrics = await EvaluationAgent(run_knowledge_agent).run(config, questions)
+        failed_count = sum(result.status != "completed" for result in results)
+        await run_db.update_(
+            db,
+            {
+                "stage": "metrics",
+                "completed_count": len(results),
+                "failed_count": failed_count,
+                "updated_at": _now(),
+            },
+            id=run_id,
+        )
         report = build_report(config, results, metrics)
         async with db.transaction():
             for result in results:
@@ -79,12 +105,16 @@ async def run_evaluation(run_id: int) -> int:
             await run_db.update_(
                 db,
                 {
+                    "stage": "report",
                     "status": "completed",
                     "conclusion": metrics.conclusion,
                     "question_count": len(results),
+                    "completed_count": len(results),
+                    "failed_count": failed_count,
                     "metrics": metrics.model_dump(mode="json"),
                     "report": report,
                     "finished_at": _now(),
+                    "updated_at": _now(),
                 },
                 id=run_id,
             )
@@ -106,8 +136,11 @@ async def run_evaluation(run_id: int) -> int:
             db,
             {
                 "status": "failed",
+                "stage": "report",
                 "report": {"error": str(exc)[:500]},
+                "error_message": str(exc)[:500],
                 "finished_at": _now(),
+                "updated_at": _now(),
             },
             id=run_id,
         )
