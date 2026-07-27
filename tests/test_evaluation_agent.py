@@ -14,7 +14,7 @@ from app.agents.evaluation.models import (
 )
 from app.agents.evaluation.runtime import EvaluationRuntime
 from app.schemas.agent import AgentResult
-from workers.evaluation import _load_generation_context
+from app.workers.evaluation import _load_generation_context
 
 
 def config(**kwargs) -> EvaluationConfig:
@@ -166,7 +166,7 @@ class EvaluationAgentTest(unittest.IsolatedAsyncioTestCase):
                 self.kwargs = kwargs
                 return [{"content": " 报销需要发票。 "}, {"content": ""}]
 
-        import workers.evaluation as worker
+        import app.workers.evaluation as worker
 
         original = worker.document_chunk_db.list
         worker.document_chunk_db.list = ChunkDB().list

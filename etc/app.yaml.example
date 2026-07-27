@@ -16,7 +16,8 @@ default:
     - .docx
   max_upload_size_mb: 100
   indexing_task_timeout_seconds: 1800
-  indexing_worker_poll_seconds: 2
+  scheduler_enabled: true
+  indexing_scheduler_batch_size: 1
   indexing_stale_after_seconds: 300
 
 rag:

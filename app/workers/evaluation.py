@@ -1,4 +1,4 @@
-"""自主评测运行 Worker。"""
+"""Autonomous evaluation worker managed by the backend application."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -9,11 +9,11 @@ from app.agents.evaluation.models import EvaluationConfig
 from app.agents.evaluation.report import build_report
 from app.agents.knowledge.agent import run_knowledge_agent
 from app.config import CONF
+from app.db import document_chunk as document_chunk_db
 from app.db import evaluation_case_result as case_db
 from app.db import evaluation_optimization as optimization_db
 from app.db import evaluation_run as run_db
 from app.db import evaluation_task as task_db
-from app.db import document_chunk as document_chunk_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 
@@ -149,7 +149,7 @@ async def run_evaluation(run_id: int) -> int:
 
 @check_db_connected
 async def run_pending_once() -> bool:
-    """领取并执行一个待运行评测，供常驻 Worker 调用。"""
+    """Claim and execute one pending evaluation run."""
     db = DB.get()
     pending = await run_db.list(db, status="pending")
     if not pending:
@@ -159,7 +159,7 @@ async def run_pending_once() -> bool:
 
 
 async def run_forever(stop_event: asyncio.Event) -> None:
-    """持续消费自主评测运行，服务停止时优雅退出。"""
+    """Keep consuming autonomous evaluation runs until shutdown."""
     while not stop_event.is_set():
         try:
             handled = await run_pending_once()

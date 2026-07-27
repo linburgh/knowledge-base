@@ -9,35 +9,30 @@ from fastapi.responses import JSONResponse
 from app.api.v1 import api_router
 from app.config import CONF, configure
 from app.core.common import audit as audit_context
+from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
 from app.core.common.log import setup as log_setup
-from app.core.common import utils as common_utils
 from app.db import setup as db_setup
 from app.types import constants
-from workers import evaluation as evaluation_worker
-from workers import indexing as indexing_worker
+from app.workers import evaluation as evaluation_worker
+from app.workers import indexing as indexing_worker
 
-indexing_stop_event = asyncio.Event()
-indexing_worker_task: asyncio.Task | None = None
 evaluation_stop_event = asyncio.Event()
 evaluation_worker_task: asyncio.Task | None = None
 
 
 async def on_startup() -> None:
-    global evaluation_worker_task, indexing_worker_task
+    global evaluation_worker_task
     configure("app")
     log_setup(
         Path(CONF.default.log_dir).joinpath(CONF.default.log_file),
         debug=CONF.default.debug,
     )
     await db_setup()
-    indexing_stop_event.clear()
+    await indexing_worker.recover_stale_tasks()
+    indexing_worker.start()
     evaluation_stop_event.clear()
-    indexing_worker_task = asyncio.create_task(
-        indexing_worker.run_forever(indexing_stop_event),
-        name="document-indexing-worker",
-    )
     evaluation_worker_task = asyncio.create_task(
         evaluation_worker.run_forever(evaluation_stop_event),
         name="autonomous-evaluation-worker",
@@ -46,10 +41,7 @@ async def on_startup() -> None:
 
 async def on_shutdown() -> None:
     evaluation_stop_event.set()
-    indexing_stop_event.set()
-    if indexing_worker_task is not None:
-        indexing_worker_task.cancel()
-        await asyncio.gather(indexing_worker_task, return_exceptions=True)
+    indexing_worker.stop()
     if evaluation_worker_task is not None:
         evaluation_worker_task.cancel()
         await asyncio.gather(evaluation_worker_task, return_exceptions=True)
@@ -107,7 +99,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         return JSONResponse(
             status_code=422,
             content={
-                "request_id": audit_context.get_context().get("request_id") or common_utils.new_request_id(),
+                "request_id": audit_context.get_context().get("request_id")
+                or common_utils.new_request_id(),
                 "code": "VALIDATION_ERROR",
                 "message": "请求参数校验失败",
                 "retryable": False,
@@ -130,7 +123,8 @@ async def business_exception_handler(request: Request, exc: BusiException):
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "request_id": audit_context.get_context().get("request_id") or common_utils.new_request_id(),
+                "request_id": audit_context.get_context().get("request_id")
+                or common_utils.new_request_id(),
                 "code": code,
                 "message": exc.message,
                 "retryable": exc.status_code in {408, 429, 500, 502, 503, 504},
@@ -150,7 +144,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         return JSONResponse(
             status_code=500,
             content={
-                "request_id": audit_context.get_context().get("request_id") or common_utils.new_request_id(),
+                "request_id": audit_context.get_context().get("request_id")
+                or common_utils.new_request_id(),
                 "code": "INTERNAL_ERROR",
                 "message": "服务器内部错误",
                 "retryable": True,

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import unittest
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.agents.evaluation.metrics import calculate_metrics
-from app.agents.evaluation.models import CaseResult, EvaluationConfig, EvaluationQuestion
+from app.agents.evaluation.models import CaseResult, EvaluationQuestion
 from app.core.services import evaluation as evaluation_service
 from app.db.base import DB
-from workers import evaluation as evaluation_worker
+from app.workers import evaluation as evaluation_worker
 
 
 class FakeDB:

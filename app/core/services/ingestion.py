@@ -97,6 +97,42 @@ async def create_task(document_id: int) -> Any:
     return rd
 
 
+async def _execute_claimed_task(task_id: int) -> Any:
+    try:
+        return await asyncio.wait_for(
+            exc_task_body(task_id),
+            timeout=max(1, int(CONF.default.indexing_task_timeout_seconds)),
+        )
+    except TimeoutError:
+        message = "索引任务超过最大执行时间"
+        await mark_failed(task_id, message)
+        raise BusiException(message) from None
+    except BusiException as exc:
+        latest = await indexing_task_db.get(DB.get(), id=task_id)
+        if latest and latest["status"] not in {TASK_STATUS_INTERRUPTED, TASK_STATUS_CANCELED}:
+            await mark_failed(task_id, exc.message)
+        raise
+    except Exception as exc:
+        latest = await indexing_task_db.get(DB.get(), id=task_id)
+        if latest and latest["status"] not in {TASK_STATUS_INTERRUPTED, TASK_STATUS_CANCELED}:
+            await mark_failed(task_id, str(exc))
+        raise BusiException("索引任务执行失败") from exc
+
+
+@check_db_connected
+async def run_claimed_task(task_id: int) -> Any:
+    """Execute a task that was atomically claimed by the scheduler."""
+    if not task_id:
+        raise BusiException("task_id 不能为空")
+
+    task = await indexing_task_db.get(DB.get(), id=task_id)
+    if task is None:
+        raise BusiException("索引任务不存在", status_code=404)
+    if task["status"] != TASK_STATUS_RUNNING:
+        raise BusiException("索引任务尚未领取", status_code=409)
+    return await _execute_claimed_task(task_id)
+
+
 @check_db_connected
 async def run_task(task_id: int) -> Any:
     if not task_id:
@@ -134,25 +170,7 @@ async def run_task(task_id: int) -> Any:
                 id=task["document_id"],
             )
 
-    try:
-        return await asyncio.wait_for(
-            exc_task_body(task_id),
-            timeout=max(1, int(CONF.default.indexing_task_timeout_seconds)),
-        )
-    except TimeoutError:
-        message = "索引任务超过最大执行时间"
-        await mark_failed(task_id, message)
-        raise BusiException(message) from None
-    except BusiException as exc:
-        latest = await indexing_task_db.get(DB.get(), id=task_id)
-        if latest and latest["status"] not in {TASK_STATUS_INTERRUPTED, TASK_STATUS_CANCELED}:
-            await mark_failed(task_id, exc.message)
-        raise
-    except Exception as exc:
-        latest = await indexing_task_db.get(DB.get(), id=task_id)
-        if latest and latest["status"] not in {TASK_STATUS_INTERRUPTED, TASK_STATUS_CANCELED}:
-            await mark_failed(task_id, str(exc))
-        raise BusiException("索引任务执行失败") from exc
+    return await _execute_claimed_task(task_id)
 
 
 @check_db_connected
@@ -286,7 +304,19 @@ async def recover_stale_tasks() -> int:
         if attempts >= max_attempts:
             await mark_failed(task["id"], "索引任务失联且已超过最大重试次数")
         else:
-            await interrupt_task(task["id"], "索引任务失联，等待用户重试")
+            async with db.transaction():
+                await indexing_task_db.update_(
+                    db,
+                    {
+                        "status": TASK_STATUS_PENDING,
+                        "progress": 0,
+                        "current_step": "等待恢复",
+                        "error_message": "索引任务失联，等待自动恢复",
+                        "updated_at": common_utils.utc_now(),
+                    },
+                    id=task["id"],
+                    status=TASK_STATUS_RUNNING,
+                )
         recovered += 1
     return recovered
 
@@ -519,6 +549,7 @@ async def interrupt_task(
 __all__ = (
     "create_task",
     "run_task",
+    "run_claimed_task",
     "exc_task_body",
     "save_chunks",
     "mark_ready",

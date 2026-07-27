@@ -88,11 +88,18 @@ indexing_task_timeout_seconds = Opt(
     default=1800,
 )
 
-indexing_worker_poll_seconds = Opt(
-    name="indexing_worker_poll_seconds",
-    description="Document indexing worker polling interval",
+scheduler_enabled = Opt(
+    name="scheduler_enabled",
+    description="Enable backend-managed APScheduler workers",
+    schema=StrictBool,
+    default=True,
+)
+
+indexing_scheduler_batch_size = Opt(
+    name="indexing_scheduler_batch_size",
+    description="Maximum indexing tasks handled by one scheduler run",
     schema=StrictInt,
-    default=2,
+    default=1,
 )
 
 indexing_stale_after_seconds = Opt(
@@ -123,7 +130,8 @@ ALL_OPTS = (
     allowed_file_extensions,
     max_upload_size_mb,
     indexing_task_timeout_seconds,
-    indexing_worker_poll_seconds,
+    scheduler_enabled,
+    indexing_scheduler_batch_size,
     indexing_stale_after_seconds,
     evaluation_worker_poll_seconds,
 )

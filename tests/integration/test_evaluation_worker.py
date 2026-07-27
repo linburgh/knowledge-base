@@ -14,9 +14,8 @@ except ImportError:
 
 async def run_worker(run_id: int) -> None:
     from app.config import configure
-    from app.db import setup
-    from app.db import base
-    from workers.evaluation import run_evaluation
+    from app.db import base, setup
+    from app.workers.evaluation import run_evaluation
 
     configure("app")
     await setup()
@@ -80,7 +79,11 @@ def main() -> int:
         if int(cases.get("total") or 0) != 1:
             raise AssertionError(f"worker case count mismatch: {cases}")
     finally:
-        expect("delete evaluation worker task", request("DELETE", f"/platform/evaluations/{task_id}", token=token), {200})
+        expect(
+            "delete evaluation worker task",
+            request("DELETE", f"/platform/evaluations/{task_id}", token=token),
+            {200},
+        )
     print("autonomous evaluation worker documented cases passed")
     return 0
 
