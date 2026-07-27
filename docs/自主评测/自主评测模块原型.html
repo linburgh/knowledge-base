@@ -651,6 +651,142 @@
         justify-content: flex-end;
         gap: 9px;
       }
+      .execution-panel {
+        display: grid;
+        width: min(620px, calc(100% - 30px));
+        margin: 10vh auto 0;
+        overflow: hidden;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: var(--shadow);
+      }
+      .execution-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        padding: 22px 24px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .execution-head h2 {
+        margin: 0 0 4px;
+        font-size: 18px;
+      }
+      .execution-body {
+        padding: 22px 24px 10px;
+      }
+      .execution-status {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 18px;
+      }
+      .execution-status strong {
+        font-size: 16px;
+      }
+      .status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--brand);
+        box-shadow: 0 0 0 5px var(--brand-soft);
+      }
+      .status-dot.done {
+        background: var(--success);
+        box-shadow: 0 0 0 5px var(--success-soft);
+      }
+      .execution-progress {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 99px;
+        background: #edf0f6;
+      }
+      .execution-progress span {
+        display: block;
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--brand);
+        transition: width 0.3s ease;
+      }
+      .execution-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin: 18px 0 22px;
+      }
+      .execution-stat {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fbfcfe;
+      }
+      .execution-stat span {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .execution-stat strong {
+        font-size: 16px;
+      }
+      .execution-steps {
+        display: grid;
+        gap: 12px;
+        margin: 0 0 18px;
+      }
+      .execution-step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .execution-step::before {
+        display: grid;
+        width: 20px;
+        height: 20px;
+        place-items: center;
+        border: 1px solid #dfe4ee;
+        border-radius: 50%;
+        color: var(--muted);
+        content: "";
+        font-size: 11px;
+      }
+      .execution-step.done,
+      .execution-step.active {
+        color: var(--text);
+      }
+      .execution-step.done::before {
+        border-color: var(--success);
+        color: var(--success);
+        content: "✓";
+      }
+      .execution-step.active::before {
+        border-color: var(--brand);
+        background: var(--brand-soft);
+        box-shadow: inset 0 0 0 5px #fff;
+      }
+      .execution-message {
+        min-height: 38px;
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        color: #68758b;
+        background: #f7f8fb;
+        font-size: 12px;
+      }
+      .execution-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 24px 20px;
+        border-top: 1px solid var(--line);
+      }
+      .execution-footer-actions {
+        display: flex;
+        gap: 9px;
+      }
       .result-panel {
         position: absolute;
         top: 0;
@@ -1079,7 +1215,7 @@
                 <option value="completed">已完成</option>
                 <option value="running">执行中</option>
                 <option value="failed">执行失败</option>
-                <option value="pending">待执行</option>
+                <option value="not_started">未执行</option>
                 <option value="cancelled">已取消</option>
               </select>
             </div>
@@ -1296,6 +1432,48 @@
           ><button class="button danger" id="confirmDelete">确认删除</button>
         </div>
       </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="executionModal">
+      <section class="execution-panel">
+        <div class="execution-head">
+          <div>
+            <h2 id="executionTitle">正在执行评测</h2>
+            <span class="muted" id="executionSubtitle">产品问答评测 · 第 4 次运行</span>
+          </div>
+          <button class="close" data-close="executionModal">×</button>
+        </div>
+        <div class="execution-body">
+          <div class="execution-status">
+            <span class="status-dot" id="executionDot"></span>
+            <strong id="executionStatusText">执行中</strong>
+            <span class="muted" id="executionStageText">正在执行第 9 / 20 题</span>
+          </div>
+          <div class="execution-progress"><span id="executionProgress"></span></div>
+          <div class="execution-stats">
+            <div class="execution-stat"><span>总题数</span><strong id="executionTotal">20</strong></div>
+            <div class="execution-stat"><span>已完成</span><strong id="executionCompleted">8</strong></div>
+            <div class="execution-stat"><span>异常题</span><strong id="executionFailed">0</strong></div>
+            <div class="execution-stat"><span>已用时间</span><strong id="executionElapsed">00:18</strong></div>
+          </div>
+          <div class="execution-steps">
+            <div class="execution-step done" id="stepPrepare">准备评测问题</div>
+            <div class="execution-step active" id="stepExecute">执行知识库问答</div>
+            <div class="execution-step" id="stepMetrics">计算指标与门禁</div>
+            <div class="execution-step" id="stepReport">生成评测报告</div>
+          </div>
+          <p class="execution-message" id="executionMessage">
+            页面会自动刷新执行状态。关闭此窗口不会中断任务，重新打开“查看结果”可继续查看。
+          </p>
+        </div>
+        <div class="execution-footer">
+          <span class="muted" id="executionUpdatedAt">最近更新：刚刚</span>
+          <div class="execution-footer-actions">
+            <button class="button secondary" id="refreshExecution">刷新状态</button>
+            <button class="button" id="viewExecutionResult" disabled>查看评测结果</button>
+          </div>
+        </div>
+      </section>
     </div>
 
     <div class="modal-backdrop hidden" id="resultModal">
@@ -1662,7 +1840,7 @@
           kb: "医签通产品知识库",
           source: "外部导入",
           count: 20,
-          status: "pending",
+          status: "not_started",
           conclusion: "",
           time: "—",
           creator: "林博",
@@ -1684,11 +1862,13 @@
       ];
       let deleteId = null;
       let editingId = null;
+      let executionTaskId = null;
+      let executionTimer = null;
       const statusText = {
         completed: ["已完成", "success"],
         running: ["执行中", "warning"],
         failed: ["执行失败", "danger"],
-        pending: ["待执行", "neutral"],
+        not_started: ["未执行", "neutral"],
         cancelled: ["已取消", "neutral"],
       };
       const conclusionText = {
@@ -1738,7 +1918,7 @@
       }
       function actionHtml(task) {
         const running = task.status === "running";
-        const editable = task.status === "pending" && !task.hasRun;
+        const editable = task.status === "not_started" && !task.hasRun;
         const editButton = editable
           ? `<button class="text-button" onclick="openEdit(${task.id})">修改</button>`
           : "";
@@ -1831,14 +2011,66 @@
         });
       function runTask(id) {
         const task = tasks.find((item) => item.id === id);
+        if (!task) return;
+        executionTaskId = id;
+        if (executionTimer) window.clearInterval(executionTimer);
         task.status = "running";
         render();
-        setTimeout(() => {
+        let completed = 8;
+        let elapsed = 18;
+        document.getElementById("executionTitle").textContent = "正在执行评测";
+        document.getElementById("executionSubtitle").textContent =
+          `${task.name} · 第 ${task.hasRun ? 4 : 1} 次运行`;
+        document.getElementById("executionStatusText").textContent = "执行中";
+        document.getElementById("executionStageText").textContent =
+          `正在执行第 ${completed + 1} / ${task.count} 题`;
+        document.getElementById("executionProgress").style.width =
+          `${(completed / task.count) * 100}%`;
+        document.getElementById("executionCompleted").textContent = completed;
+        document.getElementById("executionFailed").textContent = "0";
+        document.getElementById("executionElapsed").textContent = "00:18";
+        document.getElementById("executionUpdatedAt").textContent = "最近更新：刚刚";
+        document.getElementById("executionMessage").textContent =
+          "页面会自动刷新执行状态。关闭此窗口不会中断任务，重新打开“查看结果”可继续查看。";
+        document.getElementById("executionDot").classList.remove("done");
+        document.getElementById("viewExecutionResult").disabled = true;
+        document.getElementById("stepPrepare").className = "execution-step done";
+        document.getElementById("stepExecute").className = "execution-step active";
+        document.getElementById("stepMetrics").className = "execution-step";
+        document.getElementById("stepReport").className = "execution-step";
+        show("executionModal");
+        executionTimer = window.setInterval(() => {
+          completed = Math.min(completed + 2, task.count);
+          elapsed += 3;
+          document.getElementById("executionCompleted").textContent = completed;
+          document.getElementById("executionElapsed").textContent =
+            `00:${String(elapsed).padStart(2, "0")}`;
+          document.getElementById("executionProgress").style.width =
+            `${(completed / task.count) * 100}%`;
+          document.getElementById("executionUpdatedAt").textContent = "最近更新：刚刚";
+          if (completed < task.count) {
+            document.getElementById("executionStageText").textContent =
+              `正在执行第 ${completed + 1} / ${task.count} 题`;
+            return;
+          }
+          window.clearInterval(executionTimer);
+          executionTimer = null;
+          document.getElementById("executionStatusText").textContent = "已完成";
+          document.getElementById("executionStageText").textContent =
+            "正在整理评测结果";
+          document.getElementById("executionMessage").textContent =
+            "评测已完成，报告和逐题结果已生成。点击“查看评测结果”查看本次运行。";
+          document.getElementById("executionDot").classList.add("done");
+          document.getElementById("stepExecute").className = "execution-step done";
+          document.getElementById("stepMetrics").className = "execution-step done";
+          document.getElementById("stepReport").className = "execution-step done";
+          document.getElementById("viewExecutionResult").disabled = false;
           task.status = "completed";
           task.conclusion = "passed";
           task.time = "2026年07月25日 10:45:00";
+          task.hasRun = true;
           render();
-        }, 1400);
+        }, 350);
       }
       function openDelete(id) {
         deleteId = id;
@@ -1846,7 +2078,7 @@
       }
       function openEdit(id) {
         const task = tasks.find((item) => item.id === id);
-        if (!task || task.status !== "pending" || task.hasRun) return;
+        if (!task || task.status !== "not_started" || task.hasRun) return;
         editingId = id;
         const config = task.config || {};
         document.getElementById("taskDrawerTitle").textContent = "编辑评测任务";
@@ -1878,6 +2110,16 @@
         .forEach((button) =>
           button.addEventListener("click", () => hide(button.dataset.close)),
         );
+      document.getElementById("refreshExecution").addEventListener("click", () => {
+        document.getElementById("executionUpdatedAt").textContent = "最近更新：刚刚";
+        document.getElementById("executionMessage").textContent =
+          "状态已刷新，任务仍在后台执行。关闭此窗口不会中断任务。";
+      });
+      document.getElementById("viewExecutionResult").addEventListener("click", () => {
+        if (executionTaskId === null) return;
+        hide("executionModal");
+        openResult(executionTaskId);
+      });
       document.getElementById("openCreate").addEventListener("click", () => {
         editingId = null;
         document.getElementById("taskDrawerTitle").textContent = "新增评测任务";
@@ -1888,7 +2130,7 @@
           document.getElementById("taskName").value.trim() || "未命名评测任务";
         if (editingId !== null) {
           const task = tasks.find((item) => item.id === editingId);
-          if (task && task.status === "pending" && !task.hasRun) {
+          if (task && task.status === "not_started" && !task.hasRun) {
             task.name = name;
             task.kb = document.getElementById("taskKb").value || task.kb;
             const source = document.querySelector('input[name="source"]:checked').value;
@@ -1925,7 +2167,7 @@
               ? "Agent 生成"
               : "外部导入",
           count: 20,
-          status: "pending",
+          status: "not_started",
           conclusion: "",
           time: "—",
           creator: "林博",

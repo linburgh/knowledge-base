@@ -111,7 +111,7 @@ async def page(
             **row,
             "created_by_name": created_by_name,
             "latest_run_id": latest.get("id") if latest else None,
-            "latest_run_status": latest.get("status") if latest else "pending",
+            "latest_run_status": latest.get("status") if latest else "not_started",
             "latest_conclusion": latest.get("conclusion") if latest else None,
             "latest_question_count": latest.get("question_count", 0) if latest else 0,
             "latest_run_created_at": latest.get("created_at") if latest else None,
