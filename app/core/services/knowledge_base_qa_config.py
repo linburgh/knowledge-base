@@ -8,6 +8,8 @@ import sqlalchemy as sa
 
 from app.config import CONF
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import permission as permission_service
@@ -135,11 +137,13 @@ def validate_config(config: dict[str, Any]) -> None:
     unknown_groups = set(config) - TOP_LEVEL_KEYS
     if unknown_groups:
         raise BusiException(f"不支持的配置分组：{', '.join(sorted(unknown_groups))}")
+    _validate_config_texts(config)
 
     chunk_size = _positive_int(config, "document", "chunk_size")
     embedding_model = config["document"].get("embedding_model")
-    if not isinstance(embedding_model, str) or not embedding_model.strip():
-        raise BusiException("document.embedding_model 必须是非空模型标识")
+    common_validation.validate_identifier(
+        embedding_model, "document.embedding_model", max_length=form_limits.MODEL_IDENTIFIER, required=True
+    )
     chunk_overlap = config["document"].get("chunk_overlap")
     if not isinstance(chunk_overlap, int) or isinstance(chunk_overlap, bool) or chunk_overlap < 0:
         raise BusiException("document.chunk_overlap 必须是大于等于 0 的整数")
@@ -174,8 +178,9 @@ def validate_config(config: dict[str, Any]) -> None:
     if max_citations > 20:
         raise BusiException("answer.max_citations 不能超过 20")
     prompt = config["answer"].get("prompt")
-    if not isinstance(prompt, str) or len(prompt) > 10000:
-        raise BusiException("answer.prompt 不能为空且不能超过 10000 个字符")
+    common_validation.validate_free_text(
+        prompt, "answer.prompt", max_length=form_limits.PROMPT, required=True
+    )
 
     for field in ("max_steps", "max_tool_calls", "max_retries", "recursion_limit"):
         value = _positive_int(config, "agent", field)
@@ -185,6 +190,18 @@ def validate_config(config: dict[str, Any]) -> None:
         value = config["agent"].get(field)
         if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
             raise BusiException(f"agent.{field} 必须是大于 0 的数字")
+
+
+def _validate_config_texts(value: Any, path: str = "config") -> None:
+    if isinstance(value, str):
+        common_validation.validate_free_text(value, path, max_length=form_limits.PROMPT)
+        return
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _validate_config_texts(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _validate_config_texts(child, f"{path}[{index}]")
 
 
 def _changed_fields(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:

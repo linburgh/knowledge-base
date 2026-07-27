@@ -15,7 +15,7 @@ class KnowledgeBaseQaConfigPublishRequest(BaseModel):
 
 
 class KnowledgeBaseQaConfigTestRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=2000, description="测试问题")
+    question: str = Field(..., min_length=1, max_length=1000, description="测试问题")
     config: dict[str, Any] | None = Field(default=None, description="临时测试配置")
 
 

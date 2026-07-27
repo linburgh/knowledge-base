@@ -28,7 +28,7 @@ class ConversationModifyRequest(BaseModel):
 
 
 class GuestConversationModifyRequest(BaseModel):
-    title: str = Field(..., min_length=1, max_length=255, description="会话标题")
+    title: str = Field(..., min_length=1, max_length=50, description="会话标题")
 
 
 @dataclass(slots=True)

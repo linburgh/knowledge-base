@@ -27,14 +27,14 @@ class OrganizationMemberDto:
 class OrganizationCreateRequest(BaseModel):
     tenant_id: int = Field(..., gt=0, description="租户 ID")
     parent_id: int | None = Field(default=None, gt=0, description="父组织 ID")
-    code: str = Field(..., min_length=1, max_length=64, description="组织编码")
-    name: str = Field(..., min_length=1, max_length=255, description="组织名称")
+    code: str = Field(..., min_length=1, max_length=32, description="组织编码")
+    name: str = Field(..., min_length=1, max_length=50, description="组织名称")
     leader_user_id: int | None = Field(default=None, gt=0, description="负责人用户 ID")
 
 
 class OrganizationModifyRequest(BaseModel):
     parent_id: int | None = Field(default=None, gt=0, description="父组织 ID")
-    name: str | None = Field(default=None, min_length=1, max_length=255, description="组织名称")
+    name: str | None = Field(default=None, min_length=1, max_length=50, description="组织名称")
     leader_user_id: int | None = Field(default=None, gt=0, description="负责人用户 ID")
     status: str | None = Field(default=None, description="组织状态")
 

@@ -523,6 +523,16 @@
         border-color: var(--brand);
         box-shadow: 0 0 0 3px var(--brand-soft);
       }
+      .validation-guide {
+        margin: 12px 0;
+        padding: 10px 12px;
+        color: #65708a;
+        background: #f7f8fc;
+        border: 1px solid #e7eaf1;
+        border-radius: 8px;
+        font-size: 12px;
+        line-height: 1.6;
+      }
       .execution-params {
         margin-top: 24px;
         padding-top: 20px;
@@ -1044,6 +1054,7 @@
               <div class="eyebrow">AUTONOMOUS EVALUATION</div>
               <h1>自主评测</h1>
               <p>管理评测任务，执行知识库问答质量检查并查看每次运行结果。</p>
+              <p class="validation-guide">表单校验：评测名称和问题文件名禁止路径字符、控制字符及不可见字符；业务范围、生成要求和问题内容允许正常特殊符号与换行。校验失败时保留输入并定位错误字段。</p>
             </div>
             <button class="button" id="openCreate">＋ 新增评测</button>
           </section>

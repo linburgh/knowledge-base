@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
-    account: str = Field(..., min_length=1, max_length=255, description="用户名或邮箱")
-    password: str = Field(..., min_length=1, max_length=256, description="登录密码")
+    account: str = Field(..., min_length=1, max_length=128, description="用户名或邮箱")
+    password: str = Field(..., min_length=1, max_length=64, description="登录密码")
 
 
 class RefreshRequest(BaseModel):

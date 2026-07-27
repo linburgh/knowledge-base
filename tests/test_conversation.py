@@ -36,7 +36,7 @@ class ConversationTest(unittest.TestCase):
         with self.assertRaises(BusiException) as context:
             conversation.validate(dto, is_create=True)
 
-        self.assertEqual(context.exception.message, "title 不能超过 255 个字符")
+        self.assertEqual(context.exception.message, "title 不能超过 50 个字符")
 
     def test_validate_message_role(self):
         dto = ConversationMessageDto(

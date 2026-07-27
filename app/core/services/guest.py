@@ -15,7 +15,7 @@ from app.db.base import DB, PageRecord
 STATUS_ACTIVE = "active"
 STATUS_DELETED = "deleted"
 MAX_PAGE_SIZE = 100
-MAX_TITLE_LENGTH = 255
+MAX_TITLE_LENGTH = 50
 
 
 async def _access_context(current_user: CurrentUser) -> tuple[int, int, list[int]]:
@@ -139,7 +139,7 @@ async def modify_conversation(
     if not normalized_title:
         raise BusiException("title 不能为空")
     if len(normalized_title) > MAX_TITLE_LENGTH:
-        raise BusiException("title 不能超过 255 个字符")
+        raise BusiException("title 不能超过 50 个字符")
     db = DB.get()
     async with db.transaction():
         await conversation_db.update_(

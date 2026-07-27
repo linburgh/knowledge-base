@@ -5,6 +5,8 @@ from typing import Any
 
 from app.core.common import auth
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
 from app.db import user as user_db
@@ -27,14 +29,24 @@ def validate(dto: UserDto, *, creating: bool = False) -> None:
         raise BusiException("用户参数不能为空")
     if creating and not dto.username:
         raise BusiException("username 不能为空")
+    common_validation.validate_identifier(dto.username, "username", max_length=form_limits.USERNAME, required=creating)
     if dto.username is not None and not USERNAME_PATTERN.fullmatch(dto.username):
         raise BusiException("username 只能包含字母、数字、点、下划线和短横线")
+    common_validation.validate_text(dto.email, "email", max_length=form_limits.EMAIL)
     if dto.email is not None and not EMAIL_PATTERN.fullmatch(dto.email):
         raise BusiException("email 格式不合法")
-    if dto.display_name is not None and not dto.display_name.strip():
-        raise BusiException("display_name 不能为空")
+    common_validation.validate_free_text(
+        dto.display_name,
+        "display_name",
+        max_length=form_limits.PERSON_NAME,
+        required=dto.display_name is not None,
+    )
+    common_validation.validate_mainland_mobile(dto.phone)
+    common_validation.validate_text(dto.avatar, "avatar", max_length=form_limits.URL)
+    common_validation.validate_text(dto.external_subject, "external_subject", max_length=form_limits.EMAIL)
     if dto.status is not None and dto.status not in VALID_STATUSES:
         raise BusiException("status 不合法")
+    common_validation.validate_free_text(dto.password, "password", max_length=form_limits.PASSWORD)
     if dto.password is not None and len(dto.password) < 8:
         raise BusiException("password 至少需要 8 个字符")
 

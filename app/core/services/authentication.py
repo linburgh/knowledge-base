@@ -5,6 +5,8 @@ from typing import Any
 
 from app.core.common import auth
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
@@ -74,6 +76,8 @@ async def login(
     user_agent: str | None = None,
     request_id: str | None = None,
 ) -> dict[str, Any]:
+    common_validation.validate_text(account, "account", max_length=form_limits.LOGIN_ACCOUNT, required=True)
+    common_validation.validate_free_text(password, "password", max_length=form_limits.PASSWORD, required=True)
     db = DB.get()
     user = await user_db.get_by_account(db, account)
     failure_reason = None

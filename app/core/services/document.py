@@ -8,6 +8,8 @@ from app.config import CONF
 from app.core import storage as object_storage
 from app.core.common import access as access_service
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
@@ -51,6 +53,10 @@ class UploadFileLike(Protocol):
 def validate(dto: DocumentCreateDto | DocumentModifyDto, is_create: bool = False) -> None:
     if dto is None:
         raise BusiException("文档参数不能为空")
+    common_validation.validate_text(
+        dto.source_name, "source_name", max_length=form_limits.FILE_NAME, required=is_create, forbid_path=True
+    )
+    common_validation.validate_identifier(dto.parser, "parser", max_length=64)
     if is_create:
         if not dto.kb_id:
             raise BusiException("kb_id 不能为空")
@@ -74,8 +80,12 @@ async def upload_file(
     file: UploadFileLike,
     kb_id: int,
 ) -> tuple[str, int, str]:
+    raw_filename = file.filename or ""
+    common_validation.validate_text(
+        raw_filename, "上传文件名", max_length=form_limits.FILE_NAME, required=True, forbid_path=True
+    )
     # 只保留文件名，避免用户传入带目录的路径影响保存位置。
-    filename = Path(file.filename or "").name
+    filename = Path(raw_filename).name
     if not filename:
         raise BusiException("上传文件名不能为空")
 

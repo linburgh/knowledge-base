@@ -5,6 +5,8 @@ from typing import Any
 from app.agents.knowledge.agent import run_knowledge_agent
 from app.agents.knowledge.runtime import AgentError
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.exception import BusiException
 from app.core.services import knowledge_base_qa_config as qa_config_service
 from app.db import conversation as conversation_db
@@ -25,6 +27,7 @@ ROLE_ASSISTANT = "assistant"
 
 async def validate(db, kb_id: int, question: str, user_id: str) -> str:
     """校验问答参数和知识库，并返回规范化后的问题。"""
+    common_validation.validate_free_text(question, "question", max_length=form_limits.QUESTION, required=True)
     normalized_question = common_utils.normalize_space(question)
     if not normalized_question:
         raise BusiException("question 不能为空")
@@ -69,7 +72,7 @@ async def _get_or_create_conversation(
         user_id=user_id,
         qa_config_version_id=published_config["id"] if published_config else None,
         index_version_id=active_index_version_id,
-        title=question[:255],
+        title=question[:50],
         status=STATUS_ACTIVE,
     )
     conversation = await conversation_db.get(db, id=new_id)

@@ -50,6 +50,8 @@
       input,select,textarea { width:100%; min-height:40px; padding:9px 11px; border:1px solid #dce2ed; border-radius:8px; color:var(--ink); background:#fff; outline:none; }
       textarea { min-height:130px; resize:vertical; line-height:1.7; }
       input:focus,select:focus,textarea:focus { border-color:var(--blue); box-shadow:0 0 0 3px var(--soft); }
+      .validation-guide { margin:0 0 18px; padding:10px 12px; border:1px solid #dce6f8; border-radius:8px; color:#53617b; background:#f7f9fd; font-size:12px; line-height:1.6; }
+      .validation-error { margin-top:-12px; margin-bottom:12px; color:#c75b65; font-size:12px; line-height:1.5; }
       input[type=checkbox] { width:16px; min-height:16px; padding:0; accent-color:var(--blue); }
       .switch { display:flex; align-items:center; gap:8px; min-height:40px; color:#53617b; }
       .help { margin-top:6px; color:var(--muted); font-size:12px; }
@@ -146,6 +148,7 @@
             <div class="config-drawer-head"><div><strong>问答配置</strong><span class="meta">医签通产品知识库 · 知识库级配置</span></div><button class="text" data-close-config>关闭</button></div>
             <div class="config-drawer-body">
         <section class="config-head"><div><strong>医签通产品知识库 <span class="status">已发布 v3</span></strong><div class="meta">当前模型：bge-m3 · bge-reranker-v2-m3　最近发布：2026年07月25日 10:30</div></div><span class="meta" id="dirtyState">配置未修改</span></section>
+        <div class="validation-guide">特殊字符校验：名称和模型标识禁止路径字符、控制字符和不可见字符；Prompt、描述和测试问题允许正常标点与换行，只拦截不可见控制字符。校验失败时保留输入内容并定位到错误字段。</div>
         <nav class="config-tabs" aria-label="问答配置分类"><button class="active" data-config-tab="document">文档处理</button><button data-config-tab="retrieval">检索配置</button><button data-config-tab="rerank">重排配置</button><button data-config-tab="answer">回答策略</button><button data-config-tab="advanced">高级参数</button></nav>
 
         <section class="tab-panel active" data-panel="document">
@@ -217,9 +220,12 @@
       let embeddingModelChanged = false;
       document.querySelectorAll("[data-dirty]").forEach((field) => field.addEventListener("change", () => { document.getElementById("dirtyState").textContent = "有未保存修改"; document.getElementById("footerState").textContent = "当前配置：草稿修改中"; }));
       document.getElementById("embeddingModel").addEventListener("input", () => { embeddingModelChanged = true; });
-      document.getElementById("saveDraft").addEventListener("click", () => { document.getElementById("footerState").textContent = "当前配置：草稿 v4"; document.getElementById("dirtyState").textContent = "草稿已保存"; toast("配置草稿已保存"); });
+      const hasForbiddenCharacters = (value) => /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/u.test(value);
+      const setValidationError = (field, message) => { field.classList.toggle("invalid", Boolean(message)); let error = field.parentElement.querySelector(".validation-error"); if (message && !error) { error = document.createElement("div"); error.className = "validation-error"; field.insertAdjacentElement("afterend", error); } if (error) { error.textContent = message || ""; error.classList.toggle("hidden", !message); } return !message; };
+      const validateConfigForm = () => { let valid = true; const model = document.getElementById("embeddingModel"); if (hasForbiddenCharacters(model.value) || !/^[\p{L}\p{N}._-]+$/u.test(model.value.trim())) { valid = setValidationError(model, "模型标识只能包含中文、英文、数字、点、短横线和下划线，不能包含不可见字符。"); } else { setValidationError(model, ""); } const prompt = document.getElementById("promptText"); if (hasForbiddenCharacters(prompt.value)) { valid = setValidationError(prompt, "Prompt 包含不可见字符，请删除后重试。"); } else { setValidationError(prompt, ""); } return valid; };
+      document.getElementById("saveDraft").addEventListener("click", () => { if (!validateConfigForm()) { toast("请先修正表单校验错误"); return; } document.getElementById("footerState").textContent = "当前配置：草稿 v4"; document.getElementById("dirtyState").textContent = "草稿已保存"; toast("配置草稿已保存"); });
       // 保存并发布在正式前端中对应一个原子接口：save-and-publish。
-      document.getElementById("publishConfig").addEventListener("click", () => { document.getElementById("footerState").textContent = embeddingModelChanged ? "当前配置：已发布 v4 · 待重建索引" : "当前配置：已发布 v4"; document.getElementById("dirtyState").textContent = embeddingModelChanged ? "配置已发布，等待索引完成" : "配置已发布"; toast(embeddingModelChanged ? "配置已发布，等待重新索引" : "配置已发布"); });
+      document.getElementById("publishConfig").addEventListener("click", () => { if (!validateConfigForm()) { toast("请先修正表单校验错误"); return; } document.getElementById("footerState").textContent = embeddingModelChanged ? "当前配置：已发布 v4 · 待重建索引" : "当前配置：已发布 v4"; document.getElementById("dirtyState").textContent = embeddingModelChanged ? "配置已发布，等待索引完成" : "配置已发布"; toast(embeddingModelChanged ? "配置已发布，等待重新索引" : "配置已发布"); });
       document.getElementById("resetConfig").addEventListener("click", () => { document.getElementById("dirtyState").textContent = "已恢复默认值，尚未保存"; toast("已恢复默认配置"); });
       document.getElementById("searchTest").addEventListener("click", () => { const query = document.getElementById("searchQuery").value.trim() || "医签通支持哪些签名方式？"; const result = document.getElementById("searchResults"); result.innerHTML = `<div class="result-item"><span class="score">0.92</span><strong>医签通产品说明.pdf</strong><span>${query} · 医疗行业全场景移动签名应用解决方案……</span></div><div class="result-item"><span class="score">0.86</span><strong>医签通使用指南.pdf</strong><span>扫码签名、协同签名和签名平板等相关内容……</span></div>`; result.classList.remove("hidden"); });
       document.getElementById("rerankTest").addEventListener("click", () => { document.getElementById("rerankStatus").textContent = "连接测试成功 · Ollama · 127.0.0.1:11434"; toast("Rerank 服务连接成功"); });

@@ -6,6 +6,8 @@ import sqlalchemy as sa
 
 from app.config import CONF
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
@@ -31,8 +33,8 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_CHUNK_SIZE = 600
 DEFAULT_CHUNK_OVERLAP = 100
 DEFAULT_RETRIEVAL_TOP_K = 5
-MAX_DESCRIPTION_LENGTH = 500
-MAX_SYSTEM_PROMPT_LENGTH = 10000
+MAX_DESCRIPTION_LENGTH = form_limits.RESOURCE_DESCRIPTION
+MAX_SYSTEM_PROMPT_LENGTH = form_limits.PROMPT
 
 
 async def _resolve_created_by(db, owner_id: str) -> int:
@@ -70,16 +72,22 @@ def validate(dto: KnowledgeBaseDto) -> None:
     if dto is None:
         raise BusiException("知识库参数不能为空")
     
-    if not dto.name:
-        raise BusiException("name 不能为空")
+    common_validation.validate_identifier(
+        dto.name, "name", max_length=form_limits.RESOURCE_NAME, required=True, forbid_path=True
+    )
     if not dto.owner_id:
         raise BusiException("owner_id 不能为空")
     if dto.tenant_id is not None and dto.tenant_id <= 0:
         raise BusiException("tenant_id 必须大于 0")
-    if dto.description is not None and len(dto.description) > MAX_DESCRIPTION_LENGTH:
-        raise BusiException("description 不能超过 500 个字符")
-    if dto.system_prompt is not None and len(dto.system_prompt) > MAX_SYSTEM_PROMPT_LENGTH:
-        raise BusiException("system_prompt 不能超过 10000 个字符")
+    common_validation.validate_free_text(
+        dto.description, "description", max_length=MAX_DESCRIPTION_LENGTH
+    )
+    common_validation.validate_free_text(
+        dto.system_prompt, "system_prompt", max_length=MAX_SYSTEM_PROMPT_LENGTH
+    )
+    common_validation.validate_identifier(
+        dto.embedding_model, "embedding_model", max_length=form_limits.MODEL_IDENTIFIER
+    )
     if dto.chunk_size is not None and dto.chunk_size <= 0:
         raise BusiException("chunk_size 必须大于 0")
     if dto.chunk_overlap is not None and dto.chunk_overlap < 0:

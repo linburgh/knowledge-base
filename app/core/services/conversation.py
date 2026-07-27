@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.exception import BusiException
 from app.db import conversation as conversation_db
 from app.db import conversation_message as conversation_message_db
@@ -20,7 +22,7 @@ ROLE_USER = "user"
 ROLE_ASSISTANT = "assistant"
 ROLE_SYSTEM = "system"
 ALLOWED_ROLES = {ROLE_USER, ROLE_ASSISTANT, ROLE_SYSTEM}
-MAX_TITLE_LENGTH = 255
+MAX_TITLE_LENGTH = form_limits.CONVERSATION_TITLE
 MAX_SOURCE_NAME_LENGTH = 512
 
 
@@ -34,8 +36,9 @@ def validate(dto: ConversationDto, is_create: bool = False) -> None:
         if not dto.user_id:
             raise BusiException("user_id 不能为空")
 
-    if dto.title is not None and len(dto.title) > MAX_TITLE_LENGTH:
-        raise BusiException("title 不能超过 255 个字符")
+    common_validation.validate_text(
+        dto.title, "title", max_length=MAX_TITLE_LENGTH, forbid_path=True
+    )
     if dto.status is not None and dto.status not in ALLOWED_STATUSES:
         raise BusiException("status 不合法")
 
@@ -54,8 +57,7 @@ def validate_message(dto: ConversationMessageDto, is_create: bool = False) -> No
 
     if dto.role is not None and dto.role not in ALLOWED_ROLES:
         raise BusiException("role 不合法")
-    if dto.content is not None and not dto.content.strip():
-        raise BusiException("content 不能为空")
+    common_validation.validate_free_text(dto.content, "content", required=is_create)
 
 
 def validate_citation(dto: MessageCitationDto, is_create: bool = False) -> None:
@@ -78,10 +80,10 @@ def validate_citation(dto: MessageCitationDto, is_create: bool = False) -> None:
         if dto.rank is None:
             raise BusiException("rank 不能为空")
 
-    if dto.source_name is not None and len(dto.source_name) > MAX_SOURCE_NAME_LENGTH:
-        raise BusiException("source_name 不能超过 512 个字符")
-    if dto.snippet is not None and not dto.snippet.strip():
-        raise BusiException("snippet 不能为空")
+    common_validation.validate_free_text(
+        dto.source_name, "source_name", max_length=MAX_SOURCE_NAME_LENGTH, required=is_create
+    )
+    common_validation.validate_free_text(dto.snippet, "snippet", required=is_create)
     if dto.rank is not None and dto.rank <= 0:
         raise BusiException("rank 必须大于 0")
 

@@ -4,6 +4,8 @@ import re
 from typing import Any
 
 from app.core.common import utils as common_utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
@@ -36,14 +38,12 @@ def validate(dto: OrganizationDto, *, creating: bool = False) -> None:
         raise BusiException("tenant_id 不能为空")
     if dto.tenant_id is not None and dto.tenant_id <= 0:
         raise BusiException("tenant_id 必须大于 0")
-    if creating and not dto.code:
-        raise BusiException("code 不能为空")
+    common_validation.validate_identifier(dto.code, "code", max_length=form_limits.CODE, required=creating)
     if dto.code is not None and not CODE_PATTERN.fullmatch(dto.code):
         raise BusiException("code 只能包含小写字母、数字、下划线和短横线")
-    if creating and not dto.name:
-        raise BusiException("name 不能为空")
-    if dto.name is not None and not dto.name.strip():
-        raise BusiException("name 不能为空")
+    common_validation.validate_text(
+        dto.name, "name", max_length=form_limits.RESOURCE_NAME, required=creating, forbid_path=True
+    )
     if dto.status is not None and dto.status not in VALID_STATUSES:
         raise BusiException("status 不合法")
 

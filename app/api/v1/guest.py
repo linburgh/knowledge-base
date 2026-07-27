@@ -19,7 +19,7 @@ current_user_dependency = Depends(auth.get_current_user)
 @router.get("/knowledge-bases/page")
 async def page_knowledge_bases(
     current_user: CurrentUser = current_user_dependency,
-    keyword: str | None = Query(default=None, max_length=255),
+    keyword: str | None = Query(default=None, max_length=50),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
 ) -> Any:

@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.common import utils
+from app.core.common import validation as common_validation
+from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
@@ -54,6 +56,7 @@ def _config(payload: EvaluationTaskRequest, execution_user_id: int) -> dict[str,
 @check_db_connected
 async def create(payload: EvaluationTaskRequest, current_user: CurrentUser) -> dict[str, Any]:
     await require_super_admin(current_user)
+    _validate_text_fields(payload)
     db = DB.get()
     execution_user_id = await _resolve_execution_user(payload, current_user)
     config = _config(payload, execution_user_id)
@@ -143,6 +146,7 @@ async def update(
     task_id: int, payload: EvaluationTaskRequest, current_user: CurrentUser
 ) -> dict[str, Any]:
     await require_super_admin(current_user)
+    _validate_text_fields(payload)
     db = DB.get()
     execution_user_id = await _resolve_execution_user(payload, current_user)
     config = _config(payload, execution_user_id)
@@ -173,6 +177,27 @@ async def update(
             summary={"name": payload.name, "kb_id": payload.kb_id},
         )
     return row
+
+
+def _validate_text_fields(payload: EvaluationTaskRequest) -> None:
+    common_validation.validate_text(
+        payload.name, "name", max_length=form_limits.RESOURCE_NAME, required=True, forbid_path=True
+    )
+    common_validation.validate_text(
+        payload.questions_file, "questions_file", max_length=form_limits.FILE_NAME, forbid_path=True
+    )
+    common_validation.validate_free_text(
+        payload.questions_content, "questions_content", max_length=10 * 1024 * 1024
+    )
+    common_validation.validate_free_text(
+        payload.questions_instruction, "questions_instruction", max_length=form_limits.EVALUATION_INSTRUCTION
+    )
+    common_validation.validate_free_text(
+        payload.business_description, "business_description", max_length=form_limits.EVALUATION_SCOPE
+    )
+    for field, value in payload.execution.items():
+        if isinstance(value, str):
+            common_validation.validate_free_text(value, f"execution.{field}", max_length=255)
 
 
 @check_db_connected
