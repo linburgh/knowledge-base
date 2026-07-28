@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
+from app.core.common.roles import effective_role, is_platform_super_admin
 from app.db import system_menu as system_menu_db
 from app.db import user as user_db
 from app.db.api import check_db_connected
@@ -10,6 +11,8 @@ from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN
 
 
 def _role_pairs(context: dict) -> list[tuple[str, str]]:
+    if is_platform_super_admin(context):
+        return [("platform", PLATFORM_ROLE_SUPER_ADMIN)]
     role_pairs: list[tuple[str, str]] = []
     role_pairs.extend(
         ("platform", role["code"])
@@ -28,15 +31,13 @@ def _role_pairs(context: dict) -> list[tuple[str, str]]:
 
 
 def _default_path(context: dict, tree: list[dict]) -> str | None:
-    tenant_role = context.get("tenant_role")
-    if tenant_role == "tenant_guest":
+    if effective_role(context) == "tenant_guest":
         return "/guest/knowledge-bases"
 
     items = system_menu_db.flatten_items(tree)
     if not items:
         return None
-    platform_roles = {role.get("code") for role in context.get("platform_roles", [])}
-    if PLATFORM_ROLE_SUPER_ADMIN in platform_roles:
+    if is_platform_super_admin(context):
         overview = next(
             (item for item in items if item["code"] == "platform_overview"),
             None,

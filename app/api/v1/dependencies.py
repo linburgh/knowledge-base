@@ -3,6 +3,7 @@
 from fastapi import Depends
 
 from app.core.common import auth
+from app.core.common.roles import is_platform_super_admin
 from app.core.common.exception import BusiException
 from app.core.services.evaluation_access import require_super_admin
 from app.db import user as user_db
@@ -26,12 +27,7 @@ async def require_platform_management(
     )
     if context is None or context["user"].get("status") in {"disabled", "deleted"}:
         raise BusiException("用户不存在或已失效", status_code=401)
-    platform_roles = {
-        role.get("code")
-        for role in context.get("platform_roles", [])
-        if role.get("status") == "active"
-    }
-    if "p_super_admin" not in platform_roles and context.get("tenant_role") != "tenant_admin":
+    if not is_platform_super_admin(context) and context.get("tenant_role") != "tenant_admin":
         raise BusiException("无权访问平台管理", status_code=403)
     return current_user
 

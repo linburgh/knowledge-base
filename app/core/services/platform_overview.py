@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from app.core.common.auth import CurrentUser
+from app.core.common.roles import is_platform_super_admin
 from app.core.common.time_range import resolve_range
 from app.db import platform_overview as platform_overview_db
 from app.db import user as user_db
@@ -37,12 +38,7 @@ async def get_overview(
             int(current_user.user_id),
             current_user.tenant_id,
         )
-        platform_roles = {
-            role.get("code")
-            for role in (context or {}).get("platform_roles", [])
-            if role.get("status") == "active"
-        }
-        if "p_super_admin" not in platform_roles:
+        if not is_platform_super_admin(context):
             tenant_id = current_user.tenant_id
             if tenant_id is None:
                 raise ValueError("tenant_admin 当前租户不能为空")

@@ -1,5 +1,6 @@
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
+from app.core.common.roles import is_platform_super_admin
 from app.db import platform_role as platform_role_db
 from app.db import user as user_db
 from app.db.base import DB
@@ -30,23 +31,13 @@ async def require_super_admin(current_user: CurrentUser) -> None:
 
 async def require_evaluation_access(current_user: CurrentUser) -> None:
     context = await _context(current_user)
-    platform_roles = {
-        role.get("code")
-        for role in context.get("platform_roles", [])
-        if role.get("status") == "active"
-    }
-    if "p_super_admin" not in platform_roles and context.get("tenant_role") != "tenant_admin":
+    if not is_platform_super_admin(context) and context.get("tenant_role") != "tenant_admin":
         raise BusiException("无权操作自主评测", status_code=403)
 
 
 async def tenant_scope(current_user: CurrentUser) -> int | None:
     context = await _context(current_user)
-    platform_roles = {
-        role.get("code")
-        for role in context.get("platform_roles", [])
-        if role.get("status") == "active"
-    }
-    if PLATFORM_ROLE_SUPER_ADMIN in platform_roles:
+    if is_platform_super_admin(context):
         return None
     if current_user.tenant_id is None:
         raise BusiException("当前用户未选择租户", status_code=403)

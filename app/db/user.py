@@ -15,6 +15,7 @@ from app.db.models import (
     TenantMember,
     User,
 )
+from app.core.common.roles import effective_role
 
 STATUS_DELETED = "deleted"
 
@@ -254,6 +255,13 @@ async def get_auth_context(
         "tenants": tenants,
         "current_tenant": current_tenant,
         "tenant_role": current_tenant.get("role_code") if current_tenant else None,
+        "effective_role": effective_role(
+            {
+                "platform_roles": [dict(row) for row in platform_rows],
+                "tenant_role": current_tenant.get("role_code") if current_tenant else None,
+                "organizations": organizations,
+            }
+        ),
         "organizations": organizations,
     }
 

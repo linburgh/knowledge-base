@@ -30,6 +30,7 @@ class AuthContextResponse(BaseModel):
     current_tenant: dict | None = None
     tenants: list[dict] = Field(default_factory=list)
     tenant_role: str | None = None
+    effective_role: str | None = None
     organizations: list[dict]
 
 
