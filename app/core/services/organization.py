@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import re
+from datetime import datetime
 from typing import Any
 
 from app.core.common import form_limits
@@ -29,6 +33,7 @@ MEMBER_LEFT = "left"
 VALID_MEMBER_STATUSES = {MEMBER_ACTIVE, MEMBER_DISABLED, MEMBER_LEFT}
 VALID_ROLES = {"org_admin", "org_member"}
 CODE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+TREE_PAGE_SIZE_MAX = 100
 
 
 def validate(dto: OrganizationDto, *, creating: bool = False) -> None:
@@ -258,6 +263,128 @@ async def tree(
     elif tenant_id is not None:
         await _require_tenant(db, tenant_id)
     return _tree(await organization_db.list(db, tenant_id, keyword, status))
+
+
+def _encode_tree_cursor(*, tenant_id: int | None, created_at: datetime, item_id: int) -> str:
+    payload = {
+        "tenant_id": tenant_id,
+        "created_at": created_at.isoformat(),
+        "id": item_id,
+    }
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(encoded).decode("ascii").rstrip("=")
+
+
+def _decode_tree_cursor(cursor: str | None, *, includes_tenant: bool) -> tuple[Any, ...] | None:
+    if not cursor:
+        return None
+    try:
+        decoded = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        payload = json.loads(decoded.decode("utf-8"))
+        created_at = datetime.fromisoformat(payload["created_at"])
+        item_id = int(payload["id"])
+        if includes_tenant:
+            return int(payload["tenant_id"]), created_at, item_id
+        return created_at, item_id
+    except (binascii.Error, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise BusiException("cursor 不合法", status_code=400) from exc
+
+
+async def _resolve_tree_tenant(
+    current_user: CurrentUser,
+    tenant_id: int | None,
+) -> tuple[Any, bool, int | None]:
+    if tenant_id is not None and tenant_id <= 0:
+        raise BusiException("tenant_id 必须大于 0")
+    db = DB.get()
+    platform_roles = await platform_role_db.get_user(db, int(current_user.user_id))
+    is_platform_super_admin = any(
+        role.get("code") == PLATFORM_ROLE_SUPER_ADMIN and role.get("status") == STATUS_ACTIVE
+        for role in platform_roles
+    )
+    if not is_platform_super_admin:
+        if tenant_id is None:
+            tenant_id = current_user.tenant_id
+        if tenant_id is None or tenant_id != current_user.tenant_id:
+            raise BusiException("只能查询当前租户的组织", status_code=403)
+    elif tenant_id is not None:
+        await _require_tenant(db, tenant_id)
+    return db, is_platform_super_admin, tenant_id
+
+
+def _tree_page_response(rows: list[dict[str, Any]], limit: int, *, includes_tenant: bool) -> dict[str, Any]:
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = None
+    if has_more and items:
+        item = items[-1]
+        next_cursor = _encode_tree_cursor(
+            tenant_id=item.get("tenant_id") if includes_tenant else None,
+            created_at=item["created_at"],
+            item_id=item["id"],
+        )
+    for item in items:
+        item["has_children"] = int(item.get("child_count") or 0) > 0
+    return {"items": items, "next_cursor": next_cursor, "has_more": has_more}
+
+
+@check_db_connected
+async def tree_parents_page(
+    current_user: CurrentUser,
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    cursor: str | None = None,
+    page_size: int = 20,
+) -> dict[str, Any]:
+    if page_size <= 0 or page_size > TREE_PAGE_SIZE_MAX:
+        raise BusiException(f"page_size 必须在 1 到 {TREE_PAGE_SIZE_MAX} 之间")
+    if status is not None and status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+    _, is_platform_super_admin, resolved_tenant_id = await _resolve_tree_tenant(
+        current_user, tenant_id
+    )
+    rows = await organization_db.tree_parents(
+        DB.get(),
+        tenant_id=resolved_tenant_id,
+        keyword=common_utils.normalize_optional_filter(keyword),
+        status=status,
+        cursor=_decode_tree_cursor(cursor, includes_tenant=is_platform_super_admin),
+        limit=page_size,
+    )
+    return _tree_page_response(rows, page_size, includes_tenant=is_platform_super_admin)
+
+
+@check_db_connected
+async def tree_children_page(
+    current_user: CurrentUser,
+    parent_id: int,
+    keyword: str | None = None,
+    status: str | None = None,
+    cursor: str | None = None,
+    page_size: int = 20,
+) -> dict[str, Any]:
+    if parent_id <= 0:
+        raise BusiException("parent_id 必须大于 0")
+    if page_size <= 0 or page_size > TREE_PAGE_SIZE_MAX:
+        raise BusiException(f"page_size 必须在 1 到 {TREE_PAGE_SIZE_MAX} 之间")
+    if status is not None and status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+    db = DB.get()
+    parent = await organization_db.get(db, id=parent_id)
+    if parent is None or parent.get("status") == STATUS_DELETED:
+        raise BusiException("父组织不存在", status_code=404)
+    await _resolve_tree_tenant(current_user, parent["tenant_id"])
+    rows = await organization_db.tree_children(
+        db,
+        parent_id=parent_id,
+        tenant_id=parent["tenant_id"],
+        keyword=common_utils.normalize_optional_filter(keyword),
+        status=status,
+        cursor=_decode_tree_cursor(cursor, includes_tenant=False),
+        limit=page_size,
+    )
+    return _tree_page_response(rows, page_size, includes_tenant=False)
 
 
 @check_db_connected

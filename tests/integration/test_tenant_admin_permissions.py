@@ -174,9 +174,30 @@ def main() -> int:
         request("GET", f"/organizations/tree?tenant_id={TENANT_ID}", token=token),
         {200},
     )
+    parent_page = expect(
+        "tenant_admin organization parent cursor page",
+        request("GET", f"/organizations/tree/parents?tenant_id={TENANT_ID}&page_size=5", token=token),
+        {200},
+    ).body
+    assert {"items", "next_cursor", "has_more"} <= set(parent_page)
+    assert all(int(item["tenant_id"]) == TENANT_ID for item in parent_page["items"])
+    if parent_page["items"]:
+        parent_id = parent_page["items"][0]["id"]
+        child_page = expect(
+            "tenant_admin organization child cursor page",
+            request("GET", f"/organizations/{parent_id}/children?page_size=5", token=token),
+            {200},
+        ).body
+        assert {"items", "next_cursor", "has_more"} <= set(child_page)
+        assert all(int(item["tenant_id"]) == TENANT_ID for item in child_page["items"])
     expect(
         "tenant_admin cross-tenant organization tree rejected",
         request("GET", "/organizations/tree?tenant_id=3", token=token),
+        {403},
+    )
+    expect(
+        "tenant_admin cross-tenant organization parent cursor rejected",
+        request("GET", "/organizations/tree/parents?tenant_id=3", token=token),
         {403},
     )
 

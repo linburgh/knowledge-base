@@ -83,6 +83,50 @@ async def page(
         common_utils.raise_http_exception(exc)
 
 
+@router.get("/tree/parents", dependencies=[Depends(require_platform_management)])
+async def tree_parents(
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    cursor: str | None = None,
+    page_size: int = 20,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await organization_service.tree_parents_page(
+            current_user,
+            tenant_id=tenant_id,
+            keyword=keyword,
+            status=status,
+            cursor=cursor,
+            page_size=page_size,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/{id}/children", dependencies=[Depends(require_platform_management)])
+async def tree_children(
+    id: int,
+    keyword: str | None = None,
+    status: str | None = None,
+    cursor: str | None = None,
+    page_size: int = 20,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await organization_service.tree_children_page(
+            current_user,
+            parent_id=id,
+            keyword=keyword,
+            status=status,
+            cursor=cursor,
+            page_size=page_size,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 @router.put("/{id}", dependencies=[Depends(require_platform_super_admin)])
 async def modify(id: int, payload: OrganizationModifyRequest) -> Any:
     try:
