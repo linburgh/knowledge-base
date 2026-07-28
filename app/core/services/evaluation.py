@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.common import utils
+from app.core.common import form_limits, utils
 from app.core.common import validation as common_validation
-from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
@@ -18,7 +17,27 @@ from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.evaluation import EvaluationTaskRequest, OptimizationRequest
 
-from .evaluation_access import require_super_admin
+from .evaluation_access import require_evaluation_access, tenant_scope
+
+
+async def _task_scope(current_user: CurrentUser, *, kb_id: int | None = None) -> int | None:
+    scope = await tenant_scope(current_user)
+    if scope is None or kb_id is None:
+        return scope
+    knowledge_base = await knowledge_base_db.get(DB.get(), id=kb_id, status="active")
+    if knowledge_base is None:
+        raise BusiException("知识库不存在", status_code=404)
+    if knowledge_base.get("tenant_id") != scope:
+        raise BusiException("无权访问其他租户的知识库", status_code=403)
+    return scope
+
+
+async def _get_task(task_id: int, current_user: CurrentUser, *, status: str = "active"):
+    scope = await _task_scope(current_user)
+    filters: dict[str, Any] = {"id": task_id, "status": status}
+    if scope is not None:
+        filters["tenant_id"] = scope
+    return await task_db.get(DB.get(), **filters)
 
 
 async def _resolve_execution_user(payload: EvaluationTaskRequest, current_user: CurrentUser) -> int:
@@ -31,6 +50,11 @@ async def _resolve_execution_user(payload: EvaluationTaskRequest, current_user: 
     user = await user_db.get(DB.get(), id=execution_user_id)
     if user is None or user.get("status") != "active":
         raise BusiException("CONFIG_INVALID: execution.user_id 对应的有效用户不存在")
+    scope = await tenant_scope(current_user)
+    if scope is not None:
+        context = await user_db.get_auth_context(DB.get(), execution_user_id, scope)
+        if context is None or context["user"].get("status") in {"disabled", "deleted"}:
+            raise BusiException("CONFIG_INVALID: execution.user_id 不属于当前租户")
     return execution_user_id
 
 
@@ -55,9 +79,17 @@ def _config(payload: EvaluationTaskRequest, execution_user_id: int) -> dict[str,
 
 @check_db_connected
 async def create(payload: EvaluationTaskRequest, current_user: CurrentUser) -> dict[str, Any]:
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
     _validate_text_fields(payload)
     db = DB.get()
+    task_tenant_id = await _task_scope(current_user, kb_id=payload.kb_id)
+    knowledge_base = await knowledge_base_db.get(db, id=payload.kb_id, status="active")
+    if knowledge_base is None:
+        raise BusiException("知识库不存在", status_code=404)
+    if task_tenant_id is None:
+        task_tenant_id = knowledge_base.get("tenant_id")
+    if task_tenant_id is None:
+        raise BusiException("知识库未关联租户，无法创建评测任务", status_code=409)
     execution_user_id = await _resolve_execution_user(payload, current_user)
     config = _config(payload, execution_user_id)
     async with db.transaction():
@@ -65,6 +97,7 @@ async def create(payload: EvaluationTaskRequest, current_user: CurrentUser) -> d
             db,
             name=payload.name,
             kb_id=payload.kb_id,
+            tenant_id=task_tenant_id,
             config=config,
             status="active",
             created_by=current_user.user_id,
@@ -91,11 +124,15 @@ async def page(
     status: str | None = None,
     conclusion: str | None = None,
 ):
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
+    scope = await _task_scope(current_user)
     if page < 1 or page_size < 1 or page_size > 100:
         raise BusiException("分页参数无效")
     db = DB.get()
-    rows = await task_db.list(db, status="active", kb_id=kb_id)
+    filters: dict[str, Any] = {"status": "active", "kb_id": kb_id}
+    if scope is not None:
+        filters["tenant_id"] = scope
+    rows = await task_db.list(db, **filters)
     enriched: list[dict[str, Any]] = []
     for row in rows:
         history = await run_db.list(db, task_id=row["id"])
@@ -134,8 +171,8 @@ async def page(
 
 @check_db_connected
 async def get(task_id: int, current_user: CurrentUser) -> dict[str, Any]:
-    await require_super_admin(current_user)
-    row = await task_db.get(DB.get(), id=task_id, status="active")
+    await require_evaluation_access(current_user)
+    row = await _get_task(task_id, current_user)
     if row is None:
         raise BusiException("评测任务不存在", status_code=404)
     return row
@@ -145,13 +182,19 @@ async def get(task_id: int, current_user: CurrentUser) -> dict[str, Any]:
 async def update(
     task_id: int, payload: EvaluationTaskRequest, current_user: CurrentUser
 ) -> dict[str, Any]:
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
     _validate_text_fields(payload)
     db = DB.get()
+    task_tenant_id = await _task_scope(current_user, kb_id=payload.kb_id)
+    if task_tenant_id is None:
+        knowledge_base = await knowledge_base_db.get(db, id=payload.kb_id, status="active")
+        if knowledge_base is None or knowledge_base.get("tenant_id") is None:
+            raise BusiException("知识库不存在或未关联租户", status_code=409)
+        task_tenant_id = knowledge_base["tenant_id"]
     execution_user_id = await _resolve_execution_user(payload, current_user)
     config = _config(payload, execution_user_id)
     async with db.transaction():
-        task = await task_db.get(db, id=task_id, status="active")
+        task = await _get_task(task_id, current_user)
         if task is None:
             raise BusiException("评测任务不存在", status_code=404)
         history = await run_db.list(db, task_id=task_id)
@@ -162,6 +205,7 @@ async def update(
             {
                 "name": payload.name,
                 "kb_id": payload.kb_id,
+                "tenant_id": task_tenant_id,
                 "config": config,
                 "updated_at": utils.utc_now(),
             },
@@ -202,10 +246,10 @@ def _validate_text_fields(payload: EvaluationTaskRequest) -> None:
 
 @check_db_connected
 async def create_run(task_id: int, current_user: CurrentUser) -> dict[str, Any]:
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
     db = DB.get()
     async with db.transaction():
-        task = await task_db.get(db, id=task_id, status="active")
+        task = await _get_task(task_id, current_user)
         if task is None:
             raise BusiException("评测任务不存在", status_code=404)
         active = await run_db.list(db, task_id=task_id, status="pending")
@@ -237,13 +281,19 @@ async def create_run(task_id: int, current_user: CurrentUser) -> dict[str, Any]:
 
 @check_db_connected
 async def runs(task_id: int, current_user: CurrentUser) -> list[dict[str, Any]]:
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
+    task = await _get_task(task_id, current_user)
+    if task is None:
+        raise BusiException("评测任务不存在", status_code=404)
     return await run_db.list(DB.get(), task_id=task_id)
 
 
 @check_db_connected
 async def run_detail(task_id: int, run_id: int, current_user: CurrentUser) -> dict[str, Any]:
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
+    task = await _get_task(task_id, current_user)
+    if task is None:
+        raise BusiException("评测任务不存在", status_code=404)
     row = await run_db.get(DB.get(), id=run_id, task_id=task_id)
     if row is None:
         raise BusiException("评测运行不存在", status_code=404)
@@ -269,10 +319,10 @@ async def cases(
 
 @check_db_connected
 async def remove(task_id: int, current_user: CurrentUser) -> dict[str, Any]:
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
     db = DB.get()
     async with db.transaction():
-        row = await task_db.get(db, id=task_id, status="active")
+        row = await _get_task(task_id, current_user)
         if row is None:
             raise BusiException("评测任务不存在", status_code=404)
         await task_db.update_(db, {"status": "deleted", "updated_at": utils.utc_now()}, id=task_id)
@@ -306,7 +356,7 @@ async def create_optimization(
 ) -> dict[str, Any]:
     run = await run_detail(task_id, run_id, current_user)
     db = DB.get()
-    task = await task_db.get(db, id=task_id, status="active")
+    task = await _get_task(task_id, current_user)
     if task is None:
         raise BusiException("评测任务不存在", status_code=404)
     knowledge_base = await knowledge_base_db.get(db, id=task["kb_id"], status="active")
@@ -404,10 +454,10 @@ async def retest_optimization(
     optimization_id: int,
     current_user: CurrentUser,
 ) -> dict[str, Any]:
-    await require_super_admin(current_user)
+    await require_evaluation_access(current_user)
     source_run = await run_detail(task_id, run_id, current_user)
     db = DB.get()
-    task = await task_db.get(db, id=task_id, status="active")
+    task = await _get_task(task_id, current_user)
     if task is None:
         raise BusiException("评测任务不存在", status_code=404)
     async with db.transaction():

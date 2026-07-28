@@ -5,18 +5,20 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
+from app.api.v1.dependencies import require_platform_management
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import platform_overview as platform_overview_service
-from app.api.v1.dependencies import require_platform_super_admin
 from app.schemas.platform_overview import PlatformOverviewResponse
 
-router = APIRouter(dependencies=[Depends(require_platform_super_admin)])
+router = APIRouter(dependencies=[Depends(require_platform_management)])
+current_user_dependency = Depends(auth.get_current_user)
 
 
 @router.get("/overview", response_model=PlatformOverviewResponse)
 async def overview(
+    current_user: auth.CurrentUser = current_user_dependency,
     range: str = "7d",
     start_at: datetime | None = None,
     end_at: datetime | None = None,
@@ -24,6 +26,7 @@ async def overview(
 ) -> Any:
     try:
         return await platform_overview_service.get_overview(
+            current_user=current_user,
             range_name=range,
             start_at=start_at,
             end_at=end_at,

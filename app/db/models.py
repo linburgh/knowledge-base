@@ -8,7 +8,9 @@ metadata = sa.MetaData()
 EvaluationTask = sa.Table(
     "t_evaluation_task", metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
-    sa.Column("name", sa.String(255), nullable=False), sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("tenant_id", sa.BigInteger, nullable=False),
     sa.Column("config", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("status", sa.String(32), nullable=False, server_default="active"),
     sa.Column("created_by", sa.String(128), nullable=False),

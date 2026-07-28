@@ -80,7 +80,16 @@ def main() -> int:
     admin_token = login(ADMIN_ACCOUNT, ADMIN_PASSWORD)
 
     expect("health without auth", request("GET", "/health"), {200})
-    expect("platform overview", request("GET", "/platform/overview", token=admin_token), {200})
+    overview = expect(
+        "platform overview",
+        request("GET", "/platform/overview", token=admin_token),
+        {200},
+    ).body
+    non_business_actions = {"login", "logout", "refresh_token", "select_tenant"}
+    assert not any(
+        item["action"] in non_business_actions
+        for item in overview["recent_activities"]
+    )
     expect("user page", request("GET", "/users/page?page=1&page_size=5", token=admin_token), {200})
     expect("tenant page", request("GET", "/tenants/page?page=1&page_size=5", token=admin_token), {200})
     expect(

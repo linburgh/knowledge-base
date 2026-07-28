@@ -71,7 +71,8 @@ class EvaluationCoreFlowTest(unittest.IsolatedAsyncioTestCase):
             return None
 
         with (
-            patch.object(evaluation_service, "require_super_admin", new=AsyncMock()),
+            patch.object(evaluation_service, "require_evaluation_access", new=AsyncMock()),
+            patch.object(evaluation_service, "tenant_scope", new=AsyncMock(return_value=None)),
             patch.object(evaluation_service.task_db, "get", new=AsyncMock(return_value=task)),
             patch.object(evaluation_service.run_db, "list", new=AsyncMock(return_value=[])),
             patch.object(evaluation_service.run_db, "insert_", new=AsyncMock(return_value=11)),
@@ -118,7 +119,8 @@ class EvaluationCoreFlowTest(unittest.IsolatedAsyncioTestCase):
         db = FakeDB()
         DB.set(db)
         with (
-            patch.object(evaluation_service, "require_super_admin", new=AsyncMock()),
+            patch.object(evaluation_service, "require_evaluation_access", new=AsyncMock()),
+            patch.object(evaluation_service, "tenant_scope", new=AsyncMock(return_value=None)),
             patch.object(
                 evaluation_service.task_db,
                 "list",

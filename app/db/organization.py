@@ -169,6 +169,18 @@ async def get_member(db, **kwargs: Any) -> dict[str, Any] | None:
     return await db_api.get(db, OrganizationMember, **kwargs)
 
 
+async def get_active_admin(db, organization_id: int, exclude_member_id: int | None = None):
+    query = sa.select(OrganizationMember).where(
+        OrganizationMember.c.organization_id == organization_id,
+        OrganizationMember.c.role_code == "org_admin",
+        OrganizationMember.c.status == "active",
+    )
+    if exclude_member_id is not None:
+        query = query.where(OrganizationMember.c.id != exclude_member_id)
+    row = await db.fetch_one(query.limit(1))
+    return dict(row) if row else None
+
+
 async def get_tenant_member(
     db,
     tenant_id: int,
@@ -439,6 +451,7 @@ __all__ = (
     "insert_member",
     "update_member",
     "get_member",
+    "get_active_admin",
     "get_tenant_member",
     "member_page",
     "list_member_candidates",

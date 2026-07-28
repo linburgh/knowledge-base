@@ -6,10 +6,11 @@ from typing import Any
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common import validation as common_validation
-from app.core.common import form_limits
 from app.core.common.exception import BusiException
+from app.core.common import form_limits
 from app.core.services import audit as audit_service
 from app.db import user as user_db
+from app.db import platform_role as platform_role_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.user import UserDto
@@ -170,8 +171,29 @@ def _normalize_filter(value: str | None) -> str | None:
     return common_utils.normalize_optional_filter(value)
 
 
+async def _resolve_tenant_scope(
+    current_user: auth.CurrentUser | None,
+    tenant_id: int | None,
+) -> int | None:
+    if current_user is None:
+        return tenant_id
+    platform_roles = await platform_role_db.get_user(DB.get(), int(current_user.user_id))
+    is_platform_super_admin = any(
+        role.get("code") == "p_super_admin" and role.get("status") == "active"
+        for role in platform_roles
+    )
+    if is_platform_super_admin:
+        return tenant_id
+    if current_user.tenant_id is None:
+        raise BusiException("当前租户上下文不能为空", status_code=403)
+    if tenant_id is not None and tenant_id != current_user.tenant_id:
+        raise BusiException("只能查询当前租户的用户", status_code=403)
+    return current_user.tenant_id
+
+
 @check_db_connected
 async def list(
+    current_user: auth.CurrentUser | None = None,
     keyword: str | None = None,
     username: str | None = None,
     email: str | None = None,
@@ -183,6 +205,7 @@ async def list(
     username = _normalize_filter(username)
     email = _normalize_filter(email)
     status = _normalize_filter(status)
+    tenant_id = await _resolve_tenant_scope(current_user, tenant_id)
     _validate_filters(status, tenant_id, organization_id)
     rows = await user_db.list(
         DB.get(),
@@ -198,6 +221,7 @@ async def list(
 
 @check_db_connected
 async def page(
+    current_user: auth.CurrentUser | None = None,
     keyword: str | None = None,
     username: str | None = None,
     email: str | None = None,
@@ -215,6 +239,7 @@ async def page(
         raise BusiException("page 必须大于 0")
     if page_size <= 0 or page_size > 100:
         raise BusiException("page_size 必须在 1 到 100 之间")
+    tenant_id = await _resolve_tenant_scope(current_user, tenant_id)
     _validate_filters(status, tenant_id, organization_id)
     record = await user_db.page(
         DB.get(),

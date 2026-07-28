@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-TENANT_ROLES = {"tenant_owner", "tenant_admin", "tenant_member", "tenant_guest"}
+TENANT_ROLES = {"tenant_admin", "tenant_member", "tenant_guest"}
 TENANT_MEMBER_STATUSES = {"invited", "active", "disabled", "left"}
 
 

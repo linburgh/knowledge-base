@@ -110,6 +110,18 @@ async def get(db, **kwargs: Any) -> dict[str, Any] | None:
     return await db_api.get(db, TenantMember, **kwargs)
 
 
+async def get_active_admin(db, tenant_id: int, exclude_member_id: int | None = None):
+    query = sa.select(TenantMember).where(
+        TenantMember.c.tenant_id == tenant_id,
+        TenantMember.c.role_code == "tenant_admin",
+        TenantMember.c.status == "active",
+    )
+    if exclude_member_id is not None:
+        query = query.where(TenantMember.c.id != exclude_member_id)
+    row = await db.fetch_one(query.limit(1))
+    return dict(row) if row else None
+
+
 async def insert_(db, **kwargs: Any) -> Any:
     return await db_api.insert_(db, TenantMember, **kwargs)
 
@@ -180,4 +192,12 @@ async def page_candidates(
     return record
 
 
-__all__ = ("get", "insert_", "list_candidates", "page", "page_candidates", "update_")
+__all__ = (
+    "get",
+    "get_active_admin",
+    "insert_",
+    "list_candidates",
+    "page",
+    "page_candidates",
+    "update_",
+)

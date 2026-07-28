@@ -4,11 +4,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, status
 
+from app.api.v1.dependencies import (
+    require_platform_management,
+    require_platform_super_admin,
+)
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.services import organization as organization_service
-from app.api.v1.dependencies import require_platform_super_admin
 from app.schemas.organization import (
     OrganizationCreateRequest,
     OrganizationDto,
@@ -19,11 +22,15 @@ from app.schemas.organization import (
 )
 from app.schemas.organization_member import OrganizationMemberBatchRequest
 
-router = APIRouter(dependencies=[Depends(require_platform_super_admin)])
+router = APIRouter()
 current_user_dependency = Depends(auth.get_current_user)
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_platform_super_admin)],
+)
 async def add(payload: OrganizationCreateRequest) -> Any:
     try:
         return await organization_service.add(
@@ -33,7 +40,7 @@ async def add(payload: OrganizationCreateRequest) -> Any:
         common_utils.raise_http_exception(exc)
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_platform_management)])
 async def tree(
     tenant_id: int | None = None,
     keyword: str | None = None,
@@ -46,7 +53,7 @@ async def tree(
         common_utils.raise_http_exception(exc)
 
 
-@router.get("/tree")
+@router.get("/tree", dependencies=[Depends(require_platform_management)])
 async def tree_view(
     tenant_id: int | None = None,
     keyword: str | None = None,
@@ -59,7 +66,7 @@ async def tree_view(
         common_utils.raise_http_exception(exc)
 
 
-@router.get("/page")
+@router.get("/page", dependencies=[Depends(require_platform_management)])
 async def page(
     tenant_id: int | None = None,
     keyword: str | None = None,
@@ -76,7 +83,7 @@ async def page(
         common_utils.raise_http_exception(exc)
 
 
-@router.put("/{id}")
+@router.put("/{id}", dependencies=[Depends(require_platform_super_admin)])
 async def modify(id: int, payload: OrganizationModifyRequest) -> Any:
     try:
         return await organization_service.modify(
@@ -87,7 +94,7 @@ async def modify(id: int, payload: OrganizationModifyRequest) -> Any:
         common_utils.raise_http_exception(exc)
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(require_platform_super_admin)])
 async def remove(id: int) -> Any:
     try:
         return await organization_service.remove(id)
@@ -95,7 +102,7 @@ async def remove(id: int) -> Any:
         common_utils.raise_http_exception(exc)
 
 
-@router.get("/{id}/members/page")
+@router.get("/{id}/members/page", dependencies=[Depends(require_platform_super_admin)])
 async def member_page(
     id: int,
     keyword: str | None = None,
@@ -109,7 +116,11 @@ async def member_page(
         common_utils.raise_http_exception(exc)
 
 
-@router.post("/{id}/members", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{id}/members",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_platform_super_admin)],
+)
 async def add_member(id: int, payload: OrganizationMemberRequest) -> Any:
     try:
         return await organization_service.add_member(
@@ -120,7 +131,7 @@ async def add_member(id: int, payload: OrganizationMemberRequest) -> Any:
         common_utils.raise_http_exception(exc)
 
 
-@router.get("/{id}/member-candidates")
+@router.get("/{id}/member-candidates", dependencies=[Depends(require_platform_super_admin)])
 async def member_candidates(id: int, keyword: str | None = None) -> Any:
     try:
         return await organization_service.member_candidates(id, keyword)
@@ -128,7 +139,7 @@ async def member_candidates(id: int, keyword: str | None = None) -> Any:
         common_utils.raise_http_exception(exc)
 
 
-@router.get("/{id}/member-candidates/page")
+@router.get("/{id}/member-candidates/page", dependencies=[Depends(require_platform_super_admin)])
 async def member_candidate_page(
     id: int,
     keyword: str | None = None,
@@ -141,7 +152,7 @@ async def member_candidate_page(
         common_utils.raise_http_exception(exc)
 
 
-@router.put("/{id}/members/batch")
+@router.put("/{id}/members/batch", dependencies=[Depends(require_platform_super_admin)])
 async def batch_members(id: int, payload: OrganizationMemberBatchRequest) -> Any:
     try:
         return await organization_service.batch_members(id, payload.members)
@@ -149,7 +160,7 @@ async def batch_members(id: int, payload: OrganizationMemberBatchRequest) -> Any
         common_utils.raise_http_exception(exc)
 
 
-@router.put("/{id}/members/{member_id}")
+@router.put("/{id}/members/{member_id}", dependencies=[Depends(require_platform_super_admin)])
 async def modify_member(
     id: int,
     member_id: int,
@@ -164,7 +175,7 @@ async def modify_member(
         common_utils.raise_http_exception(exc)
 
 
-@router.delete("/{id}/members/{member_id}")
+@router.delete("/{id}/members/{member_id}", dependencies=[Depends(require_platform_super_admin)])
 async def remove_member(id: int, member_id: int) -> Any:
     try:
         return await organization_service.remove_member(member_id)
@@ -172,7 +183,7 @@ async def remove_member(id: int, member_id: int) -> Any:
         common_utils.raise_http_exception(exc)
 
 
-@router.get("/{id}")
+@router.get("/{id}", dependencies=[Depends(require_platform_super_admin)])
 async def get(id: int) -> Any:
     try:
         return await organization_service.get(id)

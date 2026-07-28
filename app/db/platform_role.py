@@ -36,6 +36,24 @@ async def get_user(db, user_id: int) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+async def get_active_role_user_ids(db, role_code: str) -> list[int]:
+    query = (
+        sa.select(PlatformUserRole.c.user_id)
+        .select_from(
+            PlatformUserRole.join(
+                PlatformRole,
+                PlatformRole.c.id == PlatformUserRole.c.role_id,
+            )
+        )
+        .where(
+            PlatformRole.c.code == role_code,
+            PlatformRole.c.status == "active",
+        )
+        .order_by(PlatformUserRole.c.user_id.asc())
+    )
+    return [int(row[0]) for row in await db.fetch_all(query)]
+
+
 async def insert_user_role(db, **kwargs: Any) -> Any:
     return await db_api.insert_(db, PlatformUserRole, **kwargs)
 
@@ -49,4 +67,12 @@ async def user_exists(db, user_id: int) -> bool:
     return row is not None
 
 
-__all__ = ("delete_user_roles", "get", "get_user", "insert_user_role", "list", "user_exists")
+__all__ = (
+    "delete_user_roles",
+    "get",
+    "get_active_role_user_ids",
+    "get_user",
+    "insert_user_role",
+    "list",
+    "user_exists",
+)

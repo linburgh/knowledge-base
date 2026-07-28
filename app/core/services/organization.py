@@ -3,9 +3,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.core.common import form_limits
 from app.core.common import utils as common_utils
 from app.core.common import validation as common_validation
-from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services import audit as audit_service
@@ -73,6 +73,13 @@ async def _require_user(db, user_id: int) -> dict[str, Any]:
     if user is None or user.get("status") == "deleted":
         raise BusiException("用户不存在", status_code=404)
     return user
+
+
+async def _ensure_admin_available(
+    db, organization_id: int, *, exclude_member_id: int | None = None
+) -> None:
+    if await organization_db.get_active_admin(db, organization_id, exclude_member_id):
+        raise BusiException("一个组织只能有一个有效的组织管理员", status_code=409)
 
 
 async def _validate_parent(
@@ -320,6 +327,8 @@ async def add_member(organization_id: int, dto: OrganizationMemberDto) -> dict[s
             user_id=dto.user_id,
         ):
             raise BusiException("用户已经是该组织成员", status_code=409)
+        if values.get("role_code") == "org_admin" and values.get("status") == MEMBER_ACTIVE:
+            await _ensure_admin_available(db, organization_id)
         try:
             member_id = await organization_db.insert_member(
                 db,
@@ -353,8 +362,18 @@ async def modify_member(member_id: int, dto: OrganizationMemberDto) -> dict[str,
         raise BusiException("修改内容不能为空")
     db = DB.get()
     async with db.transaction():
-        if await organization_db.get_member(db, id=member_id) is None:
+        old = await organization_db.get_member(db, id=member_id)
+        if old is None:
             raise BusiException("组织成员不存在", status_code=404)
+        next_role = values.get("role_code", old.get("role_code"))
+        next_status = values.get("status", old.get("status"))
+        if next_role == "org_admin" and next_status == MEMBER_ACTIVE:
+            await _ensure_admin_available(db, old["organization_id"], exclude_member_id=member_id)
+        elif old.get("role_code") == "org_admin" and old.get("status") == MEMBER_ACTIVE:
+            if await organization_db.get_active_admin(
+                db, old["organization_id"], exclude_member_id=member_id
+            ) is None:
+                raise BusiException("一个组织必须保留一个有效的组织管理员", status_code=409)
         values["updated_at"] = common_utils.utc_now()
         await organization_db.update_member(db, values, id=member_id)
         member = await organization_db.get_member(db, id=member_id)
@@ -374,8 +393,14 @@ async def remove_member(member_id: int) -> dict[str, Any]:
         raise BusiException("member_id 不能为空")
     db = DB.get()
     async with db.transaction():
-        if await organization_db.get_member(db, id=member_id) is None:
+        old = await organization_db.get_member(db, id=member_id)
+        if old is None:
             raise BusiException("组织成员不存在", status_code=404)
+        if old.get("role_code") == "org_admin" and old.get("status") == MEMBER_ACTIVE:
+            if await organization_db.get_active_admin(
+                db, old["organization_id"], exclude_member_id=member_id
+            ) is None:
+                raise BusiException("一个组织必须保留一个有效的组织管理员", status_code=409)
         await organization_db.update_member(
             db,
             {"status": MEMBER_LEFT, "updated_at": common_utils.utc_now()},
@@ -499,6 +524,15 @@ async def batch_members(
             old = await organization_db.get_member(
                 db, organization_id=organization_id, user_id=item.user_id
             )
+            if item.role_code == "org_admin" and item.status == MEMBER_ACTIVE:
+                await _ensure_admin_available(
+                    db, organization_id, exclude_member_id=old.get("id") if old else None
+                )
+            elif old and old.get("role_code") == "org_admin" and old.get("status") == MEMBER_ACTIVE:
+                if await organization_db.get_active_admin(
+                    db, organization_id, exclude_member_id=old["id"]
+                ) is None:
+                    raise BusiException("一个组织必须保留一个有效的组织管理员", status_code=409)
             if old is None:
                 member_id = await organization_db.insert_member(
                     db,

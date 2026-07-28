@@ -40,9 +40,21 @@ async def assign_user_roles(user_id: int, role_codes: list[str]) -> list[dict[st
             role = await platform_role_db.get(db, code=code, status="active")
             if role is None:
                 raise BusiException(f"平台角色不存在或已禁用: {code}", status_code=400)
+            if code == "p_super_admin":
+                existing_user_ids = await platform_role_db.get_active_role_user_ids(
+                    db, code
+                )
+                if any(existing_user_id != user_id for existing_user_id in existing_user_ids):
+                    raise BusiException("平台只能有一个平台超级管理员", status_code=409)
             roles.append(role)
 
         old_roles = await platform_role_db.get_user(db, user_id)
+        if (
+            "p_super_admin" in {role["code"] for role in old_roles}
+            and "p_super_admin" not in normalized_codes
+        ):
+            if len(await platform_role_db.get_active_role_user_ids(db, "p_super_admin")) <= 1:
+                raise BusiException("平台必须保留一个平台超级管理员", status_code=409)
         await platform_role_db.delete_user_roles(db, user_id)
         actor_id = audit_context.get_context().get("actor_id")
         created_by = int(actor_id) if actor_id and actor_id.isdigit() else None

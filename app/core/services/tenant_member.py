@@ -30,6 +30,13 @@ async def _require_tenant(db, tenant_id: int) -> dict[str, Any]:
     return tenant
 
 
+async def _ensure_admin_available(
+    db, tenant_id: int, *, exclude_member_id: int | None = None
+) -> None:
+    if await tenant_member_db.get_active_admin(db, tenant_id, exclude_member_id):
+        raise BusiException("一个租户只能有一个有效的租户管理员", status_code=409)
+
+
 @check_db_connected
 async def page(
     tenant_id: int,
@@ -75,6 +82,8 @@ async def add(tenant_id: int, values: dict[str, Any]) -> dict[str, Any]:
             "tenant_id": tenant_id,
             "joined_at": common_utils.utc_now(),
         }
+        if values.get("role_code") == "tenant_admin" and values.get("status") == "active":
+            await _ensure_admin_available(db, tenant_id)
         try:
             member_id = await tenant_member_db.insert_(db, **values)
         except Exception as exc:
@@ -109,6 +118,11 @@ async def batch_add(tenant_id: int, values: dict[str, Any]) -> list[dict[str, An
                 raise BusiException(f"用户不存在: {user_id}", status_code=404)
             if await tenant_member_db.get(db, tenant_id=tenant_id, user_id=user_id):
                 raise BusiException(f"用户已经是当前租户成员: {user_id}", status_code=409)
+            if (
+                values.get("role_code", "tenant_member") == "tenant_admin"
+                and values.get("status", "active") == "active"
+            ):
+                await _ensure_admin_available(db, tenant_id)
             member_id = await tenant_member_db.insert_(
                 db,
                 tenant_id=tenant_id,
@@ -149,6 +163,15 @@ async def modify(tenant_id: int, member_id: int, values: dict[str, Any]) -> dict
             raise BusiException("租户成员不存在", status_code=404)
         if old.get("tenant_id") != tenant_id:
             raise BusiException("租户成员不属于当前租户", status_code=404)
+        next_role = values.get("role_code", old.get("role_code"))
+        next_status = values.get("status", old.get("status"))
+        if next_role == "tenant_admin" and next_status == "active":
+            await _ensure_admin_available(db, tenant_id, exclude_member_id=member_id)
+        elif old.get("role_code") == "tenant_admin" and old.get("status") == "active":
+            if await tenant_member_db.get_active_admin(
+                db, tenant_id, exclude_member_id=member_id
+            ) is None:
+                raise BusiException("一个租户必须保留一个有效的租户管理员", status_code=409)
         values["updated_at"] = common_utils.utc_now()
         await tenant_member_db.update_(db, values, id=member_id)
         member = await tenant_member_db.get(db, id=member_id)
@@ -173,6 +196,11 @@ async def remove(tenant_id: int, member_id: int) -> dict[str, Any]:
             raise BusiException("租户成员不存在", status_code=404)
         if old.get("tenant_id") != tenant_id:
             raise BusiException("租户成员不属于当前租户", status_code=404)
+        if old.get("role_code") == "tenant_admin" and old.get("status") == "active":
+            if await tenant_member_db.get_active_admin(
+                db, tenant_id, exclude_member_id=member_id
+            ) is None:
+                raise BusiException("一个租户必须保留一个有效的租户管理员", status_code=409)
         await tenant_member_db.update_(
             db,
             {"status": "left", "updated_at": common_utils.utc_now()},
