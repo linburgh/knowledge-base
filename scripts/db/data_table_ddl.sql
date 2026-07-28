@@ -285,6 +285,7 @@ create index if not exists idx_t_organization_tenant_status on t_organization (t
 create index if not exists idx_t_organization_tree_root_page on t_organization (tenant_id, created_at, id) where parent_id is null and status <> 'deleted';
 
 create index if not exists idx_t_organization_tree_children on t_organization (parent_id, id) where status <> 'deleted';
+create index if not exists idx_t_organization_tree_children_page on t_organization (parent_id, created_at, id) where status <> 'deleted';
 
 alter table t_organization alter column tenant_id drop not null;
 

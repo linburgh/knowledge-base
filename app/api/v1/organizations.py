@@ -105,6 +105,88 @@ async def tree_parents(
         common_utils.raise_http_exception(exc)
 
 
+@router.get("/tree/locate", dependencies=[Depends(require_platform_management)])
+async def locate_search(
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    limit: int = 20,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await organization_service.locate_search(
+            current_user,
+            tenant_id=tenant_id,
+            keyword=keyword,
+            status=status,
+            limit=limit,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/tree/locate/{id}", dependencies=[Depends(require_platform_management)])
+async def locate_context(
+    id: int,
+    status: str | None = None,
+    page_size: int = 5,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await organization_service.locate_context(
+            current_user,
+            organization_id=id,
+            status=status,
+            page_size=page_size,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/tree/locate/{id}/siblings", dependencies=[Depends(require_platform_management)])
+async def locate_siblings(
+    id: int,
+    direction: str,
+    cursor: str | None = None,
+    status: str | None = None,
+    page_size: int = 5,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await organization_service.locate_siblings(
+            current_user,
+            organization_id=id,
+            direction=direction,
+            cursor=cursor,
+            status=status,
+            page_size=page_size,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
+@router.get("/tree/locate/{id}/ancestor-page", dependencies=[Depends(require_platform_management)])
+async def locate_ancestor_page(
+    id: int,
+    ancestor_id: int,
+    cursor: str | None = None,
+    status: str | None = None,
+    page_size: int = 5,
+    current_user: auth.CurrentUser = current_user_dependency,
+) -> Any:
+    try:
+        return await organization_service.locate_ancestor_page(
+            current_user,
+            organization_id=id,
+            ancestor_id=ancestor_id,
+            cursor=cursor,
+            status=status,
+            page_size=page_size,
+        )
+    except BusiException as exc:
+        common_utils.raise_http_exception(exc)
+
+
 @router.get("/{id}/children", dependencies=[Depends(require_platform_management)])
 async def tree_children(
     id: int,

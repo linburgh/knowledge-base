@@ -324,7 +324,7 @@ def _tree_page_response(rows: list[dict[str, Any]], limit: int, *, includes_tena
             item_id=item["id"],
         )
     for item in items:
-        item["has_children"] = int(item.get("child_count") or 0) > 0
+        item["has_children"] = bool(item.get("has_children", False))
     return {"items": items, "next_cursor": next_cursor, "has_more": has_more}
 
 
@@ -352,13 +352,13 @@ async def tree_parents_page(
         cursor=_decode_tree_cursor(cursor, includes_tenant=is_platform_super_admin),
         limit=page_size,
     )
-    child_counts = await organization_db.tree_parent_child_counts(
+    child_flags = await organization_db.tree_parent_has_children(
         DB.get(),
         parent_ids=[int(row["id"]) for row in rows],
         tenant_id=resolved_tenant_id,
     )
     for row in rows:
-        row["child_count"] = child_counts.get(int(row["id"]), 0)
+        row["has_children"] = child_flags.get(int(row["id"]), False)
     return _tree_page_response(rows, page_size, includes_tenant=is_platform_super_admin)
 
 
@@ -392,6 +392,231 @@ async def tree_children_page(
         limit=page_size,
     )
     return _tree_page_response(rows, page_size, includes_tenant=False)
+
+
+def _locate_cursor(row: dict[str, Any] | None) -> str | None:
+    if row is None:
+        return None
+    return _encode_tree_cursor(
+        tenant_id=None,
+        created_at=row["created_at"],
+        item_id=int(row["id"]),
+    )
+
+
+@check_db_connected
+async def locate_search(
+    current_user: CurrentUser,
+    tenant_id: int | None = None,
+    keyword: str | None = None,
+    status: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    if limit <= 0 or limit > TREE_PAGE_SIZE_MAX:
+        raise BusiException(f"limit 必须在 1 到 {TREE_PAGE_SIZE_MAX} 之间")
+    keyword = common_utils.normalize_optional_filter(keyword)
+    if not keyword:
+        raise BusiException("keyword 不能为空")
+    if status is not None and status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+    db, _, resolved_tenant_id = await _resolve_tree_tenant(current_user, tenant_id)
+    rows = await organization_db.locate_search(
+        db,
+        tenant_id=resolved_tenant_id,
+        keyword=keyword,
+        status=status,
+        limit=limit,
+    )
+    results = []
+    for row in rows:
+        path_rows = await organization_db.organization_path(db, organization_id=int(row["id"]))
+        results.append(
+            {
+                **row,
+                "path": " / ".join(str(item.get("name")) for item in path_rows if item.get("name")),
+            }
+        )
+    return results
+
+
+@check_db_connected
+async def locate_context(
+    current_user: CurrentUser,
+    organization_id: int,
+    status: str | None = None,
+    page_size: int = 5,
+) -> dict[str, Any]:
+    if organization_id <= 0:
+        raise BusiException("organization_id 必须大于 0")
+    if page_size <= 0 or page_size > TREE_PAGE_SIZE_MAX:
+        raise BusiException(f"page_size 必须在 1 到 {TREE_PAGE_SIZE_MAX} 之间")
+    if status is not None and status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+    db = DB.get()
+    target = await organization_db.get(db, id=organization_id)
+    if target is None or target.get("status") == STATUS_DELETED:
+        raise BusiException("组织不存在", status_code=404)
+    if status is not None and target.get("status") != status:
+        raise BusiException("组织不存在", status_code=404)
+    _, _, resolved_tenant_id = await _resolve_tree_tenant(current_user, target["tenant_id"])
+    if resolved_tenant_id is not None and resolved_tenant_id != target["tenant_id"]:
+        raise BusiException("只能定位当前租户的组织", status_code=403)
+
+    path_rows = await organization_db.organization_path(db, organization_id=organization_id)
+    if not path_rows or int(path_rows[0]["id"]) != organization_id:
+        raise BusiException("组织层级路径不存在")
+    ancestors = list(reversed(path_rows[1:]))
+    parent = path_rows[1] if len(path_rows) > 1 else None
+    target = {
+        **target,
+        "parent_name": parent.get("name") if parent else None,
+    }
+    if parent is None:
+        return {
+            "target": target,
+            "ancestors": ancestors,
+            "parent": None,
+            "first_children": [],
+            "first_page_next_cursor": None,
+            "first_page_has_more": False,
+            "target_in_first_page": True,
+            "before": {"cursor": None, "has_more": False},
+            "after": {"cursor": None, "has_more": False},
+        }
+
+    first_children = await organization_db.tree_children(
+        db,
+        parent_id=int(parent["id"]),
+        tenant_id=int(target["tenant_id"]),
+        status=status,
+        limit=page_size,
+    )
+    target_in_first_page = any(
+        int(row["id"]) == organization_id for row in first_children[:page_size]
+    )
+    first_page = first_children[:page_size]
+    first_last = first_page[-1] if first_page else None
+    first_page_has_more = len(first_children) > page_size
+    before_probe = []
+    if not target_in_first_page:
+        before_probe = await organization_db.locate_children(
+            db,
+            parent_id=int(parent["id"]),
+            tenant_id=int(target["tenant_id"]),
+            target_id=organization_id,
+            direction="before",
+            cursor=(first_last["created_at"], first_last["id"]) if first_last else None,
+            status=status,
+            limit=1,
+        )
+    after_probe = await organization_db.locate_children(
+        db,
+        parent_id=int(parent["id"]),
+        tenant_id=int(target["tenant_id"]),
+        target_id=organization_id,
+        direction="after",
+        status=status,
+        limit=1,
+    )
+    return {
+        "target": target,
+        "ancestors": ancestors,
+        "parent": parent,
+        "first_children": first_page,
+        "first_page_next_cursor": _locate_cursor(first_last) if first_page_has_more else None,
+        "first_page_has_more": first_page_has_more,
+        "target_in_first_page": target_in_first_page,
+        "before": {
+            "cursor": _locate_cursor(first_last) if not target_in_first_page else None,
+            "has_more": bool(before_probe),
+        },
+        "after": {
+            "cursor": _locate_cursor(target),
+            "has_more": bool(after_probe),
+        },
+    }
+
+
+@check_db_connected
+async def locate_siblings(
+    current_user: CurrentUser,
+    organization_id: int,
+    direction: str,
+    cursor: str | None = None,
+    status: str | None = None,
+    page_size: int = 5,
+) -> dict[str, Any]:
+    if direction not in {"before", "after"}:
+        raise BusiException("direction 必须是 before 或 after")
+    if page_size <= 0 or page_size > TREE_PAGE_SIZE_MAX:
+        raise BusiException(f"page_size 必须在 1 到 {TREE_PAGE_SIZE_MAX} 之间")
+    db = DB.get()
+    target = await organization_db.get(db, id=organization_id)
+    if target is None or target.get("status") == STATUS_DELETED:
+        raise BusiException("组织不存在", status_code=404)
+    if status is not None and target.get("status") != status:
+        raise BusiException("组织不存在", status_code=404)
+    _, _, resolved_tenant_id = await _resolve_tree_tenant(current_user, target["tenant_id"])
+    if resolved_tenant_id is not None and resolved_tenant_id != target["tenant_id"]:
+        raise BusiException("只能定位当前租户的组织", status_code=403)
+    rows = await organization_db.locate_children(
+        db,
+        parent_id=int(target["parent_id"]),
+        tenant_id=int(target["tenant_id"]),
+        target_id=organization_id,
+        direction=direction,
+        cursor=_decode_tree_cursor(cursor, includes_tenant=False),
+        status=status,
+        limit=page_size,
+    )
+    return _tree_page_response(rows, page_size, includes_tenant=False)
+
+
+@check_db_connected
+async def locate_ancestor_page(
+    current_user: CurrentUser,
+    organization_id: int,
+    ancestor_id: int,
+    cursor: str | None = None,
+    status: str | None = None,
+    page_size: int = 5,
+) -> dict[str, Any]:
+    if organization_id <= 0 or ancestor_id <= 0:
+        raise BusiException("organization_id 和 ancestor_id 必须大于 0")
+    if page_size <= 0 or page_size > TREE_PAGE_SIZE_MAX:
+        raise BusiException(f"page_size 必须在 1 到 {TREE_PAGE_SIZE_MAX} 之间")
+    if status is not None and status not in VALID_STATUSES:
+        raise BusiException("status 不合法")
+    db = DB.get()
+    target = await organization_db.get(db, id=organization_id)
+    ancestor = await organization_db.get(db, id=ancestor_id)
+    if (
+        target is None
+        or ancestor is None
+        or target.get("status") == STATUS_DELETED
+        or ancestor.get("status") == STATUS_DELETED
+    ):
+        raise BusiException("组织不存在", status_code=404)
+    if status is not None and target.get("status") != status:
+        raise BusiException("组织不存在", status_code=404)
+    _, _, resolved_tenant_id = await _resolve_tree_tenant(current_user, target["tenant_id"])
+    if resolved_tenant_id is not None and resolved_tenant_id != target["tenant_id"]:
+        raise BusiException("只能定位当前租户的组织", status_code=403)
+    path_rows = await organization_db.organization_path(db, organization_id=organization_id)
+    if not any(int(row["id"]) == ancestor_id for row in path_rows):
+        raise BusiException("指定节点不是目标组织的祖先", status_code=400)
+    rows = await organization_db.tree_children(
+        db,
+        parent_id=ancestor_id,
+        tenant_id=int(target["tenant_id"]),
+        status=status,
+        cursor=_decode_tree_cursor(cursor, includes_tenant=False),
+        limit=page_size,
+    )
+    return {
+        "ancestor": ancestor,
+        **_tree_page_response(rows, page_size, includes_tenant=False),
+    }
 
 
 @check_db_connected

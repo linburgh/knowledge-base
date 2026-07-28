@@ -9,7 +9,13 @@ from app.core.services.organization import (
     _decode_tree_cursor,
     _encode_tree_cursor,
 )
-from app.db.organization import tree_children, tree_parent_child_counts, tree_parents
+from app.db.organization import (
+    locate_search,
+    organization_member_counts,
+    tree_children,
+    tree_parent_has_children,
+    tree_parents,
+)
 
 
 class CaptureDB:
@@ -65,10 +71,10 @@ class OrganizationTreePaginationTest(unittest.TestCase):
         self.assertNotIn("organization_tree_child", sql)
         self.assertNotIn("GROUP BY", sql)
 
-    def test_parent_child_count_query_is_scoped_to_current_page(self):
+    def test_parent_has_children_query_is_scoped_to_current_page(self):
         db = CaptureDB()
         asyncio.run(
-            tree_parent_child_counts(
+            tree_parent_has_children(
                 db,
                 parent_ids=[11, 12, 13],
                 tenant_id=151,
@@ -80,11 +86,12 @@ class OrganizationTreePaginationTest(unittest.TestCase):
                 compile_kwargs={"literal_binds": True},
             )
         )
-        self.assertIn("t_organization.parent_id IN (11, 12, 13)", sql)
-        self.assertIn("t_organization.tenant_id = 151", sql)
-        self.assertIn("GROUP BY t_organization.parent_id", sql)
+        self.assertIn("tree_parent.id IN (11, 12, 13)", sql)
+        self.assertIn("tree_parent.tenant_id = 151", sql)
+        self.assertIn("EXISTS", sql)
+        self.assertNotIn("GROUP BY", sql)
 
-    def test_child_query_counts_members_and_children_separately(self):
+    def test_child_query_pages_before_child_count_statistics(self):
         db = CaptureDB()
         asyncio.run(tree_children(db, parent_id=1, tenant_id=151, limit=20))
         sql = str(
@@ -93,9 +100,37 @@ class OrganizationTreePaginationTest(unittest.TestCase):
                 compile_kwargs={"literal_binds": True},
             )
         )
-        self.assertIn("AS member_count", sql)
-        self.assertIn("AS child_count", sql)
-        self.assertIn("organization_child_descendant", sql)
+        self.assertNotIn("member_count", sql)
+        self.assertNotIn("AS child_count", sql)
+        self.assertNotIn("organization_child_descendant", sql)
+        self.assertNotIn("GROUP BY", sql)
+        self.assertIn("LIMIT 21", sql)
+
+    def test_member_count_query_is_scoped_to_current_page(self):
+        db = CaptureDB()
+        asyncio.run(organization_member_counts(db, organization_ids=[11, 12, 13]))
+        sql = str(
+            db.queries[0].compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        self.assertIn("t_organization_member.organization_id IN (11, 12, 13)", sql)
+        self.assertIn("GROUP BY t_organization_member.organization_id", sql)
+
+    def test_locate_search_is_scoped_and_matches_name_or_code(self):
+        db = CaptureDB()
+        asyncio.run(locate_search(db, tenant_id=151, keyword="节点", limit=20))
+        sql = str(
+            db.queries[0].compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        self.assertIn("t_organization.tenant_id = 151", sql)
+        self.assertIn("t_organization.name ILIKE", sql)
+        self.assertIn("t_organization.code ILIKE", sql)
+        self.assertIn("LIMIT 20", sql)
 
 
 if __name__ == "__main__":
