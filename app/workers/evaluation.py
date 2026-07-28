@@ -9,6 +9,7 @@ from app.agents.evaluation.models import EvaluationConfig
 from app.agents.evaluation.report import build_report
 from app.agents.knowledge.agent import run_knowledge_agent
 from app.config import CONF
+from app.core.common.log import LOG
 from app.db import document_chunk as document_chunk_db
 from app.db import evaluation_case_result as case_db
 from app.db import evaluation_optimization as optimization_db
@@ -39,14 +40,27 @@ async def _load_generation_context(db, config, fallback: str | None) -> str | No
 
 @check_db_connected
 async def run_evaluation(run_id: int) -> int:
+    LOG.info("自主评测Worker run start run_id={}", run_id)
     db = DB.get()
     run = await run_db.get(db, id=run_id)
     if run is None or run["status"] not in {"pending", "running"}:
+        LOG.info(
+            "自主评测Worker run skipped run_id={} status={}",
+            run_id,
+            run.get("status") if run else "missing",
+        )
         return run_id
     task = await task_db.get(db, id=run["task_id"], status="active")
     if task is None:
+        LOG.warning("自主评测Worker task missing run_id={} task_id={}", run_id, run["task_id"])
         await run_db.update_(db, {"status": "failed", "finished_at": _now()}, id=run_id)
         return run_id
+    LOG.info(
+        "自主评测Worker preparation started run_id={} task_id={} kb_id={}",
+        run_id,
+        run["task_id"],
+        task.get("kb_id"),
+    )
     await run_db.update_(
         db,
         {"status": "running", "stage": "prepare", "started_at": _now(), "updated_at": _now()},
@@ -75,6 +89,12 @@ async def run_evaluation(run_id: int) -> int:
                     task["config"].get("business_description"),
                 ),
             )
+        LOG.info(
+            "自主评测Worker questions ready run_id={} source={} question_count={}",
+            run_id,
+            config.questions_source,
+            len(questions),
+        )
         await run_db.update_(
             db,
             {
@@ -86,7 +106,14 @@ async def run_evaluation(run_id: int) -> int:
             },
             id=run_id,
         )
+        LOG.info("自主评测Worker Agent execution started run_id={}", run_id)
         results, metrics = await EvaluationAgent(run_knowledge_agent).run(config, questions)
+        LOG.info(
+            "自主评测Worker Agent execution completed run_id={} result_count={} conclusion={}",
+            run_id,
+            len(results),
+            metrics.conclusion,
+        )
         failed_count = sum(result.status != "completed" for result in results)
         await run_db.update_(
             db,
@@ -99,6 +126,11 @@ async def run_evaluation(run_id: int) -> int:
             id=run_id,
         )
         report = build_report(config, results, metrics)
+        LOG.info(
+            "自主评测Worker persistence started run_id={} case_count={}",
+            run_id,
+            len(results),
+        )
         async with db.transaction():
             for result in results:
                 await case_db.insert_(db, run_id=run_id, **result.model_dump())
@@ -131,7 +163,13 @@ async def run_evaluation(run_id: int) -> int:
                     {"after_metrics": after_metrics, "status": "suggested"},
                     id=int(optimization_id),
                 )
+        LOG.info(
+            "自主评测Worker run completed run_id={} status=completed conclusion={}",
+            run_id,
+            metrics.conclusion,
+        )
     except Exception as exc:
+        LOG.opt(exception=exc).error("自主评测Worker run failed run_id={}", run_id)
         await run_db.update_(
             db,
             {
@@ -150,16 +188,20 @@ async def run_evaluation(run_id: int) -> int:
 @check_db_connected
 async def run_pending_once() -> bool:
     """Claim and execute one pending evaluation run."""
+    LOG.info("自主评测Worker poll start")
     db = DB.get()
     pending = await run_db.list(db, status="pending")
     if not pending:
+        LOG.info("自主评测Worker poll empty")
         return False
+    LOG.info("自主评测Worker poll claimed run_id={}", pending[0]["id"])
     await run_evaluation(int(pending[0]["id"]))
     return True
 
 
 async def run_forever(stop_event: asyncio.Event) -> None:
     """Keep consuming autonomous evaluation runs until shutdown."""
+    LOG.info("自主评测Worker loop started")
     while not stop_event.is_set():
         try:
             handled = await run_pending_once()
@@ -171,6 +213,9 @@ async def run_forever(stop_event: asyncio.Event) -> None:
         except TimeoutError:
             continue
         except asyncio.CancelledError:
+            LOG.info("自主评测Worker loop cancelled")
             raise
-        except Exception:
+        except Exception as exc:
+            LOG.opt(exception=exc).error("自主评测Worker loop error")
             await asyncio.sleep(max(1, int(CONF.default.evaluation_worker_poll_seconds)))
+    LOG.info("自主评测Worker loop stopped")

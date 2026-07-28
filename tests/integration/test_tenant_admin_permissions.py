@@ -12,7 +12,7 @@ except ImportError:
 
 
 ACCOUNT = os.getenv("TENANT_ADMIN_ACCOUNT", "tenant-admin-acc")
-PASSWORD = os.getenv("TENANT_ADMIN_PASSWORD", "tenant-owner-acc")
+PASSWORD = os.getenv("TENANT_ADMIN_PASSWORD", "tenant-admin-acc")
 TENANT_ID = int(os.getenv("TENANT_ADMIN_TENANT_ID", "151"))
 
 EXPECTED_MENU_CODES = {

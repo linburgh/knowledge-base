@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.core.common.log import LOG
+
 from .config import load_config
 from .dataset import load_questions
 from .executor import KnowledgeAgentExecutor
@@ -18,14 +20,45 @@ class EvaluationAgent:
     async def run(
         self, config: EvaluationConfig, questions: list[EvaluationQuestion]
     ) -> tuple[list[CaseResult], EvaluationMetrics]:
+        LOG.info(
+            "自主评测Agent start kb_id={} question_count={} concurrency={} retry_count={}",
+            config.kb_id,
+            len(questions),
+            config.concurrency,
+            config.retry_count,
+        )
         validate_config(config)
+        LOG.info(
+            "自主评测Agent config validated kb_id={} questions_source={} scope_source={}",
+            config.kb_id,
+            config.questions_source,
+            config.business_scope_source,
+        )
         results = await EvaluationRuntime(
             config.concurrency, config.request_timeout_seconds, config.retry_count
         ).run(
             questions,
             lambda case_no, question: self.executor.execute(case_no, question, config=config),
         )
-        return results, calculate_metrics(results, config.gates)
+        LOG.info(
+            "自主评测Agent execution finished kb_id={} result_count={}",
+            config.kb_id,
+            len(results),
+        )
+        metrics = calculate_metrics(results, config.gates)
+        LOG.info(
+            "自主评测Agent metrics finished kb_id={} conclusion={} failed_gates={}",
+            config.kb_id,
+            metrics.conclusion,
+            metrics.failed_gates,
+        )
+        LOG.info(
+            "自主评测Agent completed kb_id={} conclusion={} result_count={}",
+            config.kb_id,
+            metrics.conclusion,
+            len(results),
+        )
+        return results, metrics
 
     @staticmethod
     def load_questions(config: EvaluationConfig) -> list[EvaluationQuestion]:

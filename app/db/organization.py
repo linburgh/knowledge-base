@@ -162,28 +162,16 @@ async def tree_parents(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     leader_user = _tree_query_base()
-    child = Organization.alias("organization_tree_child")
-    child_count = sa.func.count(sa.distinct(child.c.id)).filter(
-        child.c.status != "deleted"
-    )
     query = (
         sa.select(
             Organization,
             Tenant.c.name.label("tenant_name"),
             leader_user.c.display_name.label("leader_name"),
             leader_user.c.username.label("leader_username"),
-            child_count.label("child_count"),
         )
         .select_from(Organization)
         .join(Tenant, Tenant.c.id == Organization.c.tenant_id)
         .outerjoin(leader_user, leader_user.c.id == Organization.c.leader_user_id)
-        .outerjoin(
-            child,
-            sa.and_(
-                child.c.parent_id == Organization.c.id,
-                child.c.status != "deleted",
-            ),
-        )
         .where(Organization.c.parent_id.is_(None), Tenant.c.status != "deleted")
     )
     conditions = []
@@ -226,22 +214,42 @@ async def tree_parents(
                     ),
                 )
             )
-    query = (
-        query.where(*conditions)
-        .group_by(
-            *Organization.c,
-            Tenant.c.name,
-            leader_user.c.display_name,
-            leader_user.c.username,
-        )
-        .order_by(
+    if tenant_id is None:
+        order_by = (
             Organization.c.tenant_id.asc(),
             Organization.c.created_at.asc(),
             Organization.c.id.asc(),
         )
-        .limit(limit + 1)
-    )
+    else:
+        order_by = (Organization.c.created_at.asc(), Organization.c.id.asc())
+    query = query.where(*conditions).order_by(*order_by).limit(limit + 1)
     return [dict(row) for row in await db.fetch_all(query)]
+
+
+async def tree_parent_child_counts(
+    db,
+    *,
+    parent_ids: list[int],
+    tenant_id: int | None = None,
+) -> dict[int, int]:
+    if not parent_ids:
+        return {}
+    conditions = [
+        Organization.c.parent_id.in_(parent_ids),
+        Organization.c.status != "deleted",
+    ]
+    if tenant_id is not None:
+        conditions.append(Organization.c.tenant_id == tenant_id)
+    query = (
+        sa.select(
+            Organization.c.parent_id,
+            sa.func.count(Organization.c.id).label("child_count"),
+        )
+        .where(*conditions)
+        .group_by(Organization.c.parent_id)
+    )
+    rows = await db.fetch_all(query)
+    return {int(row["parent_id"]): int(row["child_count"]) for row in rows}
 
 
 async def tree_children(

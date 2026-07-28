@@ -9,7 +9,7 @@ from app.core.services.organization import (
     _decode_tree_cursor,
     _encode_tree_cursor,
 )
-from app.db.organization import tree_children, tree_parents
+from app.db.organization import tree_children, tree_parent_child_counts, tree_parents
 
 
 class CaptureDB:
@@ -62,7 +62,27 @@ class OrganizationTreePaginationTest(unittest.TestCase):
         )
         self.assertIn("t_organization.tenant_id = 151", sql)
         self.assertIn("t_organization.created_at >", sql)
-        self.assertIn("organization_tree_child", sql)
+        self.assertNotIn("organization_tree_child", sql)
+        self.assertNotIn("GROUP BY", sql)
+
+    def test_parent_child_count_query_is_scoped_to_current_page(self):
+        db = CaptureDB()
+        asyncio.run(
+            tree_parent_child_counts(
+                db,
+                parent_ids=[11, 12, 13],
+                tenant_id=151,
+            )
+        )
+        sql = str(
+            db.queries[0].compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        self.assertIn("t_organization.parent_id IN (11, 12, 13)", sql)
+        self.assertIn("t_organization.tenant_id = 151", sql)
+        self.assertIn("GROUP BY t_organization.parent_id", sql)
 
     def test_child_query_counts_members_and_children_separately(self):
         db = CaptureDB()

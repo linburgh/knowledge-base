@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.core.common.log import LOG
+
 from .agent import EvaluationAgent
 from .models import EvaluationConfig, EvaluationQuestion
 
@@ -11,7 +13,17 @@ class EvaluationGraph:
         self.agent = agent
 
     async def ainvoke(self, config: EvaluationConfig, questions: list[EvaluationQuestion]):
+        LOG.info(
+            "自主评测Agent graph start kb_id={} question_count={}",
+            config.kb_id,
+            len(questions),
+        )
         results, metrics = await self.agent.run(config, questions)
+        LOG.info(
+            "自主评测Agent graph completed kb_id={} conclusion={}",
+            config.kb_id,
+            metrics.conclusion,
+        )
         return {
             "case_results": results,
             "metrics": metrics,

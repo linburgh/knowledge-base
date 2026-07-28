@@ -352,6 +352,13 @@ async def tree_parents_page(
         cursor=_decode_tree_cursor(cursor, includes_tenant=is_platform_super_admin),
         limit=page_size,
     )
+    child_counts = await organization_db.tree_parent_child_counts(
+        DB.get(),
+        parent_ids=[int(row["id"]) for row in rows],
+        tenant_id=resolved_tenant_id,
+    )
+    for row in rows:
+        row["child_count"] = child_counts.get(int(row["id"]), 0)
     return _tree_page_response(rows, page_size, includes_tenant=is_platform_super_admin)
 
 
