@@ -45,11 +45,18 @@
       .parent-cell { gap: 8px; }
       .toggle { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--primary); font-size: 18px; line-height: 1; transition: transform .15s ease; }
       .toggle.expanded { transform: rotate(90deg); }
-      .child-indent { display: inline-block; width: 30px; color: #b6bfd0; text-align: center; }
+      .child-node { display: flex; align-items: center; min-width: 0; }
+      .child-tree-guide { position: relative; display: inline-block; flex: 0 0 30px; height: 22px; }
+      .child-tree-guide::before { position: absolute; top: -14px; bottom: -14px; left: 8px; border-left: 1px solid #cbd3e1; content: ""; }
+      .child-tree-guide.is-last::before { bottom: 50%; }
+      .child-tree-guide::after { position: absolute; top: 50%; left: 8px; width: 15px; border-top: 1px solid #cbd3e1; content: ""; }
+      .tree-node-dot { position: absolute; top: 50%; left: 5px; width: 7px; height: 7px; border: 2px solid #9da9be; border-radius: 50%; background: #fff; transform: translateY(-50%); }
       .child-row td:first-child { padding-left: 28px; }
       .status { color: var(--success); }
       .load-row td { padding: 10px 16px 14px; background: #fcfdff; }
       .load-row .load-content { width: 100%; padding-left: 58px; }
+      .load-row .child-load-content { position: relative; }
+      .load-row .child-load-content::before { position: absolute; top: -14px; bottom: -14px; left: 8px; border-left: 1px solid #cbd3e1; content: ""; }
       .load-row .text-button { padding-left: 0; }
       .loading-text { color: var(--muted); }
       .error-text { color: var(--danger); }
@@ -114,7 +121,7 @@
         <button class="text-button" data-demo="empty">空数据</button>
         <button class="text-button" data-demo="normal">恢复正常</button>
       </div>
-      <p class="footer-note">原型示意：父节点首批加载 6 条，子节点首批加载 5 条；每个“加载更多”仅追加对应层级数据。</p>
+      <p class="footer-note">原型示意：同级子节点通过垂直引导线连接，最后一个已加载节点收线；父节点首批加载 6 条，子节点首批加载 5 条。</p>
     </main>
 
     <script>
@@ -178,7 +185,7 @@
           return;
         }
         for (let index = 0; index < state.loadedChildren; index += 1) {
-          renderChild(body, parent, index);
+          renderChild(body, parent, index, state.loadedChildren === parent.childTotal && index === state.loadedChildren - 1);
         }
         if (state.loadedChildren === 0 && parent.childTotal === 0) {
           renderLoadRow(body, parent, "empty", "暂无子节点");
@@ -189,10 +196,10 @@
         }
       }
 
-      function renderChild(body, parent, index) {
+      function renderChild(body, parent, index, isLast) {
         const row = document.createElement("tr");
         row.className = "child-row";
-        row.innerHTML = `<td><span class="child-indent">└─</span>子节点-${parent.id}${index + 1}</td><td>子属性-${index + 1}</td><td class="status">正常</td><td>子节点扩展信息-${index + 1}</td><td><button class="text-button">查看</button></td>`;
+        row.innerHTML = `<td><div class="child-node"><span class="child-tree-guide${isLast ? " is-last" : ""}" aria-hidden="true"><span class="tree-node-dot"></span></span><span>子节点-${parent.id}${index + 1}</span></div></td><td>子属性-${index + 1}</td><td class="status">正常</td><td>子节点扩展信息-${index + 1}</td><td><button class="text-button">查看</button></td>`;
         body.appendChild(row);
       }
 
@@ -200,7 +207,8 @@
         const row = document.createElement("tr");
         row.className = "load-row";
         const button = type === "child-more" ? `<button class="text-button" data-parent-more="${parent.id}">加载更多</button>` : type === "child-error" ? `<button class="text-button" data-parent-retry="${parent.id}">重新加载</button>` : "";
-        row.innerHTML = `<td colspan="5"><div class="load-content"><span class="${type === "child-error" ? "error-text" : type === "loading" ? "loading-text" : "muted"}">${message}</span>${button}</div></td>`;
+        const loadClass = type === "child-more" ? " child-load-content" : "";
+        row.innerHTML = `<td colspan="5"><div class="load-content${loadClass}"><span class="${type === "child-error" ? "error-text" : type === "loading" ? "loading-text" : "muted"}">${message}</span>${button}</div></td>`;
         row.querySelector("[data-parent-more]")?.addEventListener("click", () => loadChildren(parent));
         row.querySelector("[data-parent-retry]")?.addEventListener("click", () => loadChildren(parent));
         body.appendChild(row);
