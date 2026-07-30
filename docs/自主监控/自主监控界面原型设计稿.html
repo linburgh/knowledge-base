@@ -262,6 +262,88 @@
     .alert-notice-card h3 { margin: 0 0 8px; color: #33435d; font-size: 13px; }
     .alert-notice-card p { margin: 0; color: #71809a; font-size: 11px; line-height: 1.6; }
     @media (max-width: 700px) { .alert-notice-grid { grid-template-columns: 1fr; } }
+    .analysis-overview-grid { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(0, 1.2fr); gap: 16px; }
+    .analysis-summary { display: grid; gap: 12px; }
+    .analysis-summary-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid #e7edf5; border-radius: 8px; background: #fbfcfe; }
+    .analysis-summary-item strong { color: #2e405d; font-size: 13px; }
+    .analysis-summary-item span { color: #71809a; font-size: 11px; }
+    .analysis-evidence-list { display: grid; gap: 10px; }
+    .analysis-evidence-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 12px; border: 1px solid #e7edf5; border-radius: 8px; background: #fbfcfe; }
+    .analysis-evidence-dot { width: 8px; height: 8px; border-radius: 50%; background: #72c99b; box-shadow: 0 0 0 4px rgba(114, 201, 155, .12); }
+    .analysis-evidence-dot.warn { background: #e5b347; box-shadow: 0 0 0 4px rgba(229, 179, 71, .12); }
+    .analysis-evidence-item strong { display: block; color: #30425f; font-size: 12px; }
+    .analysis-evidence-item span { display: block; margin-top: 3px; color: #78869c; font-size: 11px; }
+    .analysis-evidence-item small { color: #8c99aa; font-size: 10px; white-space: nowrap; }
+    .analysis-timeline { padding: 2px 4px; }
+    .analysis-recommendations { display: grid; gap: 10px; }
+    .analysis-recommendation { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px; border: 1px solid #e7edf5; border-radius: 8px; background: #fbfcfe; }
+    .analysis-recommendation > b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #2f68c8; background: #eaf2ff; font-size: 11px; }
+    .analysis-recommendation strong { display: block; color: #30425f; font-size: 12px; }
+    .analysis-recommendation span { display: block; margin-top: 4px; color: #78869c; font-size: 11px; line-height: 1.5; }
+    .analysis-chat { display: grid; gap: 12px; }
+    .analysis-chat-messages { display: grid; gap: 10px; max-height: 250px; overflow-y: auto; padding: 12px; border: 1px solid #e7edf5; border-radius: 8px; background: #fbfcfe; }
+    .analysis-chat-message { max-width: 82%; padding: 10px 12px; border-radius: 8px; color: #52617a; font-size: 12px; line-height: 1.55; }
+    .analysis-chat-message.assistant { justify-self: start; border: 1px solid #dce7f6; background: #f1f6ff; }
+    .analysis-chat-message.user { justify-self: end; color: #fff; background: #3478f6; }
+    .analysis-chat-message small { display: block; margin-top: 5px; color: #7a8ba3; font-size: 10px; }
+    .analysis-chat-message.user small { color: #dce8ff; }
+    .analysis-chat-quick { display: flex; flex-wrap: wrap; gap: 8px; }
+    .analysis-chat-quick button { padding: 6px 10px; border: 1px solid #d8e3f2; border-radius: 16px; color: #4674b9; background: #fff; cursor: pointer; font-size: 11px; }
+    .analysis-chat-quick button:hover { border-color: #8db4ef; background: #f4f8ff; }
+    .analysis-chat-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .analysis-chat-compose input { height: 38px; padding: 0 11px; border: 1px solid #d8dfeb; border-radius: 8px; color: var(--text); font-size: 13px; }
+    .analysis-chat-note { color: #8a96a8; font-size: 10px; }
+    .analysis-view-chat > .panel:nth-of-type(2) { padding: 0; border: 0; background: transparent; box-shadow: none; }
+    .analysis-view-chat > .panel:nth-of-type(2) > .panel-head { display: none; }
+    .analysis-chat-layout { display: grid; position: relative; grid-template-columns: clamp(210px, 14vw, 280px) minmax(0, 1fr) clamp(280px, 18vw, 360px); gap: clamp(12px, 1vw, 22px); height: clamp(560px, calc(100vh - 245px), 1400px); }
+    .analysis-session-list, .analysis-chat, .analysis-chat-references { min-width: 0; min-height: 0; height: 100%; border: 1px solid #e7ebf3; border-radius: 16px; background: #fff; box-shadow: 0 18px 48px rgba(29, 42, 77, .08); }
+    .analysis-session-list, .analysis-chat-references { display: flex; flex-direction: column; padding: 20px; overflow: hidden; }
+    .analysis-session-head { display: flex; align-items: center; justify-content: space-between; min-height: 28px; padding-bottom: 16px; color: #1d2942; font-size: 13px; font-weight: 600; }
+    .analysis-session-head button { padding: 5px 8px; border: 0; border-radius: 8px; color: #7f8aa4; background: transparent; cursor: pointer; font-size: 12px; }
+    .analysis-session-head button:hover { color: #5b6ee1; background: #eef1ff; }
+    .analysis-session-item { display: block; width: 100%; min-height: 40px; margin-top: 5px; padding: 6px 8px; border: 0; border-radius: 8px; color: #7f8aa4; background: transparent; cursor: pointer; text-align: left; font-size: 12px; line-height: 20px; }
+    .analysis-session-item:hover, .analysis-session-item.active { color: #5b6ee1; background: #eef1ff; }
+    .analysis-session-item small { display: block; margin-top: 2px; color: #a2abc0; font-size: 10px; line-height: 16px; }
+    .analysis-chat { display: flex; flex-direction: column; overflow: hidden; }
+    .analysis-chat-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 0 0 auto; padding: 20px 24px; border-bottom: 1px solid #e7ebf3; }
+    .analysis-chat-context strong { display: block; margin-bottom: 6px; color: #1d2942; font-size: 17px; }
+    .analysis-chat-context span { color: #7f8aa4; font-size: 11px; }
+    .analysis-chat-messages { display: block; flex: 1; min-height: 0; max-height: none; overflow-y: auto; padding: 28px 30px; background: #fff; }
+    .analysis-chat-welcome { display: grid; gap: 7px; margin-bottom: 24px; padding: 25px; border-radius: 12px; color: #5b6ee1; background: linear-gradient(90deg, #f5f6ff, #fbfcff); }
+    .analysis-chat-welcome strong { color: #1d2942; font-size: 17px; }
+    .analysis-chat-welcome span { color: #7f8aa4; font-size: 12px; }
+    .analysis-chat-message { display: block; width: fit-content; max-width: min(84%, 960px); margin: 18px 0; padding: 13px 16px; border-radius: 12px; color: #1d2942; background: #fff; font-size: 13px; line-height: 1.8; }
+    .analysis-chat-message.assistant { border: 1px solid #e7ebf3; }
+    .analysis-chat-message.user { margin-left: auto; color: #fff; background: #5b6ee1; }
+    .analysis-chat-message small { display: block; margin-top: 7px; color: #7f8aa4; font-size: 10px; line-height: 1.5; }
+    .analysis-chat-message.user small { color: #e3e6ff; }
+    .analysis-chat-quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 12px; }
+    .analysis-chat-quick button { padding: 6px 10px; border: 1px solid #dce2ed; border-radius: 16px; color: #5b6ee1; background: #fbfcff; cursor: pointer; font-size: 11px; }
+    .analysis-chat-quick button:hover { border-color: #c8d0ff; background: #eef1ff; }
+    .analysis-chat-compose { flex: 0 0 auto; margin-top: auto; padding: 18px 24px 22px; border-top: 1px solid #e7ebf3; }
+    .analysis-chat-compose textarea { display: block; width: 100%; min-height: 78px; max-height: 150px; padding: 13px 14px; resize: vertical; border: 1px solid #dce2ed; border-radius: 10px; outline: 0; color: #1d2942; background: #fbfcff; font-size: 13px; line-height: 1.7; }
+    .analysis-chat-compose textarea:focus { border-color: #8b96ed; box-shadow: 0 0 0 2px rgba(91, 110, 225, .12); }
+    .analysis-chat-compose-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; color: #7f8aa4; font-size: 11px; }
+    .analysis-chat-compose .btn { min-width: 64px; }
+    .analysis-chat-note { display: none; }
+    .analysis-chat-reference-list { min-height: 0; overflow-y: auto; }
+    .analysis-reference-head { display: flex; align-items: center; justify-content: space-between; min-height: 28px; padding-bottom: 16px; }
+    .analysis-chat-references h3 { margin: 0; color: #1d2942; font-size: 13px; }
+    .analysis-reference-head span { color: #7f8aa4; font-size: 11px; }
+    .analysis-chat-reference { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; padding: 14px 0; border-top: 1px solid #e7ebf3; }
+    .analysis-chat-reference:first-child { border-top: 0; }
+    .analysis-chat-reference > b { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 6px; color: #5b6ee1; background: #eef1ff; font-size: 10px; }
+    .analysis-chat-reference strong { display: block; color: #1d2942; font-size: 12px; }
+    .analysis-chat-reference p { margin: 6px 0; color: #7f8aa4; font-size: 11px; line-height: 1.7; }
+    .analysis-chat-reference small { color: #a2abc0; font-size: 10px; }
+    @media (max-width: 1199px) { .analysis-chat-layout { grid-template-columns: clamp(190px, 22vw, 230px) minmax(0, 1fr); height: clamp(560px, calc(100vh - 225px), 820px); } .analysis-chat-references { display: none; } }
+    @media (max-width: 767px) { .analysis-chat-layout { grid-template-columns: minmax(0, 1fr); height: auto; } .analysis-session-list { height: auto; max-height: 190px; } .analysis-chat { min-height: 560px; height: min(720px, calc(100vh - 210px)); } .analysis-chat-messages { padding: 22px 24px; } .analysis-chat-compose { padding: 16px 20px 18px; } }
+    .analysis-tabs { display: flex; gap: 28px; margin-bottom: 16px; border-bottom: 1px solid #e5ebf3; }
+    .analysis-tabs button { margin-bottom: -1px; padding: 0 2px 11px; border: 0; border-bottom: 2px solid transparent; color: #68758b; background: transparent; cursor: pointer; font-size: 13px; line-height: 20px; }
+    .analysis-tabs button:hover, .analysis-tabs button.active { border-bottom-color: #409eff; color: #409eff; }
+    .analysis-view-chat > .panel:not(:nth-of-type(2)), .analysis-view-chat > .analysis-overview-grid { display: none; }
+    .analysis-view-overview > .panel:nth-of-type(2) { display: none; }
+    @media (max-width: 900px) { .analysis-overview-grid { grid-template-columns: 1fr; } }
     @media (max-width: 900px) { .alert-overview-grid, .event-overview-grid { grid-template-columns: 1fr; } }
     .task-worker-track .idle { width: 100%; background: #72c99b; }
     .task-worker-track .stale { width: 100%; background: #e5b347; }
@@ -371,6 +453,18 @@
     .drawer-section { padding-top: 16px; margin-top: 16px; border-top: 1px solid var(--line); }
     .drawer-section h3 { margin: 0 0 12px; font-size: 14px; }
     .drawer-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 18px; }
+    .audit-detail-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; }
+    .audit-detail-summary-item { padding: 12px; border: 1px solid #e7edf5; border-radius: 8px; background: #fbfcfe; }
+    .audit-detail-summary-item span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; }
+    .audit-detail-summary-item strong { display: block; color: var(--text); font-size: 13px; }
+    .audit-detail-section { padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--line); }
+    .audit-detail-section h3 { margin: 0 0 12px; color: #273750; font-size: 14px; }
+    .audit-change { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #e7edf5; border-radius: 8px; background: #fbfcfe; }
+    .audit-change-row { display: grid; grid-template-columns: 100px 1fr auto 1fr; gap: 10px; align-items: center; color: #52617a; font-size: 12px; }
+    .audit-change-row > span:first-child { color: var(--muted); }
+    .audit-change-arrow { color: #9aa6b9; }
+    .audit-detail-note { margin: 0; padding: 11px 12px; color: #71809a; border-radius: 7px; background: #f5f7fb; font-size: 11px; line-height: 1.7; }
+    @media (max-width: 560px) { .audit-detail-summary { grid-template-columns: 1fr; } .audit-change-row { grid-template-columns: 1fr; gap: 4px; } .audit-change-arrow { display: none; } }
     .toast { position: fixed; z-index: 30; right: 24px; bottom: 24px; display: none; padding: 12px 18px; color: #fff; border-radius: 5px; background: #25334b; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
     .toast.show { display: block; }
     @media (max-width: 1180px) { .health-grid, .health-matrix, .health-summary, .business-summary { grid-template-columns: repeat(3, 1fr); } .metric-strip { grid-template-columns: repeat(3, 1fr); } }
@@ -401,9 +495,9 @@
     const modules = [
       ['overview', '监控总览'], ['collection', '数据采集'], ['metrics', '指标分析'],
       ['tasks', '任务监控'], ['alerts', '告警中心'], ['events', '事件中心'],
-      ['analysis', '智能分析'], ['audit', '审计管理'], ['permissions', '权限配置']
+      ['analysis', '智能分析'], ['audit', '审计管理']
     ];
-    const state = { module: 'overview', scope: '全平台', window: '最近1小时', alertStatus: '全部', alertView: 'instances', page: 1 };
+    const state = { module: 'overview', scope: '全平台', window: '最近1小时', alertStatus: '全部', alertView: 'instances', analysisView: 'overview', page: 1 };
     let overviewCharts = [];
     let autoRefreshTimer = null;
     let autoRefreshEnabled = true;
@@ -694,10 +788,9 @@
         tasks: ['任务监控', ['任务类型','任务状态','Worker','租户','创建时间'], ['任务名称','任务类型','状态','进度','等待时长','操作']],
         alerts: ['告警中心', ['告警级别','告警状态','监控域','规则名称','资源名称','发生时间'], ['级别','告警标题','监控域','资源','当前值','阈值','最近发生','持续时长','状态','操作']],
         events: ['事件中心', ['事件类型','监控域','资源','租户','发生时间'], ['发生时间','事件类型','事件内容','资源','状态','操作']],
-        audit: ['审计管理', ['操作者','操作类型','资源','结果','开始时间','结束时间'], ['操作时间','操作者','操作类型','资源','结果','变更摘要','操作']],
-        permissions: ['权限配置', ['配置类型','角色','范围','状态','更新时间'], ['配置名称','配置类型','角色/范围','版本','更新时间','状态','操作']]
+        audit: ['审计管理', ['操作者','操作类型','资源','结果','开始时间','结束时间'], ['操作时间','操作者','操作类型','资源','结果','操作']],
       }[kind];
-      return `<div class="content">${pageHead(cfg[0], description, `<button class="btn" id="refresh">↻ 刷新</button>${['collection','notifications','permissions'].includes(kind) ? '<button class="btn primary" id="addAction">新增配置</button>' : ''}`)}<section class="panel"><div class="filters query-form">${cfg[1].map(label => `<div class="query-field"><label>${label}</label><select class="control"><option>全部</option><option>正常</option><option>异常</option></select></div>`).join('')}<div class="query-field"><label>关键词</label><input class="text-input" placeholder="请输入关键词" /></div><div class="query-actions"><button class="btn primary" id="search">查询</button><button class="btn" id="reset">重置</button></div></div>${tableFor(kind, cfg[2])}<div class="pager"><span>共 24 条</span><button>上一页</button><button class="active">1</button><button>2</button><button>3</button><button>下一页</button><select class="control"><option>10条/页</option><option>20条/页</option></select></div></section></div>`;
+      return `<div class="content">${pageHead(cfg[0], description, `<button class="btn" id="refresh">↻ 刷新</button>${['collection','notifications'].includes(kind) ? '<button class="btn primary" id="addAction">新增配置</button>' : ''}`)}<section class="panel"><div class="filters query-form">${cfg[1].map(label => `<div class="query-field"><label>${label}</label><select class="control"><option>全部</option><option>正常</option><option>异常</option></select></div>`).join('')}${kind === 'audit' ? '' : '<div class="query-field"><label>关键词</label><input class="text-input" placeholder="请输入关键词" /></div>'}<div class="query-actions"><button class="btn primary" id="search">查询</button><button class="btn" id="reset">重置</button></div></div>${tableFor(kind, cfg[2])}<div class="pager"><span>共 24 条</span><button>上一页</button><button class="active">1</button><button>2</button><button>3</button><button>下一页</button><select class="control"><option>10条/页</option><option>20条/页</option></select></div></section></div>`;
     }
     function tableFor(kind, heads) {
       let rows = [];
@@ -708,13 +801,33 @@
       else if (kind === 'metrics') rows = [['问答成功率','知识库问答','99.2','%','12,350','1小时','达标',statusTag('completed'),'2026年07月30日 10:00:00'],['问答 P95','知识库问答','1.8','秒','12,480','1小时','预警',statusTag('acknowledged'),'2026年07月30日 10:00:00'],['评测执行证明完整率','自主评测','100','%','2','1小时','达标',statusTag('completed'),'2026年07月30日 10:00:00'],['向量服务可用率','平台运行','—','%','0','1小时','无法判定','<span class="status gray">暂无数据</span>','2026年07月30日 10:00:00']].map(r => [...r, '<button class="btn text" data-metric="0">查看详情</button>']);
       else if (kind === 'collection') rows = [['问答 API','通用采集','09:30:20','42ms',statusTag('completed')],['评测 Worker','周期采集','09:30:12','—',statusTag('firing')],['向量服务','依赖探针','09:28:14','1.2s',statusTag('acknowledged')],['数据库连接池','容量探针','09:30:18','18ms',statusTag('completed')]].map(r => [...r, '<button class="btn text" data-collection="0">查看详情</button>']);
       else if (kind === 'notifications') rows = [['站内通知','严重告警通知','全平台 / 严重','09:30:22',statusTag('completed')],['Webhook','告警恢复通知','演示租户 / 全部','09:18:10',statusTag('failed')],['站内通知','评测门禁通知','当前租户 / 提示','08:46:12',statusTag('completed')]].map(r => [...r, '<button class="btn text" data-notice="0">查看详情</button>']);
-      else if (kind === 'audit') rows = [['09:30:26','林管理员','确认告警','alert-10021',statusTag('completed'),'状态 firing → acknowledged'],['09:28:20','林管理员','查询指标','metric.qa_p95',statusTag('completed'),'范围：全平台'],['09:18:34','系统','告警触发','alert-10021',statusTag('completed'),'规则：Worker 心跳过期']].map(r => [...r, '<button class="btn text" data-audit="0">查看详情</button>']);
-      else if (kind === 'permissions') rows = [['平台监控查看','范围权限','平台超级管理员','v3','2026年07月30日 08:00:00',statusTag('completed')],['租户监控查看','角色权限','租户管理员 / 当前租户','v2','2026年07月29日 16:20:00',statusTag('completed')],['告警处理权限','角色权限','租户管理员 / 允许关闭','v1','2026年07月28日 10:12:00',statusTag('completed')]].map(r => [...r, '<button class="btn text" data-permission="0">查看详情</button>']);
+      else if (kind === 'audit') rows = [['09:30:26','林管理员','确认告警','alert-10021',statusTag('completed')],['09:28:20','林管理员','查询指标','metric.qa_p95',statusTag('completed')],['09:18:34','系统','告警触发','alert-10021',statusTag('completed')]].map((r, i) => [...r, `<button class="btn text" data-audit="${i}">查看详情</button>`]);
       if (!rows.length) return '<div class="empty">暂无数据，请调整筛选条件后重试</div>';
       return `<div class="table-wrap"><table><thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
     }
-    function analysisPage() { return `<div class="content">${pageHead('智能分析', '监控 Agent 基于告警、指标、事件和任务生成可验证的异常上下文。', '<button class="btn" id="refresh">↻ 刷新分析</button>')}<section class="panel"><div class="panel-head"><div><h2>异常上下文 #INC-20260730-03</h2><div class="caption">分析状态：已完成　证据完整度：92%　最后更新：2026年07月30日 09:31:02</div></div><span class="status yellow">需人工确认</span></div><div class="detail-grid"><dt>异常摘要</dt><dd>评测 Worker 心跳过期，同时存在索引构建积压；问答 P95 已连续两个周期超过阈值。</dd><dt>影响范围</dt><dd>全平台异步任务；问答性能可能受索引积压间接影响。</dd><dt>证据来源</dt><dd>告警 alert-10021、指标 qa_p95、任务 index-241、事件 event-8831、Trace trace-7ac9。</dd><dt>处理建议</dt><dd>检查 evaluation-worker-01 心跳和进程状态，确认索引 Worker 消费速率；建议仅供管理员确认，不自动执行。</dd></div><div class="drawer-section"><h3>关联时间线</h3><div class="timeline">${eventRows.slice(0,4).map(row => `<div class="timeline-row"><span class="timeline-time">${row[0]}</span><i class="timeline-mark"></i><div class="timeline-text"><strong>${row[2]}</strong><span>${row[1]} · ${row[3]}</span></div><span class="caption">证据 ${row[0].replace(':','')}</span></div>`).join('')}</div></div></section></div>`; }
+    function analysisPageLegacy() { return `<div class="content">${pageHead('智能分析', '监控 Agent 基于告警、指标、事件和任务生成可验证的异常上下文。', '<button class="btn" id="refresh">↻ 刷新分析</button>')}<section class="panel"><div class="panel-head"><div><h2>异常上下文 #INC-20260730-03</h2><div class="caption">分析状态：已完成　证据完整度：92%　最后更新：2026年07月30日 09:31:02</div></div><span class="status yellow">需人工确认</span></div><div class="detail-grid"><dt>异常摘要</dt><dd>评测 Worker 心跳过期，同时存在索引构建积压；问答 P95 已连续两个周期超过阈值。</dd><dt>影响范围</dt><dd>全平台异步任务；问答性能可能受索引积压间接影响。</dd><dt>证据来源</dt><dd>告警 alert-10021、指标 qa_p95、任务 index-241、事件 event-8831、Trace trace-7ac9。</dd><dt>处理建议</dt><dd>检查 evaluation-worker-01 心跳和进程状态，确认索引 Worker 消费速率；建议仅供管理员确认，不自动执行。</dd></div><div class="drawer-section"><h3>关联时间线</h3><div class="timeline">${eventRows.slice(0,4).map(row => `<div class="timeline-row"><span class="timeline-time">${row[0]}</span><i class="timeline-mark"></i><div class="timeline-text"><strong>${row[2]}</strong><span>${row[1]} · ${row[3]}</span></div><span class="caption">证据 ${row[0].replace(':','')}</span></div>`).join('')}</div></div></section></div>`; }
+    function analysisReportPage() {
+      return `<div class="content analysis-page">${pageHead('智能分析', '将告警、指标、事件、任务和 Trace 关联为可验证的异常上下文。', '<button class="btn" id="refresh">↻ 刷新分析</button><button class="btn" id="analysisInfo">数据说明</button>')}<section class="panel"><div class="panel-head"><div><h2>分析结论</h2><span class="caption">异常上下文 #INC-20260730-03 · 最后更新 2026年07月30日 09:31:02</span></div><span class="status yellow">需人工确认</span></div><div class="metrics-overview-head"><div class="metrics-overview-conclusion"><span class="status yellow">可信度 92%</span><div><strong>评测 Worker 心跳过期，可能影响索引任务和问答性能</strong><span>分析基于 1 条告警、2 项指标、5 条事件、1 个任务和 1 个 Trace 关联得出</span></div></div><div class="metrics-overview-metrics"><span>关联告警<strong>1</strong></span><span>影响资源<strong>3</strong></span><span>证据来源<strong>5</strong></span><span>分析状态<strong>已完成</strong></span></div></div></section><div class="analysis-overview-grid"><section class="panel"><div class="panel-head"><div><h2>影响范围</h2><span class="caption">区分已确认影响和待验证影响，不扩大告警结论</span></div></div><div class="analysis-summary"><div class="analysis-summary-item"><strong>异步任务</strong><span class="status red">已确认 · Worker 心跳异常</span></div><div class="analysis-summary-item"><strong>文档索引</strong><span class="status yellow">待验证 · 任务积压 18 分钟</span></div><div class="analysis-summary-item"><strong>知识库问答</strong><span class="status yellow">间接影响 · P95 1.8 秒</span></div><div class="caption">当前仅确认运行链路异常，问答影响仍需结合后续指标窗口验证。</div></div></section><section class="panel"><div class="panel-head"><div><h2>证据链路</h2><span class="caption">每条分析结论均标注来源和可信状态</span></div><span class="caption">5 类证据</span></div><div class="analysis-evidence-list"><div class="analysis-evidence-item"><i class="analysis-evidence-dot"></i><div><strong>告警 · Worker 心跳过期</strong><span>evaluation-worker-01 · 触发中 / 已确认</span></div><small>直接证据</small></div><div class="analysis-evidence-item"><i class="analysis-evidence-dot"></i><div><strong>指标 · Worker 心跳年龄</strong><span>12 分钟 · 阈值 ≤ 2 分钟</span></div><small>直接证据</small></div><div class="analysis-evidence-item"><i class="analysis-evidence-dot warn"></i><div><strong>任务 · 索引构建 241</strong><span>待处理 · 等待 18 分钟</span></div><small>关联证据</small></div><div class="analysis-evidence-item"><i class="analysis-evidence-dot warn"></i><div><strong>指标 · 问答 P95</strong><span>1.8 秒 · 连续 2 个周期预警</span></div><small>关联证据</small></div><div class="analysis-evidence-item"><i class="analysis-evidence-dot"></i><div><strong>Trace · trace-7ac9</strong><span>关联评测运行和 Worker 状态事件</span></div><small>上下文证据</small></div></div></section></div><section class="panel"><div class="panel-head"><div><h2>异常时间</h2><span class="caption">按时间还原告警触发、任务变化和指标异常</span></div><span class="caption">事件来源已脱敏</span></div><div class="analysis-timeline"><div class="timeline">${eventRows.slice(0,5).map((row, i) => `<div class="timeline-row"><span class="timeline-time">${row[0]}</span><i class="timeline-mark"></i><div class="timeline-text"><strong>${row[2]}</strong><span>${row[1]} · ${row[3]}</span></div><span class="caption">${i === 0 ? '异常起点' : i === 1 ? '关联变化' : '上下文证据'}</span></div>`).join('')}</div></div></section><section class="panel"><div class="panel-head"><div><h2>处理建议</h2><span class="caption">仅提供人工检查方向，不自动修改配置或执行任务</span></div><span class="status yellow">人工确认</span></div><div class="analysis-recommendations"><div class="analysis-recommendation"><b>1</b><div><strong>检查 evaluation-worker-01 进程和最近心跳</strong><span>确认 Worker 是否仍在运行，补充进程状态或部署版本证据。</span></div><button class="btn text" data-module="tasks">查看任务</button></div><div class="analysis-recommendation"><b>2</b><div><strong>确认索引任务消费能力和积压变化</strong><span>观察索引构建 241 的等待时长和 Worker 消费速率，判断是否持续扩大。</span></div><button class="btn text" data-module="tasks">查看任务</button></div><div class="analysis-recommendation"><b>3</b><div><strong>持续观察问答 P95 是否恢复</strong><span>建议继续观察两个 5 分钟窗口，不直接修改问答或模型配置。</span></div><button class="btn text" data-module="metrics">查看指标</button></div></div></section></div>`;
+    }
 
+    function analysisChatPanelBase() {
+      return `<section class="panel"><div class="panel-head"><div><h2>分析对话</h2><span class="caption">围绕当前异常范围追问，回答仅引用已授权证据</span></div></div><div class="analysis-chat"><div class="analysis-chat-messages" id="analysisChatMessages"><div class="analysis-chat-message assistant">当前分析基于 Worker 心跳告警、心跳年龄指标、索引任务积压、问答 P95 和 Trace 关联。你可以继续追问影响范围、证据来源或下一步检查方向。<small>引用：alert-10021 · qa_p95 · index-241 · trace-7ac9</small></div><div class="analysis-chat-message user">为什么判断问答性能可能受到影响？</div><div class="analysis-chat-message assistant">目前只能确认问答 P95 连续两个周期处于预警，且与索引任务积压处于同一时间窗口；这属于关联证据，不能单独证明因果关系，建议继续观察后续两个 5 分钟窗口。<small>引用：指标 qa_p95 · 任务 index-241 · 时间窗口 09:20—09:30</small></div></div><div class="analysis-chat-quick"><button data-analysis-question="为什么判断问答性能可能受到影响？">为什么影响问答？</button><button data-analysis-question="当前结论有哪些直接证据？">查看直接证据</button><button data-analysis-question="下一步应该检查什么？">下一步检查什么？</button><button data-analysis-question="这个异常影响了哪些资源？">影响哪些资源？</button></div><div class="analysis-chat-compose"><input id="analysisChatInput" placeholder="请输入对当前异常的追问" /><button class="btn primary" id="analysisChatSend">发送</button></div><span class="analysis-chat-note">对话不会自动修改规则、重试任务或执行处置；建议需人工确认后执行。</span></div></section>`;
+    }
+    function analysisChatPanel() {
+      const panel = analysisChatPanelBase();
+      const sessions = '<div class="analysis-chat-layout"><aside class="analysis-session-list"><div class="analysis-session-head"><span>会话</span><button id="analysisNewChat">＋ 新建会话</button></div><button class="analysis-session-item active" data-analysis-session="current">Worker 心跳与索引积压<small>今天 09:31 · 进行中</small></button><button class="analysis-session-item" data-analysis-session="eval-gate">评测门禁不通过<small>今天 08:46 · 已完成</small></button><button class="analysis-session-item" data-analysis-session="vector-probe">向量服务探针失败<small>昨天 16:20 · 已归档</small></button></aside>';
+      const references = '<aside class="analysis-chat-references"><div class="analysis-reference-head"><h3>参考资料</h3><span>4 条</span></div><div class="analysis-chat-reference-list"><div class="analysis-chat-reference"><b>1</b><div><strong>告警 · alert-10021</strong><p>Worker 心跳过期，当前仍在触发。</p><small>直接证据</small></div></div><div class="analysis-chat-reference"><b>2</b><div><strong>指标 · qa_p95</strong><p>P95 为 1.8 秒，连续两个周期预警。</p><small>关联证据</small></div></div><div class="analysis-chat-reference"><b>3</b><div><strong>任务 · index-241</strong><p>索引构建等待 18 分钟。</p><small>关联证据</small></div></div><div class="analysis-chat-reference"><b>4</b><div><strong>Trace · trace-7ac9</strong><p>关联评测运行和 Worker 状态事件。</p><small>上下文证据</small></div></div></div></aside>';
+      return panel.replace('<div class="analysis-chat">', `${sessions}<div class="analysis-chat"><div class="analysis-chat-context"><div><strong>Worker 心跳与索引积压</strong><span>异常 #INC-20260730-03 · 全平台 · 最近1小时</span></div><span>已授权证据 4 条</span></div>`).replace(/<div class="analysis-chat-messages" id="analysisChatMessages">/, '<div class="analysis-chat-messages" id="analysisChatMessages"><div class="analysis-chat-welcome"><strong>从一个问题开始</strong><span>你可以询问异常影响、证据来源或下一步检查方向。</span></div>').replace('<div class="analysis-chat-compose"><input id="analysisChatInput" placeholder="请输入对当前异常的追问" /><button class="btn primary" id="analysisChatSend">发送</button></div><span class="analysis-chat-note">对话不会自动修改规则、重试任务或执行处置；建议需人工确认后执行。</span>', '<div class="analysis-chat-compose"><textarea id="analysisChatInput" placeholder="输入问题，开始分析"></textarea><div class="analysis-chat-compose-foot"><span>Enter 发送 · Shift+Enter 换行</span><button class="btn primary" id="analysisChatSend">发送问题</button></div></div><span class="analysis-chat-note">对话仅提供分析建议，不会自动修改规则、重试任务或执行处置。</span>').replace(/<\/div><\/section>$/, `</div>${references}</div></section>`);
+    }
+    function analysisPageBase() {
+      const page = analysisReportPage();
+      return page.replace('</section><div class="analysis-overview-grid">', `</section>${analysisChatPanel()}<div class="analysis-overview-grid">`);
+    }
+    function analysisPage() {
+      const page = analysisPageBase().replace('<div class="content analysis-page">', `<div class="content analysis-page analysis-view-${state.analysisView}">`);
+      const tabs = `<div class="analysis-tabs"><button class="${state.analysisView === 'overview' ? 'active' : ''}" data-analysis-view="overview">分析总览</button><button class="${state.analysisView === 'chat' ? 'active' : ''}" data-analysis-view="chat">分析对话</button></div>`;
+      return page.replace('<section class="panel"><div class="panel-head"><div><h2>分析结论</h2>', `${tabs}<section class="panel"><div class="panel-head"><div><h2>分析结论</h2>`);
+    }
     function healthSummary() {
       const items = [
         ['平台服务', '正常', 'API / DB 可用', 'green'],
@@ -888,8 +1001,7 @@
         tasks: ['任务监控', '追踪文档处理、索引构建和自主评测的状态、积压与执行证据。'],
         alerts: ['告警中心', '查询、确认、关闭和追溯告警生命周期及关联证据。'],
         events: ['事件中心', '按时间线查询服务、Worker、任务、评测和告警状态变化。'],
-        audit: ['审计管理', '追踪监控查询、告警处理、规则和权限配置变更。'],
-        permissions: ['权限配置', '维护监控范围、角色权限和规则配置；采集配置由系统发布和运维流程管理。']
+        audit: ['审计管理', '追踪监控查询、告警处理、规则和系统配置变更。']
       }[state.module];
       const body = state.module === 'overview' ? overview() : state.module === 'collection' ? collectionOverviewPageSuccess() : state.module === 'metrics' ? metricsOverviewPage() : state.module === 'tasks' ? tasksOverviewPage() : state.module === 'alerts' ? (state.alertView === 'rules' ? alertRulesPage() : state.alertView === 'notifications' ? alertNotificationPage() : alertOverviewPage()) : state.module === 'events' ? eventOverviewPage() : state.module === 'analysis' ? analysisPage() : listPage(pageConfig[0], pageConfig[1], state.module);
       main.innerHTML = topbar() + body;
@@ -901,6 +1013,17 @@
       if (state.module === 'alerts') initAlertOverviewCharts();
       if (state.module === 'events') initEventOverviewCharts();
     }
+    function bindAnalysisChat() {
+      const input = document.getElementById('analysisChatInput');
+      const send = document.getElementById('analysisChatSend');
+      const messages = document.getElementById('analysisChatMessages');
+      if (!input || !send || !messages) return;
+      const reply = question => question.includes('直接证据') ? '当前直接证据包括 Worker 心跳过期告警和心跳年龄指标；索引任务积压、问答 P95 和 Trace 属于关联或上下文证据。' : question.includes('下一步') ? '建议先检查 evaluation-worker-01 进程和最近心跳，再观察索引任务消费速率，最后确认问答 P95 是否在后续两个窗口恢复。' : question.includes('影响哪些') ? '已确认影响异步任务运行；文档索引属于待验证影响；问答性能属于间接影响，目前不能扩大为确定性业务故障。' : '目前只能确认问答 P95 与索引任务积压在同一时间窗口出现，属于关联证据，暂不能证明直接因果关系。';
+      const ask = value => { const question = value.trim(); if (!question) return; messages.insertAdjacentHTML('beforeend', `<div class="analysis-chat-message user">${question}</div><div class="analysis-chat-message assistant">${reply(question)}<small>引用：alert-10021 · qa_p95 · index-241 · trace-7ac9</small></div>`); input.value = ''; messages.scrollTop = messages.scrollHeight; };
+      send.addEventListener('click', () => ask(input.value));
+      input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); ask(input.value); } });
+      document.querySelectorAll('[data-analysis-question]').forEach(button => button.addEventListener('click', () => { input.value = button.dataset.analysisQuestion; ask(input.value); }));
+    }
     function bind() {
       document.querySelectorAll('[data-module]').forEach(el => el.addEventListener('click', () => { state.module = el.dataset.module; state.page = 1; render(); }));
       const scope = document.getElementById('scope'); if (scope) scope.value = state.scope;
@@ -911,11 +1034,15 @@
       if (autoRefresh) autoRefresh.addEventListener('click', () => { autoRefreshEnabled = !autoRefreshEnabled; toast(autoRefreshEnabled ? '已开启总览自动刷新' : '已关闭总览自动刷新'); render(); });
       const collectionAddAction = state.module === 'collection' && document.getElementById('addAction');
       if (collectionAddAction) collectionAddAction.remove();
-      document.querySelectorAll('#refresh, #refreshCollection, #refreshMetrics, #refreshTasks, #refreshAlerts, #refreshEvents, #search, #reset, #dataInfo, #metricInfo, #taskInfo, #alertInfo, #eventInfo, #noticeInfo, #addAction').forEach(el => el.addEventListener('click', () => { if ((el.id === 'refresh' || el.id === 'refreshCollection') && window.refreshOverviewCharts) window.refreshOverviewCharts(); if ((el.id === 'refresh' || el.id === 'refreshCollection') && window.refreshCollectionCharts) window.refreshCollectionCharts(); if ((el.id === 'refresh' || el.id === 'refreshMetrics') && window.refreshMetricsCharts) window.refreshMetricsCharts(); if ((el.id === 'refresh' || el.id === 'refreshTasks') && window.refreshTasksCharts) window.refreshTasksCharts(); if ((el.id === 'refresh' || el.id === 'refreshAlerts') && window.refreshAlertCharts) window.refreshAlertCharts(); if ((el.id === 'refresh' || el.id === 'refreshEvents') && window.refreshEventCharts) window.refreshEventCharts(); toast(el.id === 'dataInfo' || el.id === 'metricInfo' || el.id === 'alertInfo' || el.id === 'eventInfo' || el.id === 'noticeInfo' ? '统计数据来自事件、指标和告警接口，当前范围：' + state.scope + '，窗口：' + state.window : el.id === 'taskInfo' ? '任务状态来自任务和 Worker 统计接口，当前范围：' + state.scope + '，窗口：' + state.window : el.id === 'addAction' ? '原型演示：打开新增配置表单' : '已刷新，数据状态：ready'); }));
+      document.querySelectorAll('#refresh, #refreshCollection, #refreshMetrics, #refreshTasks, #refreshAlerts, #refreshEvents, #search, #reset, #dataInfo, #metricInfo, #taskInfo, #alertInfo, #eventInfo, #noticeInfo, #analysisInfo, #addAction').forEach(el => el.addEventListener('click', () => { if ((el.id === 'refresh' || el.id === 'refreshCollection') && window.refreshOverviewCharts) window.refreshOverviewCharts(); if ((el.id === 'refresh' || el.id === 'refreshCollection') && window.refreshCollectionCharts) window.refreshCollectionCharts(); if ((el.id === 'refresh' || el.id === 'refreshMetrics') && window.refreshMetricsCharts) window.refreshMetricsCharts(); if ((el.id === 'refresh' || el.id === 'refreshTasks') && window.refreshTasksCharts) window.refreshTasksCharts(); if ((el.id === 'refresh' || el.id === 'refreshAlerts') && window.refreshAlertCharts) window.refreshAlertCharts(); if ((el.id === 'refresh' || el.id === 'refreshEvents') && window.refreshEventCharts) window.refreshEventCharts(); toast(el.id === 'dataInfo' || el.id === 'metricInfo' || el.id === 'alertInfo' || el.id === 'eventInfo' || el.id === 'noticeInfo' || el.id === 'analysisInfo' ? '统计数据来自事件、指标和告警接口，当前范围：' + state.scope + '，窗口：' + state.window : el.id === 'taskInfo' ? '任务状态来自任务和 Worker 统计接口，当前范围：' + state.scope + '，窗口：' + state.window : el.id === 'addAction' ? '原型演示：打开新增配置表单' : '已刷新，数据状态：ready'); }));
       const addChannel = document.getElementById('addChannel'); if (addChannel) addChannel.addEventListener('click', () => showNoticeForm('channel'));
       const addPolicy = document.getElementById('addPolicy'); if (addPolicy) addPolicy.addEventListener('click', () => showNoticeForm('policy'));
+      bindAnalysisChat();
       document.querySelectorAll('[data-alert]').forEach(el => el.addEventListener('click', () => showAlert(Number(el.dataset.alert))));
       document.querySelectorAll('[data-alert-view]').forEach(el => el.addEventListener('click', () => { state.alertView = el.dataset.alertView; render(); }));
+      document.querySelectorAll('[data-analysis-view]').forEach(el => el.addEventListener('click', () => { state.analysisView = el.dataset.analysisView; render(); }));
+      document.querySelectorAll('[data-analysis-session]').forEach(el => el.addEventListener('click', () => { document.querySelectorAll('[data-analysis-session]').forEach(item => item.classList.remove('active')); el.classList.add('active'); toast('已切换分析会话：' + el.textContent.replace(/\s+/g, ' ').trim()); }));
+      const analysisNewChat = document.getElementById('analysisNewChat'); if (analysisNewChat) analysisNewChat.addEventListener('click', () => toast('原型演示：已创建新的分析会话，等待选择异常上下文'));
       document.querySelectorAll('[data-rule]').forEach(el => el.addEventListener('click', () => showRule(Number(el.dataset.rule))));
       const addRule = document.getElementById('addRule'); if (addRule) addRule.addEventListener('click', () => showRule(-1));
       document.querySelectorAll('[data-task]').forEach(el => el.addEventListener('click', () => showTask(Number(el.dataset.task))));
@@ -940,7 +1067,17 @@
         showDrawer(`<div class="drawer-head"><div><h2>目标详情</h2><span class="caption">只读查看采集结果与异常证据</span></div><button class="close">×</button></div><section class="drawer-section"><h3>运行信息</h3><dl class="detail-grid"><dt>目标名称</dt><dd>${target[0]}</dd><dt>采集类型</dt><dd>${target[1]}</dd><dt>最近采集</dt><dd>${target[2]}</dd><dt>采集耗时</dt><dd>${target[3]}</dd><dt>数据状态</dt><dd>${statusTag(status)}</dd></dl></section><section class="drawer-section"><h3>状态说明</h3><dl class="detail-grid"><dt>采集结论</dt><dd>${target[5]}</dd><dt>最近异常</dt><dd>${target[6]}</dd><dt>影响范围</dt><dd>${target[7]}</dd><dt>当前范围</dt><dd>${state.scope}</dd></dl></section><section class="drawer-section"><h3>事件追溯</h3><p class="caption">可前往事件中心查看该目标的采集事件、失败原因和关联 Trace；此处不提供采集配置或执行操作。</p><button class="btn text" data-module="events">查看采集事件 →</button></section>`);
         return;
       }
-      const label = data.metric ? '指标详情' : data.notice ? '通知详情' : data.audit ? '审计详情' : '权限配置详情';
+      if (data.audit) {
+        const auditItems = [
+          { time: '2026年07月30日 09:30:26', operator: '林管理员', type: '确认告警', resource: 'alert-10021', resourceName: 'Worker 心跳过期', scope: '全平台', result: '操作成功', trace: 'trace-audit-903026', before: '触发中（firing）', after: '已确认（acknowledged）', reason: '确认告警状态，进入人工跟进' },
+          { time: '2026年07月30日 09:28:20', operator: '林管理员', type: '查询指标', resource: 'metric.qa_p95', resourceName: '问答 P95', scope: '全平台', result: '查询成功', trace: 'trace-audit-902820', before: '—', after: '查看最近1小时指标', reason: '核对问答性能异常' },
+          { time: '2026年07月30日 09:18:34', operator: '系统', type: '触发告警', resource: 'alert-10021', resourceName: 'Worker 心跳过期', scope: '全平台', result: '记录成功', trace: 'trace-audit-901834', before: '规则未命中', after: '触发中（firing）', reason: '连续 3 个周期超过心跳年龄阈值' }
+        ];
+        const item = auditItems[Number(data.audit)] || auditItems[0];
+        showDrawer(`<div class="drawer-head"><div><h2>审计详情</h2><span class="caption">${item.type} · ${item.time}</span></div><button class="close">×</button></div><div class="audit-detail-summary"><div class="audit-detail-summary-item"><span>操作类型</span><strong>${item.type}</strong></div><div class="audit-detail-summary-item"><span>操作结果</span><strong class="status green">${item.result}</strong></div><div class="audit-detail-summary-item"><span>操作时间</span><strong>${item.time.slice(11)}</strong></div></div><section class="audit-detail-section"><h3>基本信息</h3><dl class="detail-grid"><dt>操作者</dt><dd>${item.operator}</dd><dt>操作时间</dt><dd>${item.time}</dd><dt>请求 Trace</dt><dd>${item.trace}</dd><dt>数据范围</dt><dd>${item.scope}</dd></dl></section><section class="audit-detail-section"><h3>操作对象</h3><dl class="detail-grid"><dt>资源标识</dt><dd>${item.resource}</dd><dt>资源名称</dt><dd>${item.resourceName}</dd><dt>操作结果</dt><dd><span class="status green">${item.result}</span></dd></dl></section><section class="audit-detail-section"><h3>状态变化</h3><div class="audit-change"><div class="audit-change-row"><span>状态字段</span><strong>操作前</strong><span class="audit-change-arrow">→</span><strong>操作后</strong></div><div class="audit-change-row"><span>记录状态</span><span>${item.before}</span><span class="audit-change-arrow">→</span><span>${item.after}</span></div></div></section><section class="audit-detail-section"><h3>操作说明</h3><p class="audit-detail-note">${item.reason}。审计记录仅用于追溯，不会在详情页重复执行该操作。</p></section>`);
+        return;
+      }
+      const label = data.metric ? '指标详情' : data.notice ? '通知详情' : data.audit ? '审计详情' : '详情';
       showDrawer(`<div class="drawer-head"><div><h2>${label}</h2><span class="caption">原型演示数据</span></div><button class="close">×</button></div><dl class="detail-grid"><dt>当前范围</dt><dd>${state.scope}</dd><dt>数据状态</dt><dd>${statusTag('completed')}</dd><dt>更新时间</dt><dd>2026年07月30日 09:30:20</dd><dt>审计要求</dt><dd>查询和配置变更均记录操作者、范围、时间和结果。</dd><dt>安全边界</dt><dd>敏感内容按权限脱敏，页面不展示密码、Token、API Key 或完整业务内容。</dd></dl>`);
     }
     function showDrawer(html) { const drawer = document.getElementById('drawer'); drawer.innerHTML = html; document.getElementById('drawerMask').classList.add('show'); drawer.querySelector('.close').addEventListener('click', closeDrawer); drawer.querySelectorAll('[data-action]').forEach(el => el.addEventListener('click', () => { toast('原型演示：操作已提交并记录审计'); closeDrawer(); })); }
