@@ -67,8 +67,12 @@ async def target_page(
 
 
 @router.get("/metrics/overview")
-async def metrics_overview(current_user: auth.CurrentUser = current_user_dependency):
-    return await _call(service.metrics_overview, current_user)
+async def metrics_overview(
+    time_range: str = "1h",
+    data_scope: str = "current",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.metrics_overview, current_user, time_range, data_scope)
 
 
 @router.get("/metrics/page")
@@ -76,7 +80,9 @@ async def metric_page(
     page: int = 1,
     page_size: int = 20,
     metric_name: str | None = None,
-    scope_key: str | None = None,
+    metric_domain: str | None = None,
+    data_scope: str = "current",
+    time_range: str = "1h",
     data_status: str | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ):
@@ -86,14 +92,19 @@ async def metric_page(
         page,
         page_size,
         metric_name,
-        scope_key,
+        metric_domain,
+        data_scope,
+        time_range,
         data_status,
     )
 
 
 @router.get("/tasks/overview")
-async def tasks_overview(current_user: auth.CurrentUser = current_user_dependency):
-    return await _call(service.tasks_overview, current_user)
+async def tasks_overview(
+    time_range: str = "1h",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.tasks_overview, current_user, time_range)
 
 
 @router.get("/tasks/page")
@@ -103,6 +114,8 @@ async def task_page(
     task_name: str | None = None,
     task_type: str | None = None,
     status: str | None = None,
+    worker_code: str | None = None,
+    time_range: str = "1h",
     current_user: auth.CurrentUser = current_user_dependency,
 ):
     return await _call(
@@ -113,7 +126,18 @@ async def task_page(
         task_name,
         task_type,
         status,
+        worker_code,
+        time_range,
     )
+
+
+@router.get("/tasks/{task_key}/detail")
+async def task_detail(
+    task_key: str,
+    time_range: str = "24h",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.task_detail, current_user, task_key, time_range)
 
 
 @router.post("/events")
@@ -135,7 +159,10 @@ async def event_page(
     page: int = 1,
     page_size: int = 20,
     event_type: str | None = None,
-    source_code: str | None = None,
+    monitor_domain: str | None = None,
+    resource_name: str | None = None,
+    association_id: str | None = None,
+    time_range: str = "1h",
     status: str | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ):
@@ -145,9 +172,28 @@ async def event_page(
         page,
         page_size,
         event_type,
-        source_code,
+        monitor_domain,
+        resource_name,
+        association_id,
+        time_range,
         status,
     )
+
+
+@router.get("/events/overview")
+async def events_overview(
+    time_range: str = "1h",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.events_overview, current_user, time_range)
+
+
+@router.get("/events/{event_id}/detail")
+async def event_detail(
+    event_id: str,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.event_detail, current_user, event_id)
 
 
 @router.get("/alerts/page")
@@ -170,6 +216,14 @@ async def alert_page(
     )
 
 
+@router.get("/alerts/overview")
+async def alerts_overview(
+    time_range: str = "1h",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.alerts_overview, current_user, time_range)
+
+
 @router.post("/alerts/{alert_id}/{action}")
 async def alert_action(
     alert_id: int, action: str, current_user: auth.CurrentUser = current_user_dependency
@@ -185,6 +239,22 @@ async def metric_series(
     current_user: auth.CurrentUser = current_user_dependency,
 ):
     return await _call(service.metric_series, current_user, metric_code, scope_key, limit)
+
+
+@router.get("/metrics/{metric_code}/detail")
+async def metric_detail(
+    metric_code: str,
+    time_range: str = "1h",
+    data_scope: str = "current",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(
+        service.metric_detail,
+        current_user,
+        metric_code,
+        time_range,
+        data_scope,
+    )
 
 
 @router.get("/rules")

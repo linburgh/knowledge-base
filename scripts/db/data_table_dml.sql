@@ -649,3 +649,42 @@ set field_mapping = excluded.field_mapping,
 delete from t_monitor_gather_action where target_code = 'probe.capacity';
 delete from t_monitor_gather_target where target_code = 'probe.capacity';
 delete from t_monitor_state_snapshot where resource_code = 'platform-capacity';
+
+-- 自主监控指标定义由系统发布，页面只读取定义和真实聚合结果。
+insert into t_monitor_metric_definition (
+    metric_code,
+    metric_name,
+    metric_domain,
+    unit,
+    formula,
+    dimensions,
+    minimum_sample_count,
+    status,
+    version
+)
+values
+    ('qa_request_count', '问答请求量', 'qa', 'count', '统计窗口内进入知识库问答链路的请求数量。', '{"scope":["platform","tenant","knowledge_base"]}', 1, 'active', 1),
+    ('qa_success_rate', '问答成功率', 'qa', 'percent', '成功完成且未降级的问答请求数 / 有效问答请求总数。', '{"scope":["platform","tenant","knowledge_base"]}', 1, 'active', 1),
+    ('qa_error_rate', '问答错误率', 'qa', 'percent', '失败、异常或超时的问答请求数 / 有效问答请求总数。', '{"scope":["platform","tenant","knowledge_base"]}', 1, 'active', 1),
+    ('qa_timeout_rate', '问答超时率', 'qa', 'percent', '超时问答请求数 / 有效问答请求总数。', '{"scope":["platform","tenant","knowledge_base"]}', 1, 'active', 1),
+    ('qa_reference_rate', '问答引用率', 'qa', 'percent', '返回有效引用的成功问答数 / 成功问答请求数。', '{"scope":["platform","tenant","knowledge_base"]}', 1, 'active', 1),
+    ('qa_p95', '问答 P95', 'qa', 'ms', '统计窗口内成功问答请求耗时的第 95 百分位。', '{"scope":["platform","tenant","knowledge_base"]}', 20, 'active', 1),
+    ('database_connection_usage', '数据库连接使用率', 'platform', 'percent', '数据库当前连接数 / 数据库允许的最大连接数。', '{"scope":["platform"]}', 1, 'active', 1),
+    ('task_queue_usage', '任务队列使用率', 'platform', 'percent', '当前排队任务数 / 系统发布的队列容量。', '{"scope":["platform","tenant"]}', 1, 'active', 1),
+    ('file_storage_usage', '文件存储使用率', 'platform', 'percent', '文件存储已使用字节数 / 系统发布的文件存储配额。', '{"scope":["platform"]}', 1, 'active', 1),
+    ('vector_storage_usage', '向量存储使用率', 'platform', 'percent', '向量数据已使用字节数 / 系统发布的向量存储配额。', '{"scope":["platform"]}', 1, 'active', 1),
+    ('vector_service_availability', '向量服务可用率', 'platform', 'percent', '向量服务成功探测次数 / 有效探测总数。', '{"scope":["platform"]}', 3, 'active', 1),
+    ('task_backlog_count', '任务积压数量', 'task', 'count', '统计时点处于待处理或排队中的异步任务数量。', '{"scope":["platform","tenant"],"task_type":true}', 1, 'active', 1),
+    ('task_wait_p95', '任务等待 P95', 'task', 'ms', '统计窗口内任务从创建到开始执行等待时长的第 95 百分位。', '{"scope":["platform","tenant"],"task_type":true}', 20, 'active', 1),
+    ('task_success_rate', '任务成功率', 'task', 'percent', '成功完成任务数 / 已结束任务总数。', '{"scope":["platform","tenant"],"task_type":true}', 1, 'active', 1),
+    ('evaluation_completion_rate', '评测完成率', 'evaluation', 'percent', '成功完成评测运行数 / 已结束评测运行总数。', '{"scope":["platform","tenant","knowledge_base"]}', 1, 'active', 1),
+    ('evaluation_evidence_completeness', '评测执行证明完整率', 'evaluation', 'percent', '具备完整 Agent 生命周期证据的评测运行数 / 已结束评测运行总数。', '{"scope":["platform","tenant","knowledge_base"]}', 1, 'active', 1)
+on conflict (metric_code, version) do update
+set metric_name = excluded.metric_name,
+    metric_domain = excluded.metric_domain,
+    unit = excluded.unit,
+    formula = excluded.formula,
+    dimensions = excluded.dimensions,
+    minimum_sample_count = excluded.minimum_sample_count,
+    status = excluded.status,
+    updated_at = now();

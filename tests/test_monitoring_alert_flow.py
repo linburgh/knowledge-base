@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -95,6 +95,19 @@ def monitoring_flow(monkeypatch):
             }
         ]
 
+    async def definition_list(_, **filters):
+        return [
+            {
+                "metric_code": "error_rate",
+                "metric_name": "问答错误率",
+                "metric_domain": "qa",
+                "unit": "ratio",
+                "minimum_sample_count": 1,
+                "status": "active",
+                "version": 1,
+            }
+        ]
+
     async def value_insert(_, **values):
         state["values"].append({"id": len(state["values"]) + 1, **values})
 
@@ -141,6 +154,7 @@ def monitoring_flow(monkeypatch):
     monkeypatch.setattr(monitoring.alert_db, "insert_", alert_insert)
     monkeypatch.setattr(monitoring.alert_db, "update_", alert_update)
     monkeypatch.setattr(monitoring.rule_db, "list", rule_list)
+    monkeypatch.setattr(monitoring_aggregate.definition_db, "list", definition_list)
     monkeypatch.setattr(monitoring.value_db, "insert_", value_insert)
     monkeypatch.setattr(monitoring.value_db, "list", value_list)
     monkeypatch.setattr(monitoring.policy_db, "list", policy_list)
@@ -176,7 +190,13 @@ def _match(row, filters):
 async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     state = monitoring_flow
     user = CurrentUser(user_id="11", tenant_id=10)
-    now = datetime.now(UTC)
+    current = datetime.now(UTC)
+    window_end = current.replace(
+        minute=current.minute - current.minute % 5,
+        second=0,
+        microsecond=0,
+    )
+    now = window_end - timedelta(minutes=1)
     for index, status in enumerate(("error", "ok", "error", "ok", "error")):
         await monitoring.ingest_event(
             MonitorEventRequest(
@@ -209,7 +229,14 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     acknowledged = await monitoring.alert_action(state["alerts"][0]["id"], "acknowledge", user)
     assert acknowledged["status"] == "acknowledged"
 
-    state["events"] = [{"status": "ok", "occurred_at": now}]
+    state["events"] = [
+        {
+            "event_type": "qa.request",
+            "status": "ok",
+            "tenant_id": 10,
+            "occurred_at": now,
+        }
+    ]
     state["values"] = []
     await monitoring_aggregate.run_once()
     assert state["alerts"][0]["status"] == "resolved"
