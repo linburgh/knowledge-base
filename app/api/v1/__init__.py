@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.open import router as open_router
 from app.api.v1 import (
     auth,
     chat,
@@ -11,6 +12,7 @@ from app.api.v1 import (
     knowledge_base_overview,
     knowledge_base_qa_config,
     knowledge_bases,
+    monitoring,
     organizations,
     platform_overview,
     platform_roles,
@@ -18,15 +20,18 @@ from app.api.v1 import (
     tenants,
     users,
 )
-from app.api.open import router as open_router
 
 api_router = APIRouter()
 api_router.include_router(open_router)
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(health.router, prefix="/health", tags=["Health"])
 api_router.include_router(knowledge_bases.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])
-api_router.include_router(knowledge_base_overview.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])
-api_router.include_router(knowledge_base_qa_config.router, prefix="/knowledge-bases", tags=["KnowledgeBaseQaConfig"])
+api_router.include_router(
+    knowledge_base_overview.router, prefix="/knowledge-bases", tags=["KnowledgeBase"]
+)
+api_router.include_router(
+    knowledge_base_qa_config.router, prefix="/knowledge-bases", tags=["KnowledgeBaseQaConfig"]
+)
 api_router.include_router(tenants.router, prefix="/tenants", tags=["Tenant"])
 api_router.include_router(users.router, prefix="/users", tags=["User"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["Organization"])
@@ -38,3 +43,4 @@ api_router.include_router(search.router, prefix="/search", tags=["Search"])
 api_router.include_router(chat.router, prefix="/chat", tags=["Chat"])
 api_router.include_router(guest.router, prefix="/guest", tags=["Guest"])
 api_router.include_router(evaluations.router, prefix="/platform/evaluations", tags=["Evaluation"])
+api_router.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])

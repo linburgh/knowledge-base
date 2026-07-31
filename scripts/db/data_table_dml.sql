@@ -280,3 +280,67 @@ where not exists (
     from t_knowledge_base_prompt prompt
     where prompt.kb_id = kb.id
 );
+
+-- 自主监控导航与权限种子；菜单只授予平台超级管理员和租户管理员。
+insert into t_system_menu (parent_id, code, name, menu_type, route_path, icon, sort_order, visible, status)
+select null, 'monitoring', '自主监控', 'directory', null, 'monitoring', 90, true, 'active'
+where not exists (select 1 from t_system_menu where code = 'monitoring');
+
+update t_system_menu
+set meta = coalesce(meta, '{}'::jsonb) || '{"sidebar_show_children": true}'::jsonb,
+    updated_at = now()
+where code = 'monitoring';
+
+insert into t_system_menu (parent_id, code, name, menu_type, route_path, icon, sort_order, visible, status)
+select parent.id, item.code, item.name, 'item', item.route_path, 'monitoring', item.sort_order, true, 'active'
+from t_system_menu parent
+cross join (values
+    ('monitoring_overview', '监控总览', '/monitoring/overview', 1),
+    ('monitoring_collection', '数据采集', '/monitoring/collection', 2),
+    ('monitoring_metrics', '指标分析', '/monitoring/metrics', 3),
+    ('monitoring_tasks', '任务监控', '/monitoring/tasks', 4),
+    ('monitoring_alerts', '告警中心', '/monitoring/alerts', 5),
+    ('monitoring_events', '事件中心', '/monitoring/events', 6),
+    ('monitoring_analysis', '智能分析', '/monitoring/analysis', 7),
+    ('monitoring_audits', '审计管理', '/monitoring/audits', 8)
+) as item(code, name, route_path, sort_order)
+where parent.code = 'monitoring'
+  and not exists (select 1 from t_system_menu existing where existing.code = item.code);
+
+insert into t_role_menu (role_scope, role_code, menu_id, status)
+select role_item.role_scope, role_item.role_code, menu.id, 'active'
+from (values ('platform', 'p_super_admin'), ('tenant', 'tenant_admin')) as role_item(role_scope, role_code)
+cross join t_system_menu menu
+where (menu.code = 'monitoring' or menu.code like 'monitoring_%')
+  and not exists (
+      select 1 from t_role_menu relation
+      where relation.role_scope = role_item.role_scope
+        and relation.role_code = role_item.role_code
+        and relation.menu_id = menu.id
+  );
+
+insert into t_system_menu_action (menu_id, code, name, action_type, sort_order, status)
+select menu.id, action.code, action.name, 'button', action.sort_order, 'active'
+from t_system_menu menu
+cross join (values
+    ('monitoring_overview', 'monitoring:list', '查看监控', 1),
+    ('monitoring_alerts', 'monitoring:detail', '查看告警', 1),
+    ('monitoring_alerts', 'monitoring:alert-action', '处理告警', 2),
+    ('monitoring_alerts', 'monitoring:rule-manage', '管理规则', 3),
+    ('monitoring_alerts', 'monitoring:notification-manage', '管理通知', 4),
+    ('monitoring_analysis', 'monitoring:analysis', '使用分析', 1)
+) as action(menu_code, code, name, sort_order)
+where menu.code = action.menu_code
+  and not exists (select 1 from t_system_menu_action existing where existing.code = action.code);
+
+insert into t_role_menu_action (role_scope, role_code, action_id, status)
+select role_item.role_scope, role_item.role_code, action.id, 'active'
+from (values ('platform', 'p_super_admin'), ('tenant', 'tenant_admin')) as role_item(role_scope, role_code)
+cross join t_system_menu_action action
+where action.code like 'monitoring:%'
+  and not exists (
+      select 1 from t_role_menu_action relation
+      where relation.role_scope = role_item.role_scope
+        and relation.role_code = role_item.role_code
+        and relation.action_id = action.id
+  );

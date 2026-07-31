@@ -138,10 +138,31 @@ Agent 可以根据自身业务在独立目录内增加 `graph.py`、`state.py`�
 
 - 前端项目目录为 `/home/linburgh/workspace/ai-llm/knowledge-base-web`，与本后端项目同级。
 - 前端项目名称固定为 `knowledge-base-web`。
+- 前端页面、组件、公共状态页和路由的目录组织及命名统一遵守 [`前端目录组织开发规约.md`](docs/前端目录组织开发规约.md)；后续新增和重构不得继续使用旧的平铺页面或 PascalCase 组件文件结构。
 - 前端技术栈固定为 Vue 3 + TypeScript + Vite + Element Plus（Vue 3 对应的 Element UI 组件库）+ Bootstrap + Vue Router + Pinia + Axios。交互组件使用 Element Plus，页面基础字体、排版、间距和布局遵循 Bootstrap。
 - 原型和前端页面中的所有列表必须同时提供查询条件和分页，不得只实现静态列表。
 - 列表操作列统一使用文本按钮，分页的上一页、下一页、页码和每页条数控件也统一使用文本按钮或文本样式，不使用带背景色的按钮。
 - 列表的查询条件、分页和操作按钮属于统一 UI 设计原则，新增列表页面时必须同步设计并实现。
+
+### 页面目录规范
+
+- `src/pages/` 下的业务页面必须先按一级业务模块建立目录，例如 `monitoring/`、`platform/`、`knowledge-base/`，不得把业务页面直接堆放在 `src/pages/` 根目录。
+- 每个可路由页面必须建立独立的语义目录，目录名使用小写 kebab-case，并以 `index.vue` 作为页面入口，例如自主监控总览使用 `src/pages/monitoring/overview/index.vue`。
+- 页面目录已经表达业务模块和页面语义时，入口文件不得重复使用 `Monitoring`、`Platform` 等模块前缀，也不得使用 `OverviewPage.vue`、`AlertsPage.vue` 等带 `Page` 后缀的文件名。
+- 页面私有组件、组合式函数、类型和样式可以放在对应页面目录内；被同一业务模块多个页面复用的内容放在模块公共目录，被全站复用的内容放在 `src/components/`、`src/composables/`、`src/types/` 等公共目录。
+- 路由必须从页面目录的 `index.vue` 导入，页面移动或重命名时必须同步更新路由、测试、原型稿、设计文档和实施文档中的路径。
+- 登录等全局路由页面同样优先使用独立语义目录和 `index.vue` 入口，例如登录页使用 `src/pages/login/index.vue`。
+- 无权限、未找到、系统错误等通用状态页统一放在 `src/pages/common/` 下，使用小写 kebab-case 语义文件名，例如无权限页面使用 `src/pages/common/forbidden.vue`；通用状态页不强制建立独立目录或使用 `index.vue`。
+- 除 `pages/common/` 下的通用状态页外，不得新增直接放在 `src/pages/` 根目录的页面文件；新增页面结构例外必须在设计文档中说明原因。
+
+### 组件目录规范
+
+- `src/components/` 下的可复用组件必须建立独立的语义目录，目录名使用小写 kebab-case，并统一以 `comp.vue` 作为组件入口，例如 `src/components/app-drawer/comp.vue`。
+- 业务模块专属的共享组件必须先按模块建立目录，再按组件语义建立子目录，例如监控告警趋势组件使用 `src/components/monitoring/alert-trend/comp.vue`。
+- 组件目录已经表达模块和组件语义时，入口文件不得重复使用 `Monitoring`、`KnowledgeBase` 等模块前缀，也不得使用 `AppDrawer.vue`、`TrendLineChart.vue` 等 PascalCase 文件名。
+- Vue 模板和 TypeScript 中的组件变量名仍使用 PascalCase，例如从 `components/monitoring/alert-trend/comp.vue` 导入后命名为 `MonitoringAlertTrend`。
+- 组件私有类型、组合式函数、样式、测试和子组件可以就近放在该组件目录内；跨组件共享内容必须提升到对应业务模块或全站公共目录。
+- 组件移动或重命名时必须同步更新页面、布局、其他组件、测试、原型稿、设计文档和实施文档中的导入路径。
 
 ### 前端代码格式规范
 
@@ -174,6 +195,7 @@ Agent 可以根据自身业务在独立目录内增加 `graph.py`、`state.py`�
 - 前后端联调完成的页面必须使用真实后端接口，不得保留演示数据、占位数据、静态统计值或接口失败后的伪造兜底数据。
 - 接口尚未提供时，可以先完成页面结构，但进入联调阶段必须移除对应占位数据；加载失败应展示错误状态，不得用本地数据替代接口响应。
 - 图表数据必须来自统计接口，前端不得根据分页列表数据推算全量统计结果。
+- 前端所有图表实现的第一选择必须是 ECharts；只有在确认 ECharts 无法满足具体场景时，才允许采用其他图表方案，并在代码或设计文档中说明原因。
 - 开发过程中发现后端接口缺失时，必须在对应模块的联调记录文档中登记接口缺口、建议路径、请求/响应范围和当前状态，并同步安排后端开发；不得静默跳过，也不得用前端演示数据替代。
 
 ## 后续落地顺序

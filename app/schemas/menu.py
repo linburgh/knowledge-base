@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -11,6 +13,7 @@ class MenuNodeResponse(BaseModel):
     route_path: str | None = None
     icon: str | None = None
     sort_order: int = 0
+    meta: dict[str, Any] = Field(default_factory=dict)
     children: list[MenuNodeResponse] = Field(default_factory=list)
 
 

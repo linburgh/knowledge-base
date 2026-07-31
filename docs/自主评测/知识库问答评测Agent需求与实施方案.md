@@ -1190,7 +1190,7 @@ app/schemas/platform_evaluation.py
 scripts/db/data_table_ddl.sql
 scripts/db/data_table_dml.sql
 knowledge-base-web/src/api/evaluation.ts
-knowledge-base-web/src/pages/PlatformEvaluationsPage.vue
+knowledge-base-web/src/pages/platform/evaluations/index.vue
 tests/agents/evaluation/
 tests/evals/datasets/default_gates.json
 ```

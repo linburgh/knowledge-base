@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+import asyncio
+
+from app.core.common import utils
+from app.core.services import audit as audit_service
+from app.db import monitor_notification_channel as channel_db
+from app.db import monitor_notification_record as record_db
+from app.db.api import check_db_connected
+from app.db.base import DB
+
+
+async def _deliver(channel: dict, record: dict) -> tuple[bool, str | None]:
+    """渠道适配器边界；真实 HTTP/IM 适配器通过此函数注入。"""
+    if str(channel.get("endpoint_ref") or "").startswith("mock://success"):
+        return True, None
+    return False, "CHANNEL_ADAPTER_UNAVAILABLE"
+
+
+@check_db_connected
+async def run_once() -> int:
+    records = [
+        *await record_db.list(DB.get(), status="pending"),
+        *await record_db.list(DB.get(), status="failed"),
+    ]
+    processed = 0
+    for record in records:
+        channel = await channel_db.get(DB.get(), id=record.get("channel_id"))
+        if record.get("status") == "failed" and int(record.get("retry_count") or 0) >= 3:
+            continue
+        success, failure_category = await _deliver(channel or {}, record)
+        values = {
+            "status": "sent" if success else "failed",
+            "failure_category": failure_category,
+            "retry_count": int(record.get("retry_count") or 0) + (0 if success else 1),
+        }
+        if success:
+            values["sent_at"] = utils.utc_now()
+        async with DB.get().transaction():
+            await record_db.update_(DB.get(), values, id=record["id"], status=record["status"])
+            await audit_service.record(
+                DB.get(),
+                action="monitor_notification_sent" if success else "monitor_notification_failed",
+                target_type="monitor_notification_record",
+                target_id=record["id"],
+                result="success" if success else "failure",
+                summary={
+                    "failure_category": failure_category,
+                    "retry_count": values["retry_count"],
+                },
+            )
+        processed += 1
+    return processed
+
+
+async def run_forever(stop_event: asyncio.Event, interval_seconds: int = 30) -> None:
+    while not stop_event.is_set():
+        await run_once()
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except TimeoutError:
+            continue

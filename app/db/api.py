@@ -48,6 +48,12 @@ def _build_conditions(table: Any, **kwargs: Any) -> list[Any]:
             conditions.append(getattr(table.c, key[:-4]) != value)
         elif key.endswith("__ilike"):
             conditions.append(getattr(table.c, key[:-7]).ilike(value))
+        elif key.endswith("__gte"):
+            conditions.append(getattr(table.c, key[:-5]) >= value)
+        elif key.endswith("__lte"):
+            conditions.append(getattr(table.c, key[:-5]) <= value)
+        elif key.endswith("__in"):
+            conditions.append(getattr(table.c, key[:-4]).in_(value))
         else:
             conditions.append(getattr(table.c, key) == value)
     return conditions

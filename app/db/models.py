@@ -6,7 +6,8 @@ metadata = sa.MetaData()
 
 
 EvaluationTask = sa.Table(
-    "t_evaluation_task", metadata,
+    "t_evaluation_task",
+    metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("name", sa.String(255), nullable=False),
     sa.Column("kb_id", sa.BigInteger, nullable=False),
@@ -14,15 +15,22 @@ EvaluationTask = sa.Table(
     sa.Column("config", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("status", sa.String(32), nullable=False, server_default="active"),
     sa.Column("created_by", sa.String(128), nullable=False),
-    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
 )
 
 EvaluationRun = sa.Table(
-    "t_evaluation_run", metadata,
+    "t_evaluation_run",
+    metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
-    sa.Column("task_id", sa.BigInteger, nullable=False), sa.Column("run_no", sa.Integer, nullable=False),
-    sa.Column("status", sa.String(32), nullable=False), sa.Column("conclusion", sa.String(32)),
+    sa.Column("task_id", sa.BigInteger, nullable=False),
+    sa.Column("run_no", sa.Integer, nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("conclusion", sa.String(32)),
     sa.Column("config_snapshot", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("metrics", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("report", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
@@ -31,32 +39,55 @@ EvaluationRun = sa.Table(
     sa.Column("completed_count", sa.Integer, nullable=False, server_default="0"),
     sa.Column("failed_count", sa.Integer, nullable=False, server_default="0"),
     sa.Column("error_message", sa.String(500)),
-    sa.Column("started_at", sa.DateTime(timezone=True)), sa.Column("finished_at", sa.DateTime(timezone=True)),
-    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    sa.Column("started_at", sa.DateTime(timezone=True)),
+    sa.Column("finished_at", sa.DateTime(timezone=True)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
     sa.UniqueConstraint("task_id", "run_no"),
 )
 
 EvaluationCaseResult = sa.Table(
-    "t_evaluation_case_result", metadata,
-    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True), sa.Column("run_id", sa.BigInteger, nullable=False),
-    sa.Column("case_no", sa.Integer, nullable=False), sa.Column("question", sa.Text, nullable=False),
-    sa.Column("question_source", sa.String(32), nullable=False), sa.Column("question_basis", sa.String(64)),
-    sa.Column("answer", sa.Text), sa.Column("status", sa.String(32), nullable=False),
-    sa.Column("termination_reason", sa.String(128)), sa.Column("citation_count", sa.Integer, nullable=False, server_default="0"),
-    sa.Column("hit_count", sa.Integer, nullable=False, server_default="0"), sa.Column("duration_ms", sa.Integer, nullable=False, server_default="0"),
-    sa.Column("error_code", sa.String(64)), sa.Column("error_message", sa.Text), sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    "t_evaluation_case_result",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("run_id", sa.BigInteger, nullable=False),
+    sa.Column("case_no", sa.Integer, nullable=False),
+    sa.Column("question", sa.Text, nullable=False),
+    sa.Column("question_source", sa.String(32), nullable=False),
+    sa.Column("question_basis", sa.String(64)),
+    sa.Column("answer", sa.Text),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("termination_reason", sa.String(128)),
+    sa.Column("citation_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("hit_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("duration_ms", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("error_code", sa.String(64)),
+    sa.Column("error_message", sa.Text),
+    sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.UniqueConstraint("run_id", "case_no"),
 )
 
 EvaluationOptimization = sa.Table(
-    "t_evaluation_optimization", metadata,
-    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True), sa.Column("run_id", sa.BigInteger, nullable=False),
-    sa.Column("suggestion", sa.Text, nullable=False), sa.Column("evidence", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
-    sa.Column("candidate_config", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")), sa.Column("status", sa.String(32), nullable=False, server_default="suggested"),
-    sa.Column("retest_run_id", sa.BigInteger), sa.Column("before_metrics", JSONB), sa.Column("after_metrics", JSONB),
+    "t_evaluation_optimization",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("run_id", sa.BigInteger, nullable=False),
+    sa.Column("suggestion", sa.Text, nullable=False),
+    sa.Column("evidence", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("candidate_config", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("status", sa.String(32), nullable=False, server_default="suggested"),
+    sa.Column("retest_run_id", sa.BigInteger),
+    sa.Column("before_metrics", JSONB),
+    sa.Column("after_metrics", JSONB),
     sa.Column("requires_confirmation", sa.Boolean, nullable=False, server_default=sa.text("true")),
-    sa.Column("created_by", sa.String(128), nullable=False), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    sa.Column("created_by", sa.String(128), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
 )
 
 
@@ -372,9 +403,7 @@ KnowledgeBaseQaConfigVersion = sa.Table(
     sa.Column("version_no", sa.Integer, nullable=False),
     sa.Column("status", sa.String(20), nullable=False),
     sa.Column("config_json", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
-    sa.Column(
-        "change_summary_json", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
-    ),
+    sa.Column("change_summary_json", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("requires_reindex", sa.Boolean, nullable=False, server_default=sa.false()),
     sa.Column("affected_document_count", sa.Integer, nullable=False, server_default=sa.text("0")),
     sa.Column("created_by", sa.BigInteger, nullable=False),
@@ -550,8 +579,12 @@ Conversation = sa.Table(
     "t_conversation",
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
-    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger),
     sa.Column("user_id", sa.String(128), nullable=False),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("conversation_type", sa.String(32), nullable=False, server_default="qa"),
+    sa.Column("scope_key", sa.String(255)),
+    sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
     sa.Column("qa_config_version_id", sa.BigInteger),
     sa.Column("index_version_id", sa.BigInteger),
     sa.Column("title", sa.String(255)),
@@ -564,6 +597,7 @@ Conversation = sa.Table(
     ),
     sa.Index("idx_t_conversation_user_id", "user_id"),
     sa.Index("idx_t_conversation_kb_user", "kb_id", "user_id"),
+    sa.Index("idx_t_conversation_type_scope", "conversation_type", "tenant_id", "scope_key"),
 )
 
 
@@ -572,7 +606,7 @@ ConversationMessage = sa.Table(
     metadata,
     sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
     sa.Column("conversation_id", sa.BigInteger, nullable=False),
-    sa.Column("kb_id", sa.BigInteger, nullable=False),
+    sa.Column("kb_id", sa.BigInteger),
     sa.Column("user_id", sa.String(128), nullable=False),
     sa.Column("role", sa.String(32), nullable=False),
     sa.Column("content", sa.Text, nullable=False),
@@ -652,4 +686,331 @@ AuditLog = sa.Table(
     sa.Index("idx_t_audit_log_actor_id", "actor_id"),
     sa.Index("idx_t_audit_log_target", "target_type", "target_id"),
     sa.Index("idx_t_audit_log_created_at", "created_at"),
+)
+
+
+MonitorEvent = sa.Table(
+    "t_monitor_event",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("event_id", sa.String(128), nullable=False),
+    sa.Column("event_type", sa.String(96), nullable=False),
+    sa.Column("source_type", sa.String(32), nullable=False),
+    sa.Column("source_code", sa.String(128), nullable=False),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("kb_id", sa.BigInteger),
+    sa.Column("task_id", sa.BigInteger),
+    sa.Column("run_id", sa.BigInteger),
+    sa.Column("trace_id", sa.String(128)),
+    sa.Column("request_id", sa.String(128)),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("stage", sa.String(64)),
+    sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("duration_ms", sa.BigInteger),
+    sa.Column("error_category", sa.String(64)),
+    sa.Column("payload", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("data_status", sa.String(32), nullable=False, server_default="ready"),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("event_id", name="u_idx_t_monitor_event_event_id"),
+    sa.Index("idx_t_monitor_event_type_time", "event_type", "occurred_at"),
+    sa.Index("idx_t_monitor_event_tenant_time", "tenant_id", "occurred_at"),
+    sa.Index("idx_t_monitor_event_trace", "trace_id"),
+    sa.Index("idx_t_monitor_event_task_time", "task_id", "occurred_at"),
+)
+
+
+MonitorStateSnapshot = sa.Table(
+    "t_monitor_state_snapshot",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("resource_type", sa.String(32), nullable=False),
+    sa.Column("resource_code", sa.String(128), nullable=False),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("status_value", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("checked_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("expires_at", sa.DateTime(timezone=True)),
+    sa.Column("error_category", sa.String(64)),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint(
+        "resource_type", "resource_code", "tenant_id", name="u_idx_t_monitor_state_resource"
+    ),
+    sa.Index("idx_t_monitor_state_status", "status"),
+)
+
+
+MonitorMetricDefinition = sa.Table(
+    "t_monitor_metric_definition",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("metric_code", sa.String(128), nullable=False),
+    sa.Column("metric_name", sa.String(128), nullable=False),
+    sa.Column("metric_domain", sa.String(32), nullable=False),
+    sa.Column("unit", sa.String(32), nullable=False),
+    sa.Column("formula", sa.Text, nullable=False),
+    sa.Column("dimensions", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("minimum_sample_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("status", sa.String(32), nullable=False, server_default="active"),
+    sa.Column("version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("metric_code", "version", name="u_idx_t_monitor_metric_definition_version"),
+)
+
+
+MonitorMetricValue = sa.Table(
+    "t_monitor_metric_value",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("metric_code", sa.String(128), nullable=False),
+    sa.Column("metric_version", sa.Integer, nullable=False),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("kb_id", sa.BigInteger),
+    sa.Column("scope_key", sa.String(255), nullable=False),
+    sa.Column("window_start", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("window_end", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("bucket_size", sa.String(32), nullable=False),
+    sa.Column("sample_count", sa.BigInteger, nullable=False, server_default="0"),
+    sa.Column("numerator", sa.Numeric),
+    sa.Column("denominator", sa.Numeric),
+    sa.Column("metric_value", sa.Numeric),
+    sa.Column("unit", sa.String(32), nullable=False),
+    sa.Column("data_status", sa.String(32), nullable=False),
+    sa.Column("assessment_status", sa.String(32)),
+    sa.Column("source_summary", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("rule_version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("calculated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint(
+        "metric_code",
+        "scope_key",
+        "window_start",
+        "window_end",
+        "rule_version",
+        name="u_idx_t_monitor_metric_value_bucket",
+    ),
+    sa.Index("idx_t_monitor_metric_value_scope_time", "tenant_id", "scope_key", "window_start"),
+)
+
+
+MonitorGatherTarget = sa.Table(
+    "t_monitor_gather_target",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("target_code", sa.String(128), nullable=False),
+    sa.Column("target_name", sa.String(128), nullable=False),
+    sa.Column("target_type", sa.String(32), nullable=False),
+    sa.Column("target_locator", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.text("true")),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("effective_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", sa.String(128)),
+    sa.Column("updated_by", sa.String(128)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("target_code", "version", name="u_idx_t_monitor_gather_target_version"),
+)
+
+
+MonitorGatherAction = sa.Table(
+    "t_monitor_gather_action",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("target_code", sa.String(128), nullable=False),
+    sa.Column("event_type", sa.String(96), nullable=False),
+    sa.Column("field_mapping", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("sampling_rate", sa.Numeric, nullable=False, server_default="1"),
+    sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.text("true")),
+    sa.Column("version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint(
+        "target_code", "event_type", "version", name="u_idx_t_monitor_gather_action_version"
+    ),
+)
+
+
+MonitorMetricRule = sa.Table(
+    "t_monitor_metric_rule",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("metric_code", sa.String(128), nullable=False),
+    sa.Column("scope_type", sa.String(32), nullable=False),
+    sa.Column("warning_threshold", sa.Numeric),
+    sa.Column("critical_threshold", sa.Numeric),
+    sa.Column("recovery_threshold", sa.Numeric),
+    sa.Column("minimum_sample_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("consecutive_periods", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("window_seconds", sa.Integer, nullable=False, server_default="300"),
+    sa.Column("trigger_type", sa.String(32), nullable=False, server_default="threshold"),
+    sa.Column("recovery_periods", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("enabled", sa.Boolean, nullable=False, server_default=sa.text("true")),
+    sa.Column("version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("effective_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_by", sa.String(128)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint(
+        "metric_code", "scope_type", "version", name="u_idx_t_monitor_metric_rule_version"
+    ),
+)
+
+
+MonitorAlert = sa.Table(
+    "t_monitor_alert",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("alert_key", sa.String(255), nullable=False),
+    sa.Column("rule_id", sa.BigInteger, nullable=False),
+    sa.Column("metric_code", sa.String(128), nullable=False),
+    sa.Column("alert_title", sa.String(255), nullable=False),
+    sa.Column("severity", sa.String(32), nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("kb_id", sa.BigInteger),
+    sa.Column("resource_type", sa.String(64)),
+    sa.Column("resource_code", sa.String(128)),
+    sa.Column("current_value", sa.Numeric),
+    sa.Column("threshold", sa.Numeric),
+    sa.Column("sample_count", sa.BigInteger),
+    sa.Column("first_fired_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("last_fired_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("firing_count", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("acknowledged_by", sa.String(128)),
+    sa.Column("acknowledged_at", sa.DateTime(timezone=True)),
+    sa.Column("resolved_at", sa.DateTime(timezone=True)),
+    sa.Column("closed_at", sa.DateTime(timezone=True)),
+    sa.Column("analysis_summary", sa.Text),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint("alert_key", name="u_idx_t_monitor_alert_key"),
+    sa.Index("idx_t_monitor_alert_scope_status", "tenant_id", "status"),
+)
+
+
+MonitorAlertEvidence = sa.Table(
+    "t_monitor_alert_evidence",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("alert_id", sa.BigInteger, nullable=False),
+    sa.Column("evidence_type", sa.String(32), nullable=False),
+    sa.Column("evidence_id", sa.String(128), nullable=False),
+    sa.Column("summary", sa.String(500)),
+    sa.Column("occurred_at", sa.DateTime(timezone=True)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint(
+        "alert_id", "evidence_type", "evidence_id", name="u_idx_t_monitor_alert_evidence_ref"
+    ),
+    sa.Index("idx_t_monitor_alert_evidence_alert", "alert_id"),
+)
+
+
+MonitorNotificationChannel = sa.Table(
+    "t_monitor_notification_channel",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("channel_code", sa.String(128), nullable=False),
+    sa.Column("channel_name", sa.String(128), nullable=False),
+    sa.Column("channel_type", sa.String(32), nullable=False),
+    sa.Column("endpoint_ref", sa.String(255)),
+    sa.Column("receiver_scope", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("status", sa.String(32), nullable=False, server_default="enabled"),
+    sa.Column("version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("effective_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("created_by", sa.String(128)),
+    sa.Column("updated_by", sa.String(128)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint(
+        "channel_code", "version", name="u_idx_t_monitor_notification_channel_version"
+    ),
+)
+
+
+MonitorNotificationPolicy = sa.Table(
+    "t_monitor_notification_policy",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("policy_name", sa.String(128), nullable=False),
+    sa.Column("severity", sa.String(32)),
+    sa.Column("scope", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("event_types", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("dedup_seconds", sa.Integer, nullable=False, server_default="300"),
+    sa.Column("quiet_period", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("status", sa.String(32), nullable=False, server_default="enabled"),
+    sa.Column("version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("tenant_id", sa.BigInteger),
+    sa.Column("created_by", sa.String(128)),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint(
+        "policy_name", "tenant_id", "version", name="u_idx_t_monitor_notification_policy_version"
+    ),
+)
+
+
+MonitorNotificationPolicyChannel = sa.Table(
+    "t_monitor_notification_policy_channel",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("policy_id", sa.BigInteger, nullable=False),
+    sa.Column("channel_id", sa.BigInteger, nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.UniqueConstraint(
+        "policy_id", "channel_id", name="u_idx_t_monitor_notification_policy_channel_ref"
+    ),
+)
+
+
+MonitorNotificationRecord = sa.Table(
+    "t_monitor_notification_record",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("alert_id", sa.BigInteger, nullable=False),
+    sa.Column("policy_id", sa.BigInteger),
+    sa.Column("channel_id", sa.BigInteger),
+    sa.Column("event_type", sa.String(32), nullable=False),
+    sa.Column("receiver_scope", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("failure_category", sa.String(64)),
+    sa.Column("sent_at", sa.DateTime(timezone=True)),
+    sa.Column("retry_count", sa.Integer, nullable=False, server_default="0"),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("idx_t_monitor_notification_record_alert", "alert_id", "created_at"),
 )

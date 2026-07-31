@@ -54,6 +54,7 @@ def build_tree(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "route_path": row.get("route_path"),
             "icon": row.get("icon"),
             "sort_order": row.get("sort_order", 0),
+            "meta": row.get("meta") or {},
             "children": [],
         }
         for row in rows

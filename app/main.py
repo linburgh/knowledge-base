@@ -17,13 +17,16 @@ from app.db import setup as db_setup
 from app.types import constants
 from app.workers import evaluation as evaluation_worker
 from app.workers import indexing as indexing_worker
+from app.workers import monitoring_aggregate, monitoring_collect, monitoring_notify
 
 evaluation_stop_event = asyncio.Event()
+monitoring_stop_event = asyncio.Event()
 evaluation_worker_task: asyncio.Task | None = None
+monitoring_worker_tasks: list[asyncio.Task] = []
 
 
 async def on_startup() -> None:
-    global evaluation_worker_task
+    global evaluation_worker_task, monitoring_worker_tasks
     configure("app")
     log_setup(
         Path(CONF.default.log_dir).joinpath(CONF.default.log_file),
@@ -37,14 +40,32 @@ async def on_startup() -> None:
         evaluation_worker.run_forever(evaluation_stop_event),
         name="autonomous-evaluation-worker",
     )
+    monitoring_stop_event.clear()
+    monitoring_worker_tasks = [
+        asyncio.create_task(
+            monitoring_collect.run_forever(monitoring_stop_event), name="monitoring-collect-worker"
+        ),
+        asyncio.create_task(
+            monitoring_aggregate.run_forever(monitoring_stop_event),
+            name="monitoring-aggregate-worker",
+        ),
+        asyncio.create_task(
+            monitoring_notify.run_forever(monitoring_stop_event), name="monitoring-notify-worker"
+        ),
+    ]
 
 
 async def on_shutdown() -> None:
+    monitoring_stop_event.set()
     evaluation_stop_event.set()
     indexing_worker.stop()
     if evaluation_worker_task is not None:
         evaluation_worker_task.cancel()
         await asyncio.gather(evaluation_worker_task, return_exceptions=True)
+    for task in monitoring_worker_tasks:
+        task.cancel()
+    await asyncio.gather(*monitoring_worker_tasks, return_exceptions=True)
+
 
 app = None
 
@@ -55,9 +76,10 @@ if environment == "production":
         title=constants.PROJECT_NAME,
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
-        docs_url=None, 
+        docs_url=None,
         redoc_url=None,
-        openapi_url=None)
+        openapi_url=None,
+    )
 else:
     app = FastAPI(
         title=constants.PROJECT_NAME,
@@ -113,10 +135,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(BusiException)
 async def business_exception_handler(request: Request, exc: BusiException):
     if request.url.path.startswith("/api/v1/open/"):
-        code = "RATE_LIMITED" if exc.status_code == 429 else (
-            "UNAUTHORIZED" if exc.status_code == 401 else (
-                "RESOURCE_FORBIDDEN" if exc.status_code == 403 else (
-                    "RESOURCE_NOT_FOUND" if exc.status_code == 404 else "BUSINESS_ERROR"
+        code = (
+            "RATE_LIMITED"
+            if exc.status_code == 429
+            else (
+                "UNAUTHORIZED"
+                if exc.status_code == 401
+                else (
+                    "RESOURCE_FORBIDDEN"
+                    if exc.status_code == 403
+                    else ("RESOURCE_NOT_FOUND" if exc.status_code == 404 else "BUSINESS_ERROR")
                 )
             )
         )
