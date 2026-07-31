@@ -71,6 +71,10 @@ class NotificationPolicyRequest(BaseModel):
     channel_ids: list[int] = Field(default_factory=list)
 
 
+class AlertActionRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
 class AnalysisConversationRequest(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     scope_key: str | None = Field(default=None, max_length=255)

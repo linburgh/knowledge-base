@@ -5,7 +5,6 @@ from typing import Any
 from app.core.common import audit as audit_context
 from app.db import audit_log as audit_log_db
 
-
 ACTION_CN_MAP: dict[str, str] = {
     "add_organization_member": "添加组织成员",
     "add_tenant_member": "添加租户成员",
@@ -44,6 +43,21 @@ ACTION_CN_MAP: dict[str, str] = {
     "update_tenant": "修改租户",
     "update_tenant_member": "修改租户成员",
     "update_user": "修改用户",
+    "monitor_alert_acknowledge": "确认告警",
+    "monitor_alert_close": "关闭告警",
+    "monitor_alert_fired": "触发告警",
+    "monitor_alert_note": "添加备注",
+    "monitor_alert_recovered": "恢复告警",
+    "monitor_alert_resolve": "恢复告警",
+    "monitor_alert_suppress": "抑制告警",
+    "monitor_analysis_conversation_created": "新建会话",
+    "monitor_analysis_message_sent": "分析追问",
+    "monitor_event_ingested": "采集事件",
+    "monitor_notification_channel_created": "新增渠道",
+    "monitor_notification_enqueued": "通知入队",
+    "monitor_notification_failed": "通知失败",
+    "monitor_notification_policy_created": "新增策略",
+    "monitor_rule_created": "变更规则",
 }
 
 

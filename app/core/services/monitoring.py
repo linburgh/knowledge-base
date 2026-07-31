@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.agents.monitoring import MonitoringAgent
 from app.core.common import utils
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
@@ -20,6 +21,7 @@ from app.db import knowledge_base as knowledge_base_db
 from app.db import (
     monitor_alert as alert_db,
 )
+from app.db import monitor_alert_evidence as alert_evidence_db
 from app.db import (
     monitor_event as event_db,
 )
@@ -46,6 +48,7 @@ from app.db import (
 from app.db import (
     monitor_state_snapshot as snapshot_db,
 )
+from app.db import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.monitoring import (
@@ -168,6 +171,32 @@ _EVENT_RESOURCE_NAMES = {
     "document.ingestion": "文档处理",
     "knowledge.qa": "知识库问答",
     "worker-runtime": "工作节点",
+}
+
+_ALERT_SEVERITY_NAMES = {
+    "critical": "严重",
+    "warning": "警告",
+    "info": "提示",
+}
+_ALERT_SEVERITY_COLORS = {
+    "critical": "#dd6673",
+    "warning": "#e5b347",
+    "info": "#5695f4",
+}
+_ALERT_STATUS_NAMES = {
+    "firing": "触发中",
+    "acknowledged": "已确认",
+    "suppressed": "已抑制",
+    "resolved": "已恢复",
+    "closed": "已关闭",
+}
+_NOTIFICATION_STATUS_NAMES = {
+    "pending": "待发送",
+    "retrying": "重试中",
+    "sent": "已完成",
+    "success": "已完成",
+    "completed": "已完成",
+    "failed": "失败",
 }
 
 
@@ -296,6 +325,96 @@ def _visible_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [event for event in events if event.get("event_type") != "worker_idle"]
 
 
+def _monitor_domain(metric_code: str, definitions: dict[str, dict[str, Any]]) -> tuple[str, str]:
+    definition = definitions.get(metric_code) or {}
+    domain = str(definition.get("metric_domain") or "platform")
+    return domain, _METRIC_DOMAIN_NAMES.get(domain, "平台运行")
+
+
+def _alert_view(alert: dict[str, Any], definitions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    row = dict(alert)
+    metric_code = str(alert.get("metric_code") or "")
+    domain, domain_name = _monitor_domain(metric_code, definitions)
+    resource_code = str(alert.get("resource_code") or metric_code)
+    started_at = alert.get("first_fired_at")
+    ended_at = alert.get("resolved_at") or alert.get("closed_at") or utils.utc_now()
+    duration_seconds = None
+    if isinstance(started_at, datetime) and isinstance(ended_at, datetime):
+        duration_seconds = max(0, int((ended_at - started_at).total_seconds()))
+    row.update(
+        severity_name=_ALERT_SEVERITY_NAMES.get(str(alert.get("severity")), "未知级别"),
+        status_name=_ALERT_STATUS_NAMES.get(str(alert.get("status")), "未知状态"),
+        monitor_domain=domain,
+        monitor_domain_name=domain_name,
+        resource_name=_event_resource_name({"source_code": resource_code}),
+        duration_seconds=duration_seconds,
+        acknowledged_by_name=alert.get("acknowledged_by") or "—",
+    )
+    return row
+
+
+def _seconds_label(seconds: int) -> str:
+    if seconds % 86400 == 0:
+        return f"{seconds // 86400} 天"
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600} 小时"
+    return f"{max(1, seconds // 60)} 分钟"
+
+
+def _rule_view(rule: dict[str, Any], definitions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    row = dict(rule)
+    metric_code = str(rule.get("metric_code") or "")
+    definition = definitions.get(metric_code) or {}
+    domain, domain_name = _monitor_domain(metric_code, definitions)
+    critical_threshold = rule.get("critical_threshold")
+    warning_threshold = rule.get("warning_threshold")
+    severity = "critical" if critical_threshold is not None else "warning"
+    threshold = critical_threshold if critical_threshold is not None else warning_threshold
+    operator = str(definition.get("threshold_operator") or ">")
+    trigger_expression = (
+        f"{metric_code} {operator} {threshold}" if threshold is not None else metric_code
+    )
+    consecutive_periods = int(rule.get("consecutive_periods") or 1)
+    recovery_periods = int(rule.get("recovery_periods") or 1)
+    recovery_threshold = rule.get("recovery_threshold")
+    recovery_condition = (
+        f"连续 {recovery_periods} 个周期恢复至 {recovery_threshold}"
+        if recovery_threshold is not None
+        else f"连续 {recovery_periods} 个周期恢复"
+    )
+    row.update(
+        rule_name=f"{definition.get('metric_name') or metric_code}告警",
+        monitor_domain=domain,
+        monitor_domain_name=domain_name,
+        severity=severity,
+        severity_name=_ALERT_SEVERITY_NAMES[severity],
+        trigger_expression=trigger_expression,
+        trigger_window=(
+            "单次计算" if consecutive_periods == 1 else f"连续 {consecutive_periods} 个周期"
+        ),
+        recovery_condition=recovery_condition,
+        status="enabled" if rule.get("enabled") else "disabled",
+        status_name="启用" if rule.get("enabled") else "停用",
+        window_label=_seconds_label(int(rule.get("window_seconds") or 300)),
+    )
+    return row
+
+
+def _latest_rule_versions(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for rule in rules:
+        key = (str(rule.get("metric_code") or ""), str(rule.get("scope_type") or ""))
+        if key not in latest or int(rule.get("version") or 0) > int(
+            latest[key].get("version") or 0
+        ):
+            latest[key] = rule
+    return sorted(
+        latest.values(),
+        key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
+        reverse=True,
+    )
+
+
 def _event_trend(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     buckets: dict[datetime, dict[str, int]] = {}
     for event in events:
@@ -325,6 +444,50 @@ def _alert_trend(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if status in current:
             current[status] += 1
     return [{"window_end": bucket, **values} for bucket, values in sorted(buckets.items())]
+
+
+def _alert_overview_trend(
+    alerts: list[dict[str, Any]], start_at: datetime, end_at: datetime
+) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
+    cursor = _bucket_5m(start_at)
+    final_bucket = _bucket_5m(end_at)
+    while cursor <= final_bucket:
+        bucket_end = cursor + timedelta(minutes=5)
+        newly_fired = sum(
+            1
+            for alert in alerts
+            if isinstance(alert.get("first_fired_at"), datetime)
+            and cursor <= alert["first_fired_at"] < bucket_end
+        )
+        recovered = sum(
+            1
+            for alert in alerts
+            if isinstance(alert.get("resolved_at"), datetime)
+            and cursor <= alert["resolved_at"] < bucket_end
+        )
+        unresolved = sum(
+            1
+            for alert in alerts
+            if isinstance(alert.get("first_fired_at"), datetime)
+            and alert["first_fired_at"] < bucket_end
+            and not (
+                isinstance(alert.get("resolved_at"), datetime) and alert["resolved_at"] < bucket_end
+            )
+            and not (
+                isinstance(alert.get("closed_at"), datetime) and alert["closed_at"] < bucket_end
+            )
+        )
+        points.append(
+            {
+                "window_end": min(bucket_end, end_at),
+                "newly_fired": newly_fired,
+                "unresolved": unresolved,
+                "recovered": recovered,
+            }
+        )
+        cursor = bucket_end
+    return points
 
 
 def _metric_status(metric: dict[str, Any]) -> str:
@@ -829,7 +992,11 @@ async def ingest_event(payload: MonitorEventRequest, current_user: CurrentUser) 
             action="monitor_event_ingested",
             target_type="monitor_event",
             target_id=event_id,
-            summary={"event_type": payload.event_type, "source_code": payload.source_code},
+            summary={
+                "event_type": payload.event_type,
+                "source_code": payload.source_code,
+                "resource_name": payload.payload.get("resource_name"),
+            },
         )
         return event
 
@@ -1749,13 +1916,58 @@ async def notification_record_page(
     current_user: CurrentUser,
     page: int,
     page_size: int,
+    channel_type: str | None = None,
     status: str | None = None,
+    severity: str | None = None,
+    time_range: str = "1h",
 ) -> dict[str, Any]:
     await require_monitoring_access(current_user)
-    filters = _scope_filter(await tenant_scope(current_user))
+    scope = await tenant_scope(current_user)
+    start_at, _ = _overview_window(time_range)
+    channels = await channel_db.list(DB.get(), **_scope_filter(scope))
+    channel_map = {row["id"]: row for row in channels}
+    policies = await policy_db.list(DB.get(), **_scope_filter(scope))
+    policy_map = {row["id"]: row for row in policies}
+    alerts = await alert_db.list(DB.get(), **_scope_filter(scope))
+    alert_map = {row["id"]: row for row in alerts}
+    rows = []
+    for record in await notification_record_db.list(DB.get(), created_at__gte=start_at):
+        if scope is not None and (
+            record.get("channel_id") not in channel_map
+            or record.get("policy_id") not in policy_map
+            or record.get("alert_id") not in alert_map
+        ):
+            continue
+        channel = channel_map.get(record.get("channel_id")) or {}
+        policy = policy_map.get(record.get("policy_id")) or {}
+        alert = alert_map.get(record.get("alert_id")) or {}
+        row = dict(record)
+        row.update(
+            channel_name=channel.get("channel_name") or "未知渠道",
+            channel_type=channel.get("channel_type"),
+            policy_name=policy.get("policy_name") or "未关联策略",
+            severity=alert.get("severity") or policy.get("severity"),
+            severity_name=_ALERT_SEVERITY_NAMES.get(
+                str(alert.get("severity") or policy.get("severity")), "全部级别"
+            ),
+            trigger_scope=_notification_scope_label(
+                policy.get("scope") or record.get("receiver_scope") or {}
+            ),
+            status_name=_NOTIFICATION_STATUS_NAMES.get(str(record.get("status")), "未知状态"),
+            failure_summary=(
+                str(record.get("failure_category") or "发送失败")
+                if record.get("status") == "failed"
+                else None
+            ),
+        )
+        rows.append(row)
+    if channel_type:
+        rows = [row for row in rows if row.get("channel_type") == channel_type]
     if status:
-        filters["status"] = status
-    return _page(await notification_record_db.list(DB.get(), **filters), page, page_size)
+        rows = [row for row in rows if row.get("status") == status]
+    if severity:
+        rows = [row for row in rows if row.get("severity") == severity]
+    return _page(rows, page, page_size)
 
 
 @check_db_connected
@@ -1767,9 +1979,25 @@ async def audit_page(
     action: str | None = None,
     result: str | None = None,
     target_id: str | None = None,
+    tenant_id: int | None = None,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
 ) -> dict[str, Any]:
     await require_monitoring_access(current_user)
+    scope = await tenant_scope(current_user)
     rows = await audit_log_db.list(DB.get())
+    if scope is not None:
+        rows = [
+            row
+            for row in rows
+            if str((row.get("request_summary") or {}).get("tenant_id")) == str(scope)
+        ]
+    if tenant_id is not None:
+        rows = [
+            row
+            for row in rows
+            if str((row.get("request_summary") or {}).get("tenant_id")) == str(tenant_id)
+        ]
     if actor_id:
         keyword = actor_id.strip().lower()
         rows = [row for row in rows if keyword in str(row.get("actor_id") or "").lower()]
@@ -1780,20 +2008,314 @@ async def audit_page(
     if target_id:
         keyword = target_id.strip().lower()
         rows = [row for row in rows if keyword in str(row.get("target_id") or "").lower()]
-    return _page(rows, page, page_size)
+    if start_at:
+        rows = [row for row in rows if row.get("created_at") and row["created_at"] >= start_at]
+    if end_at:
+        rows = [row for row in rows if row.get("created_at") and row["created_at"] <= end_at]
+    users = {str(row["id"]): row for row in await user_db.list(DB.get())}
+    page_result = _page(rows, page, page_size)
+    page_result["items"] = [_audit_view(row, users) for row in page_result["items"]]
+    return page_result
+
+
+def _audit_resource_name(summary: Any) -> str | None:
+    if not isinstance(summary, dict):
+        return None
+    for key in (
+        "resource_name",
+        "target_name",
+        "alert_title",
+        "rule_name",
+        "channel_name",
+        "policy_name",
+        "metric_name",
+        "task_name",
+        "event_name",
+        "knowledge_base_name",
+        "kb_name",
+        "tenant_name",
+        "organization_name",
+        "document_name",
+        "display_name",
+        "username",
+        "name",
+        "title",
+    ):
+        value = summary.get(key)
+        if isinstance(value, (str, int, float)) and str(value).strip():
+            return str(value).strip()
+    for key in ("resource", "target", "after", "before"):
+        nested_name = _audit_resource_name(summary.get(key))
+        if nested_name:
+            return nested_name
+    return None
+
+
+def _audit_view(row: dict[str, Any], users: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    item = dict(row)
+    actor = users.get(str(row.get("actor_id")))
+    summary = _sanitize_event_context(row.get("request_summary") or {})
+    tenant_id = summary.get("tenant_id") if isinstance(summary, dict) else None
+    action_name = str(row.get("action_cn") or "")
+    if not action_name or action_name == "其他操作":
+        action_name = audit_service.action_cn(str(row.get("action") or ""))
+    item.update(
+        action_cn=action_name,
+        actor_name=(actor or {}).get("display_name")
+        or (actor or {}).get("username")
+        or ("系统" if row.get("actor_id") == "system" else row.get("actor_id")),
+        result_name="已完成" if row.get("result") == "success" else "执行失败",
+        target_type_name={
+            "monitor_alert": "告警实例",
+            "monitor_metric_rule": "告警规则",
+            "monitor_notification_channel": "通知渠道",
+            "monitor_notification_policy": "通知策略",
+            "monitor_event": "监控事件",
+            "monitor_analysis_conversation": "分析会话",
+        }.get(str(row.get("target_type")), "监控资源"),
+        tenant_id=tenant_id,
+        tenant_scope_name=f"租户 {tenant_id}" if tenant_id is not None else "全平台",
+        resource_name=_audit_resource_name(summary),
+        request_summary=summary,
+        operation_description=(
+            f"{action_name}：{row.get('target_id') or '未指定资源'}"
+        ),
+    )
+    return item
 
 
 @check_db_connected
-async def analysis_overview(current_user: CurrentUser) -> dict[str, Any]:
-    result = await overview(current_user)
+async def audit_options(current_user: CurrentUser) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    scope = await tenant_scope(current_user)
+    rows = await audit_log_db.list(DB.get())
+    if scope is not None:
+        rows = [
+            row
+            for row in rows
+            if str((row.get("request_summary") or {}).get("tenant_id")) == str(scope)
+        ]
+    users = {str(row["id"]): row for row in await user_db.list(DB.get())}
+    views = [_audit_view(row, users) for row in rows]
     return {
-        "conclusion": "需要关注" if result["alerts"] else "当前稳定",
-        "analysis_status": "unavailable" if result["alerts"] else "not_required",
-        "alerts": result["alerts"],
-        "evidence": result["events"][:50],
-        "timeline": result["events"][:50],
-        "suggestions": [],
+        "actors": sorted(
+            {
+                (str(row.get("actor_id") or ""), str(row.get("actor_name") or ""))
+                for row in views
+                if row.get("actor_id")
+            }
+        ),
+        "actions": sorted(
+            {
+                (str(row.get("action") or ""), str(row.get("action_cn") or "其他操作"))
+                for row in views
+                if row.get("action")
+            }
+        ),
+        "targets": sorted(
+            {str(row.get("target_id")) for row in views if row.get("target_id")}
+        ),
+        "tenant_scopes": sorted(
+            {
+                (int(row["tenant_id"]), str(row["tenant_scope_name"]))
+                for row in views
+                if row.get("tenant_id") is not None
+            }
+        ),
     }
+
+
+@check_db_connected
+async def audit_detail(current_user: CurrentUser, audit_id: int) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    scope = await tenant_scope(current_user)
+    row = await audit_log_db.get(DB.get(), id=audit_id)
+    if not row:
+        raise BusiException("审计记录不存在", status_code=404)
+    row_scope = (row.get("request_summary") or {}).get("tenant_id")
+    if scope is not None and str(row_scope) != str(scope):
+        raise BusiException("审计记录不存在", status_code=404)
+    users = {str(item["id"]): item for item in await user_db.list(DB.get())}
+    return _audit_view(row, users)
+
+
+@check_db_connected
+async def analysis_overview(
+    current_user: CurrentUser,
+    time_range: str = "1h",
+    scope_key: str = "platform",
+) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    start_at, end_at = _overview_window(time_range)
+    scope = await tenant_scope(current_user)
+    definitions = _metric_definition_map(await definition_db.list(DB.get()))
+    alert_rows = await alert_db.list(DB.get(), **_scope_filter(scope))
+    alerts = [
+        _alert_view(row, definitions)
+        for row in alert_rows
+        if row.get("status") in {"firing", "acknowledged"}
+        and row.get("last_fired_at")
+        and row["last_fired_at"] >= start_at
+    ]
+    alert_ids = {int(row["id"]) for row in alerts}
+    evidence_rows = [
+        row
+        for row in await alert_evidence_db.list(DB.get())
+        if int(row.get("alert_id") or 0) in alert_ids
+    ]
+    metric_values = await value_db.list(
+        DB.get(),
+        **_scope_filter(scope),
+        window_end__gte=start_at,
+    )
+    latest_metrics: dict[str, dict[str, Any]] = {}
+    for row in metric_values:
+        code = str(row.get("metric_code") or "")
+        if code not in latest_metrics or row.get("window_end") > latest_metrics[code].get(
+            "window_end"
+        ):
+            latest_metrics[code] = row
+
+    evidence: list[dict[str, Any]] = []
+    for alert in alerts:
+        evidence.append(
+            {
+                "id": f"alert-{alert['id']}",
+                "evidence_type": "alert",
+                "evidence_type_name": "告警",
+                "title": alert.get("alert_title"),
+                "summary": (
+                    f"{alert.get('resource_name')} · {alert.get('status_name')} · "
+                    f"{alert.get('severity_name')}"
+                ),
+                "evidence_level": "direct",
+                "evidence_level_name": "直接证据",
+                "occurred_at": alert.get("last_fired_at"),
+                "target_id": str(alert["id"]),
+            }
+        )
+        metric = latest_metrics.get(str(alert.get("metric_code") or ""))
+        if metric:
+            definition = definitions.get(str(alert.get("metric_code"))) or {}
+            evidence.append(
+                {
+                    "id": f"metric-{metric['id']}",
+                    "evidence_type": "metric",
+                    "evidence_type_name": "指标",
+                    "title": definition.get("metric_name") or alert.get("metric_code"),
+                    "summary": (
+                        f"当前值 {metric.get('metric_value')} · 样本 {metric.get('sample_count')}"
+                    ),
+                    "evidence_level": "direct",
+                    "evidence_level_name": "直接证据",
+                    "occurred_at": metric.get("window_end"),
+                    "target_id": str(metric["id"]),
+                }
+            )
+    evidence_type_names = {
+        "event": "事件",
+        "task": "任务",
+        "evaluation": "评测运行",
+        "version": "版本",
+        "trace": "Trace",
+        "metric": "指标",
+        "alert": "告警",
+    }
+    for row in evidence_rows:
+        evidence_type = str(row.get("evidence_type") or "event")
+        level = "context" if evidence_type in {"trace", "version"} else "associated"
+        evidence.append(
+            {
+                "id": f"{evidence_type}-{row.get('evidence_id')}",
+                "evidence_type": evidence_type,
+                "evidence_type_name": evidence_type_names.get(evidence_type, "事件"),
+                "title": row.get("evidence_id"),
+                "summary": row.get("summary") or "已关联结构化监控事实",
+                "evidence_level": level,
+                "evidence_level_name": "上下文证据" if level == "context" else "关联证据",
+                "occurred_at": row.get("occurred_at") or row.get("created_at"),
+                "target_id": str(row.get("evidence_id") or ""),
+            }
+        )
+    deduplicated = {str(item["id"]): item for item in evidence}
+    evidence = sorted(
+        deduplicated.values(),
+        key=lambda item: item.get("occurred_at") or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )[:50]
+
+    impacts = []
+    seen_resources = set()
+    for alert in alerts:
+        resource_name = str(alert.get("resource_name") or "未知资源")
+        if resource_name in seen_resources:
+            continue
+        seen_resources.add(resource_name)
+        impact_status = "confirmed" if alert.get("severity") == "critical" else "pending"
+        impacts.append(
+            {
+                "resource_name": resource_name,
+                "monitor_domain": alert.get("monitor_domain"),
+                "monitor_domain_name": alert.get("monitor_domain_name"),
+                "impact_status": impact_status,
+                "impact_status_name": (
+                    "已确认影响" if impact_status == "confirmed" else "待验证影响"
+                ),
+                "detail": f"关联 {alert.get('severity_name')}告警：{alert.get('alert_title')}",
+            }
+        )
+    suggestions = []
+    for index, alert in enumerate(alerts[:3], start=1):
+        module = "tasks" if alert.get("monitor_domain") in {"tasks", "evaluation"} else "metrics"
+        suggestions.append(
+            {
+                "priority": index,
+                "title": f"核查{alert.get('resource_name')}的运行事实和最近变化",
+                "detail": "仅核查已授权证据，不自动修改配置或执行任务。",
+                "evidence_refs": [f"alert-{alert['id']}", str(alert.get("metric_code") or "")],
+                "confirmation_status": "manual_confirmation",
+                "confirmation_status_name": "人工确认",
+                "target_module": module,
+                "target_label": "查看任务" if module == "tasks" else "查看指标",
+            }
+        )
+    context = {
+        "role": "tenant_admin" if scope is not None else "platform_super_admin",
+        "alerts": alerts,
+        "evidence": evidence,
+        "impacts": impacts,
+        "timeline": evidence,
+        "suggestions": suggestions,
+    }
+    try:
+        result = await MonitoringAgent().build_overview(context=context)
+    except Exception as exc:
+        LOG.exception("自主监控Agent overview failed")
+        result = {
+            "incident_id": f"INC-{alerts[0]['id']}" if alerts else None,
+            "analysis_status": "unavailable" if alerts else "not_required",
+            "attention_status": "manual_confirmation" if alerts else "none",
+            "confidence": None,
+            "conclusion": "分析暂不可用" if alerts else "当前范围暂无需要分析的异常",
+            "conclusion_detail": "原始告警和证据仍可查询，请稍后重试分析。",
+            "alerts": alerts,
+            "impacts": impacts,
+            "evidence": evidence,
+            "timeline": evidence,
+            "suggestions": [],
+            "agent": "自主监控Agent",
+            "error": type(exc).__name__,
+        }
+    result.update(
+        scope_key=scope_key,
+        scope_name="当前租户" if scope is not None else "全平台",
+        time_range=time_range,
+        window_start=start_at,
+        window_end=end_at,
+        last_updated=end_at,
+        data_status="ready" if alerts else "empty",
+    )
+    return result
 
 
 @check_db_connected
@@ -1857,14 +2379,17 @@ async def events_overview(current_user: CurrentUser, time_range: str = "1h") -> 
 @check_db_connected
 async def alerts_overview(current_user: CurrentUser, time_range: str = "1h") -> dict[str, Any]:
     await require_monitoring_access(current_user)
-    start_at, _ = _overview_window(time_range)
-    alerts = await alert_db.list(
-        DB.get(),
-        **_scope_filter(await tenant_scope(current_user)),
-        last_fired_at__gte=start_at,
-    )
+    start_at, end_at = _overview_window(time_range)
+    scope = await tenant_scope(current_user)
+    alerts = await alert_db.list(DB.get(), **_scope_filter(scope))
+    window_alerts = [
+        alert
+        for alert in alerts
+        if (isinstance(alert.get("last_fired_at"), datetime) and alert["last_fired_at"] >= start_at)
+        or alert.get("status") not in {"resolved", "closed"}
+    ]
     unresolved = [alert for alert in alerts if alert.get("status") not in {"resolved", "closed"}]
-    severity_distribution: dict[str, int] = {}
+    severity_distribution = {severity: 0 for severity in _ALERT_SEVERITY_NAMES}
     for alert in unresolved:
         severity = str(alert.get("severity") or "unknown")
         severity_distribution[severity] = severity_distribution.get(severity, 0) + 1
@@ -1874,18 +2399,58 @@ async def alerts_overview(current_user: CurrentUser, time_range: str = "1h") -> 
         for alert in unresolved
         if isinstance(alert.get("first_fired_at"), datetime)
     ]
+    unacknowledged_count = sum(1 for alert in unresolved if not alert.get("acknowledged_at"))
+    critical_count = severity_distribution["critical"]
+    if unresolved:
+        conclusion = "需要处理"
+        conclusion_text = (
+            f"{len(unresolved)} 条告警未恢复，{critical_count} 条严重告警，"
+            f"{unacknowledged_count} 条待确认"
+        )
+        conclusion_detail = "请优先处理持续时间较长和严重级别告警。"
+    else:
+        conclusion = "当前正常"
+        conclusion_text = "当前范围暂无未恢复告警"
+        conclusion_detail = "已恢复和已关闭告警可在告警明细中追溯。"
     return {
-        "total_count": len(alerts),
+        "conclusion": conclusion,
+        "conclusion_text": conclusion_text,
+        "conclusion_detail": conclusion_detail,
+        "total_count": len(window_alerts),
         "unresolved_count": len(unresolved),
-        "unacknowledged_count": sum(1 for alert in unresolved if not alert.get("acknowledged_at")),
-        "critical_count": sum(1 for alert in unresolved if alert.get("severity") == "critical"),
+        "unacknowledged_count": unacknowledged_count,
+        "critical_count": critical_count,
         "longest_duration_seconds": max(durations) if durations else None,
-        "trend": _alert_trend(alerts),
+        "lifecycle": {
+            "firing": sum(1 for alert in alerts if alert.get("status") == "firing"),
+            "acknowledged": sum(1 for alert in alerts if alert.get("status") == "acknowledged"),
+            "resolved": sum(
+                1
+                for alert in alerts
+                if isinstance(alert.get("resolved_at"), datetime)
+                and alert["resolved_at"] >= start_at
+            ),
+            "closed": sum(
+                1
+                for alert in alerts
+                if isinstance(alert.get("closed_at"), datetime) and alert["closed_at"] >= start_at
+            ),
+        },
+        "trend": _alert_overview_trend(alerts, start_at, end_at),
         "severity_distribution": [
-            {"severity": severity, "count": count}
-            for severity, count in sorted(severity_distribution.items())
+            {
+                "severity": severity,
+                "severity_name": _ALERT_SEVERITY_NAMES[severity],
+                "count": severity_distribution[severity],
+                "color": _ALERT_SEVERITY_COLORS[severity],
+            }
+            for severity in _ALERT_SEVERITY_NAMES
         ],
-        "data_status": "ready" if alerts else "empty",
+        "scope_name": "平台范围" if scope is None else "当前租户",
+        "time_range": time_range,
+        "window_start": start_at,
+        "window_end": end_at,
+        "data_status": "ready" if window_alerts else "empty",
     }
 
 
@@ -1969,19 +2534,75 @@ async def alert_page(
     page_size: int,
     status: str | None = None,
     severity: str | None = None,
-    resource_code: str | None = None,
+    monitor_domain: str | None = None,
+    resource_name: str | None = None,
+    time_range: str = "1h",
 ) -> dict[str, Any]:
     await require_monitoring_access(current_user)
-    filters = _scope_filter(await tenant_scope(current_user))
+    start_at, _ = _overview_window(time_range)
+    definitions = _metric_definition_map(await definition_db.list(DB.get()))
+    rows = [
+        _alert_view(row, definitions)
+        for row in await alert_db.list(
+            DB.get(),
+            **_scope_filter(await tenant_scope(current_user)),
+            last_fired_at__gte=start_at,
+        )
+    ]
     if status:
-        filters["status"] = status
+        rows = [row for row in rows if row.get("status") == status]
     if severity:
-        filters["severity"] = severity
-    rows = await alert_db.list(DB.get(), **filters)
-    if resource_code:
-        keyword = resource_code.strip().lower()
-        rows = [row for row in rows if keyword in str(row.get("resource_code") or "").lower()]
+        rows = [row for row in rows if row.get("severity") == severity]
+    if monitor_domain:
+        rows = [row for row in rows if row.get("monitor_domain") == monitor_domain]
+    if resource_name:
+        keyword = resource_name.strip().lower()
+        rows = [
+            row
+            for row in rows
+            if keyword in str(row.get("resource_name") or "").lower()
+            or keyword in str(row.get("resource_code") or "").lower()
+        ]
     return _page(rows, page, page_size)
+
+
+@check_db_connected
+async def alert_detail(current_user: CurrentUser, alert_id: int) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    alert = await alert_db.get(
+        DB.get(),
+        id=alert_id,
+        **_scope_filter(await tenant_scope(current_user)),
+    )
+    if not alert:
+        raise BusiException("告警不存在", status_code=404)
+    definitions = _metric_definition_map(await definition_db.list(DB.get()))
+    rule = await rule_db.get(DB.get(), id=alert.get("rule_id"))
+    evidence = await alert_evidence_db.list(DB.get(), alert_id=alert_id)
+    audits = [
+        row
+        for row in await audit_log_db.list(DB.get())
+        if str(row.get("target_id")) == str(alert_id)
+        and str(row.get("action") or "").startswith("monitor_alert_")
+    ]
+    action_names = {
+        "monitor_alert_acknowledge": "确认告警",
+        "monitor_alert_suppress": "抑制告警",
+        "monitor_alert_close": "关闭告警",
+        "monitor_alert_note": "添加备注",
+        "monitor_alert_resolve": "恢复告警",
+    }
+    actions = [
+        {**row, "action_cn": action_names.get(str(row.get("action")), row.get("action"))}
+        for row in audits[:50]
+    ]
+    return {
+        "alert": _alert_view(alert, definitions),
+        "rule": _rule_view(rule, definitions) if rule else None,
+        "evidence": evidence,
+        "actions": actions,
+        "data_status": "ready",
+    }
 
 
 @check_db_connected
@@ -2056,20 +2677,59 @@ async def metric_detail(
 async def create_rule(payload: MetricRuleRequest, current_user: CurrentUser) -> dict[str, Any]:
     await require_monitoring_access(current_user)
     db = DB.get()
+    existing = await rule_db.list(
+        db,
+        metric_code=payload.metric_code,
+        scope_type=payload.scope_type,
+    )
+    version = max((int(row.get("version") or 0) for row in existing), default=0) + 1
     async with db.transaction():
+        for row in existing:
+            if row.get("enabled"):
+                await rule_db.update_(db, {"enabled": False}, id=row["id"])
         rule_id = await rule_db.insert_(
             db,
             **payload.model_dump(),
+            version=version,
             effective_at=utils.utc_now(),
             created_by=current_user.user_id,
         )
-        return await rule_db.get(db, id=rule_id)
+        created = await rule_db.get(db, id=rule_id)
+        await audit_service.record(
+            db,
+            action="monitor_rule_created",
+            target_type="monitor_metric_rule",
+            target_id=rule_id,
+            summary={"metric_code": payload.metric_code, "version": version},
+        )
+        return created
 
 
 @check_db_connected
 async def list_rules(current_user: CurrentUser) -> list[dict[str, Any]]:
     await require_monitoring_access(current_user)
     return await rule_db.list(DB.get(), enabled=True)
+
+
+@check_db_connected
+async def rules_overview(current_user: CurrentUser) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    rules = _latest_rule_versions(await rule_db.list(DB.get()))
+    enabled_count = sum(1 for rule in rules if rule.get("enabled"))
+    disabled_count = len(rules) - enabled_count
+    return {
+        "conclusion": "规则正常" if enabled_count else "暂无启用规则",
+        "conclusion_text": (
+            f"当前 {enabled_count} 条规则已启用，{disabled_count} 条规则停用"
+            if rules
+            else "当前范围暂无告警规则"
+        ),
+        "conclusion_detail": "规则变更会生成版本并写入审计记录，生效范围按权限控制。",
+        "total_count": len(rules),
+        "enabled_count": enabled_count,
+        "disabled_count": disabled_count,
+        "data_status": "ready" if rules else "empty",
+    }
 
 
 @check_db_connected
@@ -2096,7 +2756,12 @@ async def apply_rule(rule: dict[str, Any], metric: dict[str, Any]) -> dict[str, 
                     action="monitor_alert_recovered",
                     target_type="monitor_alert",
                     target_id=existing["id"],
-                    summary={"metric_code": rule["metric_code"], "reason": decision.reason},
+                    summary={
+                        "metric_code": rule["metric_code"],
+                        "reason": decision.reason,
+                        "tenant_id": recovered.get("tenant_id"),
+                        "resource_name": recovered.get("alert_title"),
+                    },
                 )
                 return recovered
             return existing
@@ -2131,7 +2796,12 @@ async def apply_rule(rule: dict[str, Any], metric: dict[str, Any]) -> dict[str, 
             action="monitor_alert_fired",
             target_type="monitor_alert",
             target_id=alert_id,
-            summary={"metric_code": rule["metric_code"], "severity": decision.severity},
+            summary={
+                "metric_code": rule["metric_code"],
+                "severity": decision.severity,
+                "tenant_id": alert.get("tenant_id"),
+                "resource_name": alert.get("alert_title"),
+            },
         )
         return alert
 
@@ -2177,12 +2847,20 @@ async def _enqueue_notifications(db, alert: dict[str, Any], event_type: str) -> 
         action="monitor_notification_enqueued",
         target_type="monitor_alert",
         target_id=alert["id"],
-        summary={"event_type": event_type},
+        summary={
+            "event_type": event_type,
+            "resource_name": alert.get("alert_title"),
+        },
     )
 
 
 @check_db_connected
-async def alert_action(alert_id: int, action: str, current_user: CurrentUser) -> dict[str, Any]:
+async def alert_action(
+    alert_id: int,
+    action: str,
+    current_user: CurrentUser,
+    note: str | None = None,
+) -> dict[str, Any]:
     await require_monitoring_access(current_user)
     filters = {"id": alert_id, **_scope_filter(await tenant_scope(current_user))}
     alert = await alert_db.get(DB.get(), **filters)
@@ -2191,22 +2869,43 @@ async def alert_action(alert_id: int, action: str, current_user: CurrentUser) ->
     now = utils.utc_now()
     values = {"updated_at": now}
     if action == "acknowledge":
+        if alert.get("status") != "firing":
+            raise BusiException("当前状态不能确认告警")
         values.update(
             status="acknowledged", acknowledged_by=current_user.user_id, acknowledged_at=now
         )
     elif action == "resolve":
+        if alert.get("status") not in {"firing", "acknowledged"}:
+            raise BusiException("当前状态不能恢复告警")
         values.update(status="resolved", resolved_at=now)
+    elif action == "close":
+        if alert.get("status") not in {"firing", "acknowledged", "resolved"}:
+            raise BusiException("当前状态不能关闭告警")
+        values.update(status="closed", closed_at=now)
+    elif action in {"suppress", "note"}:
+        if action == "suppress" and alert.get("status") not in {"firing", "acknowledged"}:
+            raise BusiException("当前状态不能抑制告警")
+        if action == "note" and alert.get("status") == "closed":
+            raise BusiException("已关闭告警仅支持查看")
+        if not note or not note.strip():
+            raise BusiException("请填写操作原因")
     else:
         raise BusiException("不支持的告警操作")
     async with DB.get().transaction():
-        await alert_db.update_(DB.get(), values, id=alert_id)
+        if action not in {"suppress", "note"}:
+            await alert_db.update_(DB.get(), values, id=alert_id)
         updated = await alert_db.get(DB.get(), id=alert_id)
         await audit_service.record(
             DB.get(),
             action=f"monitor_alert_{action}",
             target_type="monitor_alert",
             target_id=alert_id,
-            summary={"status": updated.get("status")},
+            summary={
+                "status": updated.get("status"),
+                "note": note.strip() if note else None,
+                "tenant_id": updated.get("tenant_id"),
+                "resource_name": updated.get("alert_title"),
+            },
         )
         return updated
 
@@ -2235,24 +2934,141 @@ async def _config_page(
     return _page(rows, page, page_size)
 
 
+def _notification_scope_label(scope: dict[str, Any]) -> str:
+    scope_type = str(scope.get("scope_type") or scope.get("type") or "platform")
+    domain = str(scope.get("monitor_domain") or scope.get("domain") or "")
+    scope_name = {
+        "platform": "全平台",
+        "tenant": "当前租户",
+        "duty_group": "监控值班组",
+    }.get(scope_type, scope_type)
+    if domain:
+        return f"{scope_name} / {_METRIC_DOMAIN_NAMES.get(domain, domain)}"
+    return scope_name
+
+
+def _channel_view(channel: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
+    row = dict(channel)
+    related = [record for record in records if record.get("channel_id") == channel.get("id")]
+    latest = related[0] if related else None
+    row.update(
+        channel_type_name={"in_app": "站内通知", "webhook": "Webhook"}.get(
+            str(channel.get("channel_type")), str(channel.get("channel_type") or "未知渠道")
+        ),
+        status_name="启用" if channel.get("status") == "enabled" else "停用",
+        receiver_scope_name=_notification_scope_label(channel.get("receiver_scope") or {}),
+        latest_sent_at=(latest.get("sent_at") or latest.get("created_at")) if latest else None,
+        latest_status=latest.get("status") if latest else None,
+        latest_status_name=(
+            _NOTIFICATION_STATUS_NAMES.get(str(latest.get("status")), "未知状态")
+            if latest
+            else "暂无发送"
+        ),
+        failed_count=sum(1 for record in related if record.get("status") == "failed"),
+    )
+    row.pop("endpoint_ref", None)
+    return row
+
+
+def _policy_view(
+    policy: dict[str, Any],
+    links: list[dict[str, Any]],
+    channel_map: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
+    row = dict(policy)
+    channel_names = [
+        channel_map[link["channel_id"]].get("channel_name")
+        for link in links
+        if link.get("policy_id") == policy.get("id") and link.get("channel_id") in channel_map
+    ]
+    event_names = {
+        "firing": "触发",
+        "ongoing": "持续",
+        "recovery": "恢复",
+    }
+    row.update(
+        severity_name=_ALERT_SEVERITY_NAMES.get(str(policy.get("severity")), "全部级别"),
+        scope_name=_notification_scope_label(policy.get("scope") or {}),
+        event_type_names=[
+            event_names.get(str(event_type), str(event_type))
+            for event_type in policy.get("event_types") or []
+        ],
+        channel_names=[str(name) for name in channel_names if name],
+        status_name="启用" if policy.get("status") == "enabled" else "停用",
+    )
+    return row
+
+
 @check_db_connected
 async def rule_page(
     current_user: CurrentUser,
     page: int,
     page_size: int,
-    metric_name: str | None = None,
+    rule_name: str | None = None,
+    monitor_domain: str | None = None,
+    severity: str | None = None,
     enabled: bool | None = None,
 ) -> dict[str, Any]:
-    filters = {} if enabled is None else {"enabled": enabled}
-    return await _config_page(
-        current_user,
-        rule_db,
-        page,
-        page_size,
-        "metric_code",
-        metric_name,
-        **filters,
+    await require_monitoring_access(current_user)
+    definitions = _metric_definition_map(await definition_db.list(DB.get()))
+    rows = [
+        _rule_view(rule, definitions)
+        for rule in _latest_rule_versions(await rule_db.list(DB.get()))
+    ]
+    if rule_name:
+        keyword = rule_name.strip().lower()
+        rows = [
+            row
+            for row in rows
+            if keyword in str(row.get("rule_name") or "").lower()
+            or keyword in str(row.get("metric_code") or "").lower()
+        ]
+    if monitor_domain:
+        rows = [row for row in rows if row.get("monitor_domain") == monitor_domain]
+    if severity:
+        rows = [row for row in rows if row.get("severity") == severity]
+    if enabled is not None:
+        rows = [row for row in rows if bool(row.get("enabled")) is enabled]
+    return _page(rows, page, page_size)
+
+
+@check_db_connected
+async def update_rule(
+    rule_id: int, payload: MetricRuleRequest, current_user: CurrentUser
+) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    current = await rule_db.get(
+        DB.get(),
+        id=rule_id,
     )
+    if not current:
+        raise BusiException("规则不存在", status_code=404)
+    return await create_rule(payload, current_user)
+
+
+@check_db_connected
+async def toggle_rule(rule_id: int, current_user: CurrentUser) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    current = await rule_db.get(
+        DB.get(),
+        id=rule_id,
+    )
+    if not current:
+        raise BusiException("规则不存在", status_code=404)
+    payload = MetricRuleRequest(
+        metric_code=current["metric_code"],
+        scope_type=current["scope_type"],
+        warning_threshold=current.get("warning_threshold"),
+        critical_threshold=current.get("critical_threshold"),
+        recovery_threshold=current.get("recovery_threshold"),
+        minimum_sample_count=current.get("minimum_sample_count") or 0,
+        consecutive_periods=current.get("consecutive_periods") or 1,
+        window_seconds=current.get("window_seconds") or 300,
+        trigger_type=current.get("trigger_type") or "threshold",
+        recovery_periods=current.get("recovery_periods") or 1,
+        enabled=not bool(current.get("enabled")),
+    )
+    return await create_rule(payload, current_user)
 
 
 @check_db_connected
@@ -2267,14 +3083,17 @@ async def channel_page(
     page_size: int,
     channel_name: str | None = None,
 ) -> dict[str, Any]:
-    return await _config_page(
-        current_user,
-        channel_db,
-        page,
-        page_size,
-        "channel_name",
-        channel_name,
-    )
+    await require_monitoring_access(current_user)
+    scope = await tenant_scope(current_user)
+    records = await notification_record_db.list(DB.get())
+    rows = [
+        _channel_view(row, records)
+        for row in await channel_db.list(DB.get(), **_scope_filter(scope))
+    ]
+    if channel_name:
+        keyword = channel_name.strip().lower()
+        rows = [row for row in rows if keyword in str(row.get("channel_name") or "").lower()]
+    return _page(rows, page, page_size)
 
 
 @check_db_connected
@@ -2289,7 +3108,19 @@ async def create_channel(payload: NotificationChannelRequest, current_user: Curr
     }
     async with DB.get().transaction():
         row_id = await channel_db.insert_(DB.get(), **data)
-        return await channel_db.list(DB.get(), id=row_id)
+        created = await channel_db.get(DB.get(), id=row_id)
+        await audit_service.record(
+            DB.get(),
+            action="monitor_notification_channel_created",
+            target_type="monitor_notification_channel",
+            target_id=row_id,
+            summary={
+                "tenant_id": scope,
+                "channel_type": payload.channel_type,
+                "resource_name": payload.channel_name,
+            },
+        )
+        return created
 
 
 @check_db_connected
@@ -2304,14 +3135,81 @@ async def policy_page(
     page_size: int,
     policy_name: str | None = None,
 ) -> dict[str, Any]:
-    return await _config_page(
-        current_user,
-        policy_db,
-        page,
-        page_size,
-        "policy_name",
-        policy_name,
-    )
+    await require_monitoring_access(current_user)
+    scope = await tenant_scope(current_user)
+    policies = await policy_db.list(DB.get(), **_scope_filter(scope))
+    channels = await channel_db.list(DB.get(), **_scope_filter(scope))
+    channel_map = {row["id"]: row for row in channels}
+    links = await policy_channel_db.list(DB.get())
+    rows = [_policy_view(row, links, channel_map) for row in policies]
+    if policy_name:
+        keyword = policy_name.strip().lower()
+        rows = [row for row in rows if keyword in str(row.get("policy_name") or "").lower()]
+    return _page(rows, page, page_size)
+
+
+@check_db_connected
+async def notifications_overview(
+    current_user: CurrentUser, time_range: str = "1h"
+) -> dict[str, Any]:
+    await require_monitoring_access(current_user)
+    scope = await tenant_scope(current_user)
+    start_at, end_at = _overview_window(time_range)
+    channels = await channel_db.list(DB.get(), **_scope_filter(scope))
+    policies = await policy_db.list(DB.get(), **_scope_filter(scope))
+    records = await notification_record_db.list(DB.get(), created_at__gte=start_at)
+    if scope is not None:
+        channel_ids = {row["id"] for row in channels}
+        policy_ids = {row["id"] for row in policies}
+        records = [
+            row
+            for row in records
+            if row.get("channel_id") in channel_ids and row.get("policy_id") in policy_ids
+        ]
+    sent_statuses = {"sent", "success", "completed"}
+    sent_count = sum(1 for record in records if record.get("status") in sent_statuses)
+    failed_count = sum(1 for record in records if record.get("status") == "failed")
+    completed_count = sent_count + failed_count
+    success_rate = sent_count / completed_count if completed_count else None
+    enabled_channels = sum(1 for row in channels if row.get("status") == "enabled")
+    enabled_policies = sum(1 for row in policies if row.get("status") == "enabled")
+    if failed_count:
+        conclusion = "部分失败"
+        conclusion_text = (
+            f"{enabled_channels} 个渠道可用，最近发送成功率 {success_rate * 100:.0f}%"
+            if success_rate is not None
+            else "存在通知发送失败"
+        )
+        conclusion_detail = f"有 {failed_count} 条通知失败，告警实例仍已保存。"
+    elif channels:
+        conclusion = "通知正常"
+        conclusion_text = (
+            f"{enabled_channels} 个渠道可用，最近发送成功率 {success_rate * 100:.0f}%"
+            if success_rate is not None
+            else f"{enabled_channels} 个渠道可用"
+        )
+        conclusion_detail = "通知失败不会影响告警实例保存。"
+    else:
+        conclusion = "暂无渠道"
+        conclusion_text = "当前范围暂无通知渠道"
+        conclusion_detail = "可按权限新增站内通知或 Webhook 渠道。"
+    return {
+        "conclusion": conclusion,
+        "conclusion_text": conclusion_text,
+        "conclusion_detail": conclusion_detail,
+        "channel_count": len(channels),
+        "enabled_channel_count": enabled_channels,
+        "policy_count": len(policies),
+        "enabled_policy_count": enabled_policies,
+        "sent_count": sent_count,
+        "failed_count": failed_count,
+        "success_rate": success_rate,
+        "scope_name": "平台范围" if scope is None else "当前租户",
+        "time_range": time_range,
+        "window_start": start_at,
+        "window_end": end_at,
+        "data_status": "ready" if channels or policies or records else "empty",
+    }
 
 
 @check_db_connected
@@ -2328,6 +3226,17 @@ async def create_policy(payload: NotificationPolicyRequest, current_user: Curren
         )
         for channel_id in payload.channel_ids:
             await policy_channel_db.insert_(db, policy_id=policy_id, channel_id=channel_id)
+        await audit_service.record(
+            db,
+            action="monitor_notification_policy_created",
+            target_type="monitor_notification_policy",
+            target_id=policy_id,
+            summary={
+                "tenant_id": scope,
+                "severity": payload.severity,
+                "resource_name": payload.policy_name,
+            },
+        )
         rows = await policy_db.list(db, id=policy_id)
         return rows[0] if rows else None
 
@@ -2343,11 +3252,18 @@ __all__ = (
     "tasks_overview",
     "task_page",
     "event_page",
+    "event_detail",
+    "events_overview",
     "alert_page",
+    "alert_detail",
+    "alerts_overview",
     "metric_series",
     "create_rule",
     "list_rules",
     "rule_page",
+    "rules_overview",
+    "update_rule",
+    "toggle_rule",
     "apply_rule",
     "alert_action",
     "channel_page",
@@ -2357,6 +3273,9 @@ __all__ = (
     "list_policies",
     "create_policy",
     "notification_record_page",
+    "notifications_overview",
     "audit_page",
+    "audit_options",
+    "audit_detail",
     "analysis_overview",
 )

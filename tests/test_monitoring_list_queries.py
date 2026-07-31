@@ -9,6 +9,7 @@ from app.core.common.auth import CurrentUser
 from app.core.services import monitoring
 from app.db import api as db_api
 from app.db.base import DB
+from app.schemas.monitoring import MetricRuleRequest
 
 
 @pytest.fixture
@@ -152,8 +153,40 @@ async def test_event_alert_and_audit_pages_apply_all_query_fields(list_context, 
 
     async def alerts(*_, **__):
         return [
-            {"severity": "critical", "status": "firing", "resource_code": "index-worker"},
-            {"severity": "critical", "status": "firing", "resource_code": "database"},
+            {
+                "metric_code": "task_failure_rate",
+                "severity": "critical",
+                "status": "firing",
+                "resource_code": "index-worker",
+                "first_fired_at": now,
+                "last_fired_at": now,
+            },
+            {
+                "metric_code": "db_connection_usage",
+                "severity": "critical",
+                "status": "firing",
+                "resource_code": "database",
+                "first_fired_at": now,
+                "last_fired_at": now,
+            },
+        ]
+
+    async def definitions(*_, **__):
+        return [
+            {
+                "metric_code": "task_failure_rate",
+                "metric_name": "任务失败率",
+                "metric_domain": "task",
+                "status": "active",
+                "version": 1,
+            },
+            {
+                "metric_code": "db_connection_usage",
+                "metric_name": "数据库连接使用率",
+                "metric_domain": "platform",
+                "status": "active",
+                "version": 1,
+            },
         ]
 
     async def audits(*_, **__):
@@ -170,11 +203,19 @@ async def test_event_alert_and_audit_pages_apply_all_query_fields(list_context, 
                 "result": "success",
                 "target_id": "alert-8",
             },
+            ]
+
+    async def users(*_, **__):
+        return [
+            {"id": 11, "username": "admin", "display_name": "林管理员"},
+            {"id": 12, "username": "auditor", "display_name": "审计员"},
         ]
 
     monkeypatch.setattr(monitoring.event_db, "list", events)
     monkeypatch.setattr(monitoring.alert_db, "list", alerts)
+    monkeypatch.setattr(monitoring.definition_db, "list", definitions)
     monkeypatch.setattr(monitoring.audit_log_db, "list", audits)
+    monkeypatch.setattr(monitoring.user_db, "list", users)
 
     event_result = await monitoring.event_page(
         list_context,
@@ -187,7 +228,15 @@ async def test_event_alert_and_audit_pages_apply_all_query_fields(list_context, 
         time_range="1h",
         status="failed",
     )
-    alert_result = await monitoring.alert_page(list_context, 1, 10, "firing", "critical", "index")
+    alert_result = await monitoring.alert_page(
+        list_context,
+        1,
+        10,
+        status="firing",
+        severity="critical",
+        monitor_domain="task",
+        resource_name="index",
+    )
     audit_result = await monitoring.audit_page(
         list_context,
         1,
@@ -208,27 +257,68 @@ async def test_event_alert_and_audit_pages_apply_all_query_fields(list_context, 
 async def test_rule_channel_and_policy_pages_return_backend_totals(list_context, monkeypatch):
     async def rules(*_, **__):
         return [
-            {"metric_code": "qa_error_rate", "enabled": True},
-            {"metric_code": "db_usage", "enabled": True},
+            {
+                "id": 1,
+                "metric_code": "qa_error_rate",
+                "scope_type": "platform",
+                "critical_threshold": 0.1,
+                "enabled": True,
+                "version": 1,
+            },
+            {
+                "id": 2,
+                "metric_code": "db_usage",
+                "scope_type": "platform",
+                "warning_threshold": 0.8,
+                "enabled": True,
+                "version": 1,
+            },
+        ]
+
+    async def definitions(*_, **__):
+        return [
+            {
+                "metric_code": "qa_error_rate",
+                "metric_name": "问答错误率",
+                "metric_domain": "qa",
+                "status": "active",
+                "version": 1,
+            },
+            {
+                "metric_code": "db_usage",
+                "metric_name": "数据库使用率",
+                "metric_domain": "platform",
+                "status": "active",
+                "version": 1,
+            },
         ]
 
     async def channels(*_, **__):
         return [
-            {"channel_name": "平台 Webhook"},
-            {"channel_name": "站内通知"},
+            {"id": 1, "channel_name": "平台 Webhook", "channel_type": "webhook"},
+            {"id": 2, "channel_name": "站内通知", "channel_type": "in_app"},
         ]
 
     async def policies(*_, **__):
         return [
-            {"policy_name": "严重告警通知"},
-            {"policy_name": "普通告警通知"},
+            {"id": 1, "policy_name": "严重告警通知", "event_types": []},
+            {"id": 2, "policy_name": "普通告警通知", "event_types": []},
         ]
 
+    async def records(*_, **__):
+        return []
+
+    async def links(*_, **__):
+        return []
+
     monkeypatch.setattr(monitoring.rule_db, "list", rules)
+    monkeypatch.setattr(monitoring.definition_db, "list", definitions)
     monkeypatch.setattr(monitoring.channel_db, "list", channels)
     monkeypatch.setattr(monitoring.policy_db, "list", policies)
+    monkeypatch.setattr(monitoring.notification_record_db, "list", records)
+    monkeypatch.setattr(monitoring.policy_channel_db, "list", links)
 
-    rule_result = await monitoring.rule_page(list_context, 1, 10, "qa", True)
+    rule_result = await monitoring.rule_page(list_context, 1, 10, rule_name="问答", enabled=True)
     channel_result = await monitoring.channel_page(list_context, 1, 10, "Webhook")
     policy_result = await monitoring.policy_page(list_context, 1, 10, "严重")
 
@@ -386,6 +476,111 @@ def test_event_list_excludes_worker_idle_polling_events():
     assert monitoring._visible_events(events) == [events[1]]
 
 
+@pytest.mark.asyncio
+async def test_alert_overview_returns_lifecycle_trend_and_priority(list_context, monkeypatch):
+    now = utils.utc_now()
+
+    async def alerts(*_, **__):
+        return [
+            {
+                "id": 1,
+                "severity": "critical",
+                "status": "acknowledged",
+                "first_fired_at": now - timedelta(minutes=12),
+                "last_fired_at": now,
+                "acknowledged_at": now - timedelta(minutes=5),
+            },
+            {
+                "id": 2,
+                "severity": "warning",
+                "status": "resolved",
+                "first_fired_at": now - timedelta(minutes=20),
+                "last_fired_at": now - timedelta(minutes=3),
+                "resolved_at": now - timedelta(minutes=2),
+            },
+        ]
+
+    monkeypatch.setattr(monitoring.alert_db, "list", alerts)
+
+    result = await monitoring.alerts_overview(list_context)
+
+    assert result["conclusion"] == "需要处理"
+    assert result["unresolved_count"] == 1
+    assert result["lifecycle"]["acknowledged"] == 1
+    assert result["lifecycle"]["resolved"] == 1
+    assert len(result["trend"]) == 13
+    assert [item["severity_name"] for item in result["severity_distribution"]] == [
+        "严重",
+        "警告",
+        "提示",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_notification_contract_joins_channel_policy_and_alert(list_context, monkeypatch):
+    now = utils.utc_now()
+
+    async def channels(*_, **__):
+        return [
+            {
+                "id": 1,
+                "channel_name": "平台 Webhook",
+                "channel_type": "webhook",
+                "status": "enabled",
+            }
+        ]
+
+    async def policies(*_, **__):
+        return [
+            {
+                "id": 2,
+                "policy_name": "严重告警通知",
+                "severity": "critical",
+                "scope": {"scope_type": "platform"},
+                "status": "enabled",
+            }
+        ]
+
+    async def alerts(*_, **__):
+        return [{"id": 3, "severity": "critical"}]
+
+    async def records(*_, **__):
+        return [
+            {
+                "id": 4,
+                "channel_id": 1,
+                "policy_id": 2,
+                "alert_id": 3,
+                "event_type": "firing",
+                "status": "failed",
+                "failure_category": "timeout",
+                "retry_count": 1,
+                "created_at": now,
+            }
+        ]
+
+    monkeypatch.setattr(monitoring.channel_db, "list", channels)
+    monkeypatch.setattr(monitoring.policy_db, "list", policies)
+    monkeypatch.setattr(monitoring.alert_db, "list", alerts)
+    monkeypatch.setattr(monitoring.notification_record_db, "list", records)
+
+    overview = await monitoring.notifications_overview(list_context)
+    page = await monitoring.notification_record_page(
+        list_context,
+        1,
+        10,
+        channel_type="webhook",
+        status="failed",
+        severity="critical",
+    )
+
+    assert overview["failed_count"] == 1
+    assert page["total"] == 1
+    assert page["items"][0]["channel_name"] == "平台 Webhook"
+    assert page["items"][0]["policy_name"] == "严重告警通知"
+    assert page["items"][0]["failure_summary"] == "timeout"
+
+
 def test_metric_status_keeps_unassessed_ready_data_unknown():
     assert (
         monitoring._metric_status({"data_status": "ready", "assessment_status": "unknown"})
@@ -493,3 +688,99 @@ async def test_metric_detail_returns_definition_without_fake_value(list_context,
     assert result["metric"]["metric_value"] is None
     assert result["metric"]["data_status"] == "empty"
     assert result["trend"] == []
+
+
+@pytest.mark.asyncio
+async def test_rule_update_and_toggle_create_audited_versions(monkeypatch):
+    class TransactionDatabase:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        def transaction(self):
+            return self
+
+    database = TransactionDatabase()
+    rules = [
+        {
+            "id": 1,
+            "metric_code": "qa_error_rate",
+            "scope_type": "platform",
+            "warning_threshold": 0.1,
+            "critical_threshold": 0.2,
+            "recovery_threshold": 0.05,
+            "minimum_sample_count": 10,
+            "consecutive_periods": 3,
+            "window_seconds": 300,
+            "trigger_type": "threshold",
+            "recovery_periods": 2,
+            "enabled": True,
+            "version": 1,
+        }
+    ]
+    audits = []
+
+    async def inject_db():
+        DB.set(database)
+
+    async def allow(*_):
+        return {}
+
+    async def list_rules(*_, **filters):
+        return [
+            row
+            for row in rules
+            if all(row.get(key) == value for key, value in filters.items())
+        ]
+
+    async def get_rule(*_, **filters):
+        return next(
+            (
+                row
+                for row in rules
+                if all(row.get(key) == value for key, value in filters.items())
+            ),
+            None,
+        )
+
+    async def update_rule(_, values, **filters):
+        target = await get_rule(_, **filters)
+        target.update(values)
+
+    async def insert_rule(_, **values):
+        rule_id = len(rules) + 1
+        rules.append({"id": rule_id, **values})
+        return rule_id
+
+    async def audit(*_, **values):
+        audits.append(values)
+
+    monkeypatch.setattr(db_api, "inject_db", inject_db)
+    monkeypatch.setattr(monitoring, "require_monitoring_access", allow)
+    monkeypatch.setattr(monitoring.rule_db, "list", list_rules)
+    monkeypatch.setattr(monitoring.rule_db, "get", get_rule)
+    monkeypatch.setattr(monitoring.rule_db, "update_", update_rule)
+    monkeypatch.setattr(monitoring.rule_db, "insert_", insert_rule)
+    monkeypatch.setattr(monitoring.audit_service, "record", audit)
+
+    user = CurrentUser(user_id="11")
+    payload = MetricRuleRequest(
+        metric_code="qa_error_rate",
+        warning_threshold=0.12,
+        critical_threshold=0.25,
+        recovery_threshold=0.05,
+        minimum_sample_count=10,
+        consecutive_periods=3,
+        recovery_periods=2,
+    )
+    updated = await monitoring.update_rule(1, payload, user)
+    toggled = await monitoring.toggle_rule(updated["id"], user)
+
+    assert updated["version"] == 2
+    assert updated["warning_threshold"] == 0.12
+    assert toggled["version"] == 3
+    assert toggled["enabled"] is False
+    assert rules[0]["enabled"] is False
+    assert {audit["action"] for audit in audits} == {"monitor_rule_created"}

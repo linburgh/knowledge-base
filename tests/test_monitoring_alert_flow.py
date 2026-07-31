@@ -228,6 +228,13 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
 
     acknowledged = await monitoring.alert_action(state["alerts"][0]["id"], "acknowledge", user)
     assert acknowledged["status"] == "acknowledged"
+    suppressed = await monitoring.alert_action(
+        state["alerts"][0]["id"], "suppress", user, "计划维护期间暂停通知"
+    )
+    assert suppressed["status"] == "acknowledged"
+    await monitoring.alert_action(
+        state["alerts"][0]["id"], "note", user, "已通知值班人员"
+    )
 
     state["events"] = [
         {
@@ -242,6 +249,15 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     assert state["alerts"][0]["status"] == "resolved"
     assert any(item["event_type"] == "recovery" for item in state["records"])
     assert "monitor_alert_recovered" in {item["action"] for item in state["audits"]}
+    closed = await monitoring.alert_action(
+        state["alerts"][0]["id"], "close", user, "恢复证据已确认"
+    )
+    assert closed["status"] == "closed"
+    assert {item["action"] for item in state["audits"]} >= {
+        "monitor_alert_suppress",
+        "monitor_alert_note",
+        "monitor_alert_close",
+    }
 
     sent = await monitoring_notify.run_once()
     assert sent == 2

@@ -834,7 +834,7 @@
         tasks: ['任务监控', ['任务类型','任务状态','工作节点','租户范围','创建时间'], ['任务名称','任务类型','当前状态','执行进度','等待时长','操作入口']],
         alerts: ['告警中心', ['告警级别','告警状态','监控领域','规则名称','资源名称','发生时间'], ['告警级别','告警标题','监控领域','资源名称','当前数值','告警阈值','最近发生','持续时长','告警状态','操作入口']],
         events: ['事件中心', ['事件类型','监控领域','资源名称','租户范围','发生时间'], ['发生时间','事件类型','事件内容','资源名称','事件状态','操作入口']],
-        audit: ['审计管理', ['操作人员','操作类型','资源标识','操作结果','开始时间','结束时间'], ['操作时间','操作人员','操作类型','资源标识','操作结果','操作入口']],
+        audit: ['审计管理', ['操作人员','操作类型','资源标识','操作结果','开始时间','结束时间'], ['操作时间','操作人员','操作类型','资源名称','操作结果','操作入口']],
       }[kind];
       return `<div class="content">${pageHead(cfg[0], description, `<button class="btn" id="refresh">↻ 刷新</button>${['collection','notifications'].includes(kind) ? '<button class="btn primary" id="addAction">新增配置</button>' : ''}`)}<section class="panel"><div class="filters query-form">${cfg[1].map(label => `<div class="query-field"><label>${label}</label><select class="control"><option>全部</option><option>正常</option><option>异常</option></select></div>`).join('')}${kind === 'audit' ? '' : '<div class="query-field"><label>关键内容</label><input class="text-input" placeholder="请输入关键内容" /></div>'}<div class="query-actions"><button class="btn primary" id="search">查询</button><button class="btn" id="reset">重置</button></div></div>${tableFor(kind, cfg[2])}<div class="pager"><span>共 24 条</span><button>上一页</button><button class="active">1</button><button>2</button><button>3</button><button>下一页</button><select class="control"><option>10条/页</option><option>20条/页</option></select></div></section></div>`;
     }
@@ -847,7 +847,7 @@
       else if (kind === 'metrics') rows = [['问答成功率','知识库问答','99.2','%','12,350','1小时','达标',statusTag('completed'),'2026年07月30日 10:00:00'],['问答 P95','知识库问答','1.8','秒','12,480','1小时','预警',statusTag('acknowledged'),'2026年07月30日 10:00:00'],['评测执行证明完整率','自主评测','100','%','2','1小时','达标',statusTag('completed'),'2026年07月30日 10:00:00'],['向量服务可用率','平台运行','—','%','0','1小时','无法判定','<span class="status gray">暂无数据</span>','2026年07月30日 10:00:00']].map(r => [...r, '<button class="btn text" data-metric="0">查看详情</button>']);
       else if (kind === 'collection') rows = [['问答 API','通用采集','09:30:20','42ms',statusTag('completed')],['评测 Worker','周期采集','09:30:12','—',statusTag('firing')],['向量服务','依赖探针','09:28:14','1.2s',statusTag('acknowledged')],['数据库连接池','容量探针','09:30:18','18ms',statusTag('completed')]].map(r => [...r, '<button class="btn text" data-collection="0">查看详情</button>']);
       else if (kind === 'notifications') rows = [['站内通知','严重告警通知','全平台 / 严重','09:30:22',statusTag('completed')],['Webhook','告警恢复通知','演示租户 / 全部','09:18:10',statusTag('failed')],['站内通知','评测门禁通知','当前租户 / 提示','08:46:12',statusTag('completed')]].map(r => [...r, '<button class="btn text" data-notice="0">查看详情</button>']);
-      else if (kind === 'audit') rows = [['09:30:26','林管理员','确认告警','alert-10021',statusTag('completed')],['09:28:20','林管理员','查询指标','metric.qa_p95',statusTag('completed')],['09:18:34','系统','告警触发','alert-10021',statusTag('completed')]].map((r, i) => [...r, `<button class="btn text" data-audit="${i}">查看详情</button>`]);
+      else if (kind === 'audit') rows = [['09:30:26','林管理员','确认告警','Worker 心跳过期',statusTag('completed')],['09:28:20','林管理员','查询指标','问答 P95',statusTag('completed')],['09:18:34','系统','告警触发','Worker 心跳过期',statusTag('completed')]].map((r, i) => [...r, `<button class="btn text" data-audit="${i}">查看详情</button>`]);
       if (!rows.length) return '<div class="empty">暂无数据，请调整筛选条件后重试</div>';
       return `<div class="table-wrap"><table><thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
     }
@@ -1108,7 +1108,7 @@
         tasks: { 状态: '当前状态', 进度: '执行进度', 操作: '操作入口' },
         alerts: { 级别: '告警级别', 监控域: '监控领域', 资源: '资源名称', 当前值: '当前数值', 阈值: '告警阈值', 状态: '告警状态', 确认人: '确认人员', 操作: '操作入口' },
         events: { 监控域: '监控领域', 资源: '资源名称', 状态: '事件状态', 操作: '操作入口' },
-        audit: { 操作者: '操作人员', 资源: '资源标识', 结果: '操作结果', 操作: '操作入口' },
+        audit: { 操作者: '操作人员', 资源: '资源名称', 结果: '操作结果', 操作: '操作入口' },
         rules: { 监控域: '监控领域', 级别: '告警级别', 触发表达式: '触发条件', 状态: '规则状态', 版本: '版本信息', 操作: '操作入口' },
         notifications: { 渠道: '通知渠道', 状态: '发送状态', 操作: '操作入口' }
       };
