@@ -1,7 +1,9 @@
 """Autonomous evaluation worker managed by the backend application."""
 
 import asyncio
+import inspect
 from datetime import UTC, datetime
+from time import monotonic
 
 from app.agents.evaluation.agent import EvaluationAgent
 from app.agents.evaluation.dataset import load_questions, load_questions_content
@@ -10,6 +12,7 @@ from app.agents.evaluation.report import build_report
 from app.agents.knowledge.agent import run_knowledge_agent
 from app.config import CONF
 from app.core.common.log import LOG
+from app.core.monitoring import emit_gather_event, monitor_gather
 from app.db import document_chunk as document_chunk_db
 from app.db import evaluation_case_result as case_db
 from app.db import evaluation_optimization as optimization_db
@@ -38,9 +41,30 @@ async def _load_generation_context(db, config, fallback: str | None) -> str | No
     return knowledge_text or fallback
 
 
+async def _run_agent_with_budget(
+    evaluation_agent,
+    config: EvaluationConfig,
+    questions,
+    event_fields: dict,
+    timeout_seconds: float,
+):
+    run_parameters = inspect.signature(evaluation_agent.run).parameters
+    if "monitoring_fields" in run_parameters:
+        operation = evaluation_agent.run(
+            config,
+            questions,
+            monitoring_fields=event_fields,
+        )
+    else:
+        operation = evaluation_agent.run(config, questions)
+    return await asyncio.wait_for(operation, timeout=max(0.001, timeout_seconds))
+
+
 @check_db_connected
+@monitor_gather("evaluation.run")
 async def run_evaluation(run_id: int) -> int:
     LOG.info("自主评测Worker run start run_id={}", run_id)
+    run_started_at = monotonic()
     db = DB.get()
     run = await run_db.get(db, id=run_id)
     if run is None or run["status"] not in {"pending", "running"}:
@@ -54,6 +78,13 @@ async def run_evaluation(run_id: int) -> int:
     if task is None:
         LOG.warning("自主评测Worker task missing run_id={} task_id={}", run_id, run["task_id"])
         await run_db.update_(db, {"status": "failed", "finished_at": _now()}, id=run_id)
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_run_failed",
+            run_id=run_id,
+            task_id=run["task_id"],
+            failure_stage="task_lookup",
+        )
         return run_id
     LOG.info(
         "自主评测Worker preparation started run_id={} task_id={} kb_id={}",
@@ -66,8 +97,20 @@ async def run_evaluation(run_id: int) -> int:
         {"status": "running", "stage": "prepare", "started_at": _now(), "updated_at": _now()},
         id=run_id,
     )
+    event_fields = {
+        "run_id": run_id,
+        "task_id": run["task_id"],
+        "kb_id": task.get("kb_id"),
+        "tenant_id": task.get("tenant_id"),
+    }
     try:
         config = EvaluationConfig.model_validate(task["config"])
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_config_validated",
+            questions_source=config.questions_source,
+            **event_fields,
+        )
         if config.questions_source == "imported":
             if task["config"].get("questions_content"):
                 questions = load_questions_content(
@@ -95,6 +138,13 @@ async def run_evaluation(run_id: int) -> int:
             config.questions_source,
             len(questions),
         )
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_questions_ready",
+            question_count=len(questions),
+            questions_source=config.questions_source,
+            **event_fields,
+        )
         await run_db.update_(
             db,
             {
@@ -107,7 +157,40 @@ async def run_evaluation(run_id: int) -> int:
             id=run_id,
         )
         LOG.info("自主评测Worker Agent execution started run_id={}", run_id)
-        results, metrics = await EvaluationAgent(run_knowledge_agent).run(config, questions)
+        evaluation_agent = EvaluationAgent(run_knowledge_agent)
+        remaining_seconds = max(
+            0.001,
+            config.run_timeout_seconds - (monotonic() - run_started_at),
+        )
+        try:
+            results, metrics = await _run_agent_with_budget(
+                evaluation_agent,
+                config,
+                questions,
+                event_fields,
+                remaining_seconds,
+            )
+        except TimeoutError:
+            await run_db.update_(
+                db,
+                {
+                    "status": "failed",
+                    "stage": "execute",
+                    "error_message": "评测运行超过最大执行时间",
+                    "finished_at": _now(),
+                    "updated_at": _now(),
+                },
+                id=run_id,
+            )
+            await emit_gather_event(
+                "evaluation.run",
+                "evaluation_run_timeout",
+                timeout_stage="agent_execution",
+                completed_count=0,
+                duration_ms=int((monotonic() - run_started_at) * 1000),
+                **event_fields,
+            )
+            return run_id
         LOG.info(
             "自主评测Worker Agent execution completed run_id={} result_count={} conclusion={}",
             run_id,
@@ -115,6 +198,13 @@ async def run_evaluation(run_id: int) -> int:
             metrics.conclusion,
         )
         failed_count = sum(result.status != "completed" for result in results)
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_metrics_completed",
+            sample_count=len(results),
+            conclusion=metrics.conclusion,
+            **event_fields,
+        )
         await run_db.update_(
             db,
             {
@@ -168,6 +258,38 @@ async def run_evaluation(run_id: int) -> int:
             run_id,
             metrics.conclusion,
         )
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_report_persisted",
+            result_count=len(results),
+            **event_fields,
+        )
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_run_completed",
+            result_count=len(results),
+            failed_count=failed_count,
+            conclusion=metrics.conclusion,
+            **event_fields,
+        )
+    except asyncio.CancelledError:
+        await run_db.update_(
+            db,
+            {
+                "status": "cancelled",
+                "stage": "report",
+                "finished_at": _now(),
+                "updated_at": _now(),
+            },
+            id=run_id,
+        )
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_run_cancelled",
+            cancel_source="worker_shutdown",
+            **event_fields,
+        )
+        raise
     except Exception as exc:
         LOG.opt(exception=exc).error("自主评测Worker run failed run_id={}", run_id)
         await run_db.update_(
@@ -182,6 +304,16 @@ async def run_evaluation(run_id: int) -> int:
             },
             id=run_id,
         )
+        await emit_gather_event(
+            "evaluation.run",
+            "evaluation_run_failed",
+            run_id=run_id,
+            task_id=run.get("task_id"),
+            kb_id=task.get("kb_id"),
+            tenant_id=task.get("tenant_id"),
+            failure_stage="run_execution",
+            error=exc,
+        )
     return run_id
 
 
@@ -195,6 +327,13 @@ async def run_pending_once() -> bool:
         LOG.info("自主评测Worker poll empty")
         return False
     LOG.info("自主评测Worker poll claimed run_id={}", pending[0]["id"])
+    await emit_gather_event(
+        "evaluation.run",
+        "evaluation_task_claimed",
+        run_id=int(pending[0]["id"]),
+        task_id=pending[0].get("task_id"),
+        worker_name="evaluation",
+    )
     await run_evaluation(int(pending[0]["id"]))
     return True
 
@@ -202,20 +341,53 @@ async def run_pending_once() -> bool:
 async def run_forever(stop_event: asyncio.Event) -> None:
     """Keep consuming autonomous evaluation runs until shutdown."""
     LOG.info("自主评测Worker loop started")
-    while not stop_event.is_set():
-        try:
-            handled = await run_pending_once()
-            if not handled:
-                await asyncio.wait_for(
-                    stop_event.wait(),
-                    timeout=max(1, int(CONF.default.evaluation_worker_poll_seconds)),
+    await emit_gather_event(
+        "worker.lifecycle",
+        "worker_started",
+        worker_name="evaluation",
+        source_code="evaluation",
+    )
+    try:
+        while not stop_event.is_set():
+            try:
+                handled = await run_pending_once()
+                await emit_gather_event(
+                    "worker.lifecycle",
+                    "worker_heartbeat",
+                    worker_name="evaluation",
+                    source_code="evaluation",
                 )
-        except TimeoutError:
-            continue
-        except asyncio.CancelledError:
-            LOG.info("自主评测Worker loop cancelled")
-            raise
-        except Exception as exc:
-            LOG.opt(exception=exc).error("自主评测Worker loop error")
-            await asyncio.sleep(max(1, int(CONF.default.evaluation_worker_poll_seconds)))
+                if not handled:
+                    await emit_gather_event(
+                        "worker.lifecycle",
+                        "worker_idle",
+                        worker_name="evaluation",
+                        source_code="evaluation",
+                    )
+                    await asyncio.wait_for(
+                        stop_event.wait(),
+                        timeout=max(1, int(CONF.default.evaluation_worker_poll_seconds)),
+                    )
+            except TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                LOG.info("自主评测Worker loop cancelled")
+                raise
+            except Exception as exc:
+                LOG.opt(exception=exc).error("自主评测Worker loop error")
+                await emit_gather_event(
+                    "worker.lifecycle",
+                    "worker_failed",
+                    worker_name="evaluation",
+                    source_code="evaluation",
+                    error=exc,
+                )
+                await asyncio.sleep(max(1, int(CONF.default.evaluation_worker_poll_seconds)))
+    finally:
+        await emit_gather_event(
+            "worker.lifecycle",
+            "worker_stopped",
+            worker_name="evaluation",
+            source_code="evaluation",
+        )
     LOG.info("自主评测Worker loop stopped")

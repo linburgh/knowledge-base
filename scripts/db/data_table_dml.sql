@@ -344,3 +344,308 @@ where action.code like 'monitoring:%'
         and relation.role_code = role_item.role_code
         and relation.action_id = action.id
   );
+
+-- 自主监控采集目标由系统发布统一维护，业务页面只读展示运行事实。
+-- target_locator 只保存稳定代码定位、预置适配器和非敏感探针参数，不保存凭证或任意可执行代码。
+insert into t_monitor_gather_target (
+    target_code,
+    target_name,
+    target_type,
+    target_locator,
+    enabled,
+    tenant_id,
+    version,
+    effective_at,
+    created_by,
+    updated_by
+)
+select
+    target.target_code,
+    target.target_name,
+    target.target_type,
+    target.target_locator::jsonb,
+    target.enabled,
+    null,
+    1,
+    timestamptz '2026-07-31 00:00:00+00:00',
+    'system-release',
+    'system-release'
+from (
+    values
+        (
+            'knowledge.qa',
+            '知识库问答',
+            'method',
+            '{"module":"app.agents.knowledge.agent","callable":"run_knowledge_agent","collector":"knowledge_qa_collector","input_mapping":{"kb_id":"args.0.kb_id","tenant_id":"context.tenant_id","purpose":"context.purpose"},"output_mapping":{"duration_ms":"result.duration_ms","hit_count":"result.hit_count","citation_count":"result.citations.length","termination_reason":"result.termination_reason"}}',
+            true
+        ),
+        (
+            'evaluation.run',
+            '自主评测运行',
+            'method',
+            '{"module":"app.workers.evaluation","callable":"run_evaluation","collector":"evaluation_run_collector","input_mapping":{"run_id":"args.0"}}',
+            true
+        ),
+        (
+            'document.ingestion',
+            '文档入库处理',
+            'method',
+            '{"module":"app.core.services.document","callable":"upload","collector":"document_ingestion_collector","input_mapping":{"kb_id":"args.1","source_type":"kwargs.source_type"},"output_mapping":{"document_id":"result.id","file_size":"result.file_size"}}',
+            true
+        ),
+        (
+            'document.indexing',
+            '文档索引构建',
+            'method',
+            '{"module":"app.core.services.ingestion","callable":"run_claimed_task","collector":"document_indexing_collector","input_mapping":{"task_id":"args.0"},"output_mapping":{"document_id":"result.document_id","kb_id":"result.kb_id","chunk_count":"result.chunk_count","index_version":"result.index_version_id"}}',
+            true
+        ),
+        (
+            'api.http',
+            'API 请求采集',
+            'api',
+            '{"adapter":"fastapi_middleware","collector":"http_request_collector","path_mode":"route_template","exclude_paths":["/api/v1/health","/docs","/openapi.json"]}',
+            true
+        ),
+        (
+            'db.execute',
+            '数据库操作采集',
+            'db',
+            '{"adapter":"database_access","collector":"sql_operation_collector","slow_threshold_ms":500,"exclude_tables":["t_monitor_event","t_monitor_state_snapshot","t_monitor_metric_value","t_monitor_alert"]}',
+            true
+        ),
+        (
+            'worker.lifecycle',
+            'Worker 生命周期',
+            'worker',
+            '{"adapter":"worker_loop","collector":"worker_lifecycle_collector","heartbeat_interval_seconds":30,"workers":["indexing","evaluation","monitoring_collect","monitoring_aggregate","monitoring_notify"]}',
+            true
+        ),
+        (
+            'probe.api',
+            'API 服务探针',
+            'probe',
+            '{"probe":"process_api","resource_type":"service","resource_code":"api-service","interval_seconds":60,"timeout_seconds":3}',
+            true
+        ),
+        (
+            'probe.database',
+            '数据库探针',
+            'probe',
+            '{"probe":"database","resource_type":"service","resource_code":"database","interval_seconds":60,"timeout_seconds":3}',
+            true
+        ),
+        (
+            'probe.llm',
+            '模型服务探针',
+            'probe',
+            '{"probe":"http_dependency","config_group":"chat","resource_type":"dependency","resource_code":"llm-service","interval_seconds":60,"timeout_seconds":5}',
+            true
+        ),
+        (
+            'probe.embedding',
+            'Embedding 探针',
+            'probe',
+            '{"probe":"http_dependency","config_group":"embedding","resource_type":"dependency","resource_code":"embedding-service","interval_seconds":60,"timeout_seconds":5}',
+            true
+        ),
+        (
+            'probe.rerank',
+            'Rerank 探针',
+            'probe',
+            '{"probe":"http_dependency","config_group":"rag","resource_type":"dependency","resource_code":"rerank-service","interval_seconds":60,"timeout_seconds":5}',
+            true
+        ),
+        (
+            'probe.vector',
+            '向量能力探针',
+            'probe',
+            '{"probe":"vector_database","resource_type":"dependency","resource_code":"vector-service","interval_seconds":60,"timeout_seconds":3}',
+            true
+        ),
+        (
+            'probe.storage',
+            '对象存储探针',
+            'probe',
+            '{"probe":"object_storage","config_group":"storage","resource_type":"dependency","resource_code":"storage-service","interval_seconds":60,"timeout_seconds":5}',
+            true
+        ),
+        (
+            'probe.worker',
+            'Worker 状态探针',
+            'probe',
+            '{"probe":"worker_status","resource_type":"worker","resource_code":"worker-runtime","interval_seconds":30,"timeout_seconds":3}',
+            true
+        ),
+        (
+            'probe.task_backlog',
+            '任务积压探针',
+            'probe',
+            '{"probe":"task_backlog","resource_type":"task","resource_code":"task-backlog","interval_seconds":60,"timeout_seconds":3}',
+            true
+        ),
+        (
+            'capacity.database',
+            '数据库连接容量',
+            'probe',
+            '{"probe":"database_capacity","resource_type":"capacity","resource_code":"database-capacity","interval_seconds":60,"timeout_seconds":3,"warning_threshold":80,"critical_threshold":95}',
+            true
+        ),
+        (
+            'capacity.queue',
+            '任务队列容量',
+            'probe',
+            '{"probe":"queue_capacity","resource_type":"capacity","resource_code":"task-queue-capacity","interval_seconds":60,"timeout_seconds":3,"capacity_limit":100,"warning_threshold":80,"critical_threshold":95}',
+            true
+        ),
+        (
+            'capacity.file_storage',
+            '文件存储容量',
+            'probe',
+            '{"probe":"file_storage_capacity","resource_type":"capacity","resource_code":"file-storage-capacity","interval_seconds":300,"timeout_seconds":30,"quota_bytes":10737418240,"warning_threshold":80,"critical_threshold":90}',
+            true
+        ),
+        (
+            'capacity.vector_storage',
+            '向量存储容量',
+            'probe',
+            '{"probe":"vector_storage_capacity","resource_type":"capacity","resource_code":"vector-storage-capacity","interval_seconds":300,"timeout_seconds":10,"quota_bytes":1073741824,"warning_threshold":80,"critical_threshold":90}',
+            true
+        ),
+        (
+            'probe.qa',
+            '问答链路主动探针',
+            'probe',
+            '{"probe":"knowledge_qa","purpose":"monitor_probe","resource_type":"service","resource_code":"knowledge-qa-probe","interval_seconds":300,"timeout_seconds":120,"tenant_id":null,"kb_id":null,"user_id":null,"fixed_question":"请简要说明当前监控知识库的用途。","top_k":3}',
+            false
+        ),
+        (
+            'collector.self',
+            '监控采集器状态',
+            'collector',
+            '{"probe":"collector_self","resource_type":"collector","resource_code":"monitor-collector","interval_seconds":60,"stale_after_seconds":180}',
+            true
+        )
+) as target(target_code, target_name, target_type, target_locator, enabled)
+on conflict (target_code, version) do update
+set target_name = excluded.target_name,
+    target_type = excluded.target_type,
+    target_locator = excluded.target_locator,
+    enabled = excluded.enabled,
+    effective_at = excluded.effective_at,
+    updated_by = excluded.updated_by,
+    updated_at = now();
+
+-- 采集动作仅引用预置 Collector 和受控字段白名单。
+insert into t_monitor_gather_action (
+    target_code,
+    event_type,
+    field_mapping,
+    sampling_rate,
+    enabled,
+    version
+)
+select
+    action.target_code,
+    action.event_type,
+    jsonb_build_object(
+        'hook', action.hook,
+        'collector', action.collector,
+        'source_type', action.source_type,
+        'status', action.event_status,
+        'sampling', jsonb_build_object('mode', 'all'),
+        'payload_allowlist', to_jsonb(action.payload_allowlist)
+    ),
+    action.sampling_rate,
+    true,
+    1
+from (
+    values
+        ('knowledge.qa', 'qa_started', 'before', 'knowledge_qa_collector', 'knowledge_agent', 'started', 1::numeric, array['attempt']),
+        ('knowledge.qa', 'qa_retrieval_completed', 'explicit', 'knowledge_qa_collector', 'knowledge_agent', 'completed', 1::numeric, array['hit_count','retrieval_duration_ms']),
+        ('knowledge.qa', 'qa_model_completed', 'explicit', 'knowledge_qa_collector', 'knowledge_agent', 'completed', 1::numeric, array['model_duration_ms','model_version']),
+        ('knowledge.qa', 'qa_completed', 'explicit', 'knowledge_qa_collector', 'knowledge_agent', 'completed', 1::numeric, array['hit_count','citation_count','termination_reason']),
+        ('knowledge.qa', 'qa_degraded', 'explicit', 'knowledge_qa_collector', 'knowledge_agent', 'degraded', 1::numeric, array['degraded_reason','hit_count']),
+        ('knowledge.qa', 'qa_timeout', 'explicit', 'knowledge_qa_collector', 'knowledge_agent', 'timeout', 1::numeric, array['timeout_stage']),
+        ('knowledge.qa', 'qa_failed', 'exception', 'knowledge_qa_collector', 'knowledge_agent', 'failed', 1::numeric, array['failure_stage']),
+        ('evaluation.run', 'evaluation_task_claimed', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'started', 1::numeric, array['worker_name']),
+        ('evaluation.run', 'evaluation_run_started', 'before', 'evaluation_run_collector', 'evaluation_agent', 'started', 1::numeric, array['task_id']),
+        ('evaluation.run', 'evaluation_config_validated', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'completed', 1::numeric, array['questions_source']),
+        ('evaluation.run', 'evaluation_questions_ready', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'completed', 1::numeric, array['question_count','questions_source']),
+        ('evaluation.run', 'evaluation_case_started', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'started', 1::numeric, array['case_no','attempt']),
+        ('evaluation.run', 'evaluation_case_retry', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'retrying', 1::numeric, array['case_no','attempt','error_category']),
+        ('evaluation.run', 'evaluation_case_completed', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'completed', 1::numeric, array['case_no','duration_ms','hit_count','citation_count']),
+        ('evaluation.run', 'evaluation_metrics_completed', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'completed', 1::numeric, array['sample_count','conclusion']),
+        ('evaluation.run', 'evaluation_report_persisted', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'completed', 1::numeric, array['result_count']),
+        ('evaluation.run', 'evaluation_run_completed', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'completed', 1::numeric, array['result_count','failed_count','conclusion']),
+        ('evaluation.run', 'evaluation_run_failed', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'failed', 1::numeric, array['failure_stage']),
+        ('evaluation.run', 'evaluation_run_timeout', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'timeout', 1::numeric, array['timeout_stage','completed_count']),
+        ('evaluation.run', 'evaluation_run_cancelled', 'explicit', 'evaluation_run_collector', 'evaluation_agent', 'cancelled', 1::numeric, array['cancel_source']),
+        ('document.ingestion', 'document_ingestion_started', 'before', 'document_ingestion_collector', 'document_index', 'started', 1::numeric, array['source_type']),
+        ('document.ingestion', 'document_ingestion_completed', 'after', 'document_ingestion_collector', 'document_index', 'completed', 1::numeric, array['document_id','file_size']),
+        ('document.ingestion', 'document_ingestion_failed', 'exception', 'document_ingestion_collector', 'document_index', 'failed', 1::numeric, array['failure_stage']),
+        ('document.indexing', 'indexing_task_claimed', 'explicit', 'document_indexing_collector', 'document_index', 'started', 1::numeric, array['worker_name']),
+        ('document.indexing', 'indexing_started', 'before', 'document_indexing_collector', 'document_index', 'started', 1::numeric, array['attempt']),
+        ('document.indexing', 'indexing_completed', 'after', 'document_indexing_collector', 'document_index', 'completed', 1::numeric, array['document_id','chunk_count','index_version']),
+        ('document.indexing', 'indexing_failed', 'exception', 'document_indexing_collector', 'document_index', 'failed', 1::numeric, array['failure_stage']),
+        ('document.indexing', 'indexing_timeout', 'explicit', 'document_indexing_collector', 'document_index', 'timeout', 1::numeric, array['timeout_stage','processed_count']),
+        ('api.http', 'http_request_completed', 'after', 'http_request_collector', 'api', 'completed', 1::numeric, array['method','path','status_code']),
+        ('api.http', 'http_request_failed', 'exception', 'http_request_collector', 'api', 'failed', 1::numeric, array['method','path','status_code']),
+        ('db.execute', 'db_operation_completed', 'after', 'sql_operation_collector', 'database', 'completed', 1::numeric, array['operation','query_summary','row_count','slow']),
+        ('db.execute', 'db_operation_failed', 'exception', 'sql_operation_collector', 'database', 'failed', 1::numeric, array['operation','query_summary','slow']),
+        ('worker.lifecycle', 'worker_started', 'explicit', 'worker_lifecycle_collector', 'worker', 'started', 1::numeric, array['worker_name']),
+        ('worker.lifecycle', 'worker_heartbeat', 'explicit', 'worker_lifecycle_collector', 'worker', 'healthy', 1::numeric, array['worker_name']),
+        ('worker.lifecycle', 'worker_idle', 'explicit', 'worker_lifecycle_collector', 'worker', 'idle', 0.1::numeric, array['worker_name']),
+        ('worker.lifecycle', 'worker_task_claimed', 'explicit', 'worker_lifecycle_collector', 'worker', 'started', 1::numeric, array['worker_name','task_id']),
+        ('worker.lifecycle', 'worker_stopped', 'explicit', 'worker_lifecycle_collector', 'worker', 'stopped', 1::numeric, array['worker_name']),
+        ('worker.lifecycle', 'worker_failed', 'explicit', 'worker_lifecycle_collector', 'worker', 'failed', 1::numeric, array['worker_name']),
+        ('probe.api', 'api_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['latency_ms']),
+        ('probe.api', 'api_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('probe.database', 'database_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['latency_ms']),
+        ('probe.database', 'database_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('probe.llm', 'llm_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['latency_ms']),
+        ('probe.llm', 'llm_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('probe.embedding', 'embedding_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['latency_ms']),
+        ('probe.embedding', 'embedding_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('probe.rerank', 'rerank_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['latency_ms']),
+        ('probe.rerank', 'rerank_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('probe.vector', 'vector_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['latency_ms']),
+        ('probe.vector', 'vector_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('probe.storage', 'storage_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['latency_ms']),
+        ('probe.storage', 'storage_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('probe.worker', 'worker_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['worker_count','stale_count']),
+        ('probe.worker', 'worker_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['worker_count','stale_count']),
+        ('probe.task_backlog', 'task_backlog_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['pending_count','oldest_wait_seconds']),
+        ('probe.task_backlog', 'task_backlog_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['pending_count']),
+        ('capacity.database', 'database_capacity_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['usage','used','capacity','unit','threshold','current_database_connections','active_connections','idle_connections','reserved_connections','pool_used','pool_size','pool_idle','pool_capacity']),
+        ('capacity.database', 'database_capacity_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['usage','used','capacity','unit','threshold','current_database_connections','active_connections','idle_connections','reserved_connections','pool_used','pool_size','pool_idle','pool_capacity']),
+        ('capacity.queue', 'task_queue_capacity_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['usage','used','capacity','unit','threshold','oldest_wait_seconds']),
+        ('capacity.queue', 'task_queue_capacity_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['usage','used','capacity','unit','threshold','oldest_wait_seconds']),
+        ('capacity.file_storage', 'file_storage_capacity_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['usage','used','capacity','unit','threshold']),
+        ('capacity.file_storage', 'file_storage_capacity_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['usage','used','capacity','unit','threshold']),
+        ('capacity.vector_storage', 'vector_storage_capacity_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['usage','used','capacity','unit','threshold']),
+        ('capacity.vector_storage', 'vector_storage_capacity_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['usage','used','capacity','unit','threshold']),
+        ('probe.qa', 'knowledge_qa_probe_completed', 'periodic', 'status_probe_collector', 'probe', 'healthy', 1::numeric, array['hit_count','citation_count','latency_ms']),
+        ('probe.qa', 'knowledge_qa_probe_failed', 'periodic_error', 'status_probe_collector', 'probe', 'failed', 1::numeric, array['latency_ms']),
+        ('collector.self', 'collector_cycle_completed', 'periodic', 'collector_self_collector', 'collector', 'healthy', 1::numeric, array['target_count','success_count','failure_count']),
+        ('collector.self', 'collector_cycle_failed', 'periodic_error', 'collector_self_collector', 'collector', 'failed', 1::numeric, array['target_count','success_count','failure_count']),
+        ('collector.self', 'collector_recovery_completed', 'explicit', 'collector_self_collector', 'collector', 'recovered', 1::numeric, array['failure_count','dropped_count','target_count','last_failure_at'])
+) as action(
+    target_code,
+    event_type,
+    hook,
+    collector,
+    source_type,
+    event_status,
+    sampling_rate,
+    payload_allowlist
+)
+on conflict (target_code, event_type, version) do update
+set field_mapping = excluded.field_mapping,
+    sampling_rate = excluded.sampling_rate,
+    enabled = excluded.enabled;
+
+-- 旧资源容量探针使用本地暂存目录磁盘使用率，不属于需求范围，删除登记及当前快照。
+delete from t_monitor_gather_action where target_code = 'probe.capacity';
+delete from t_monitor_gather_target where target_code = 'probe.capacity';
+delete from t_monitor_state_snapshot where resource_code = 'platform-capacity';

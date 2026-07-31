@@ -27,6 +27,7 @@ from app.agents.knowledge.tools.retrieval import retrieve_knowledge_result
 from app.config import CONF
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
+from app.core.monitoring import emit_gather_event, monitor_gather
 from app.schemas.agent import (
     AgentAnswer,
     AgentContext,
@@ -336,9 +337,7 @@ async def _fallback_result(
                 sources="\n\n".join(sources),
             )
             response = await asyncio.wait_for(
-                _build_chat_model().ainvoke(
-                    [{"role": "user", "content": summary_prompt}]
-                ),
+                _build_chat_model().ainvoke([{"role": "user", "content": summary_prompt}]),
                 timeout=float(
                     context.qa_config.get("agent", {}).get(
                         "fallback_timeout_seconds", CONF.chat.timeout_seconds
@@ -363,6 +362,16 @@ async def _fallback_result(
         reason,
         len(chunks),
     )
+    await emit_gather_event(
+        "knowledge.qa",
+        "qa_degraded",
+        args=(task, context),
+        kb_id=task.kb_id,
+        tenant_id=context.tenant_id,
+        degraded_reason=reason[:128],
+        hit_count=len(chunks),
+        duration_ms=int((monotonic() - started_at) * 1000),
+    )
     return AgentResult(
         answer=answer,
         citations=citations,
@@ -384,6 +393,7 @@ def _select_citations(
     return _build_candidates(selected_chunks).citations
 
 
+@monitor_gather("knowledge.qa")
 async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentResult:
     validate_agent_context(task.kb_id, task.user_id, context)
     if not CONF.agent.enabled:
@@ -411,10 +421,20 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
             call=retrieval_call,
             registry=build_default_registry(),
         )
+        retrieval_started_at = monotonic()
         retrieval = await retrieve_knowledge_result(retrieval_call, context)
         if not retrieval.ok:
             raise BusiException(retrieval.error_message or "知识库检索失败")
         retrieved_chunks = retrieval.data.get("chunks", [])
+        await emit_gather_event(
+            "knowledge.qa",
+            "qa_retrieval_completed",
+            args=(task, context),
+            kb_id=task.kb_id,
+            tenant_id=context.tenant_id,
+            hit_count=len(retrieved_chunks),
+            retrieval_duration_ms=int((monotonic() - retrieval_started_at) * 1000),
+        )
 
         prompt_parts = []
         if conversation_prompt:
@@ -428,6 +448,7 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
         prompt_parts.append(_retrieval_context_prompt(retrieved_chunks))
         prompt_parts.append(f"当前问题：{task.question}")
         prompt = "\n\n".join(prompt_parts)
+        model_started_at = monotonic()
         result = await asyncio.wait_for(
             get_knowledge_answer_model().ainvoke(
                 [
@@ -440,8 +461,26 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
             ),
         )
         answer = _structured_answer(result)
+        await emit_gather_event(
+            "knowledge.qa",
+            "qa_model_completed",
+            args=(task, context),
+            kb_id=task.kb_id,
+            tenant_id=context.tenant_id,
+            model_duration_ms=int((monotonic() - model_started_at) * 1000),
+            model_version=CONF.chat.model,
+        )
     except TimeoutError:
         LOG.exception("Knowledge agent timed out kb_id={}", task.kb_id)
+        await emit_gather_event(
+            "knowledge.qa",
+            "qa_timeout",
+            args=(task, context),
+            kb_id=task.kb_id,
+            tenant_id=context.tenant_id,
+            timeout_stage="agent_execution",
+            duration_ms=int((monotonic() - started_at) * 1000),
+        )
         return await _fallback_result(
             task,
             context,
@@ -451,11 +490,21 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
         )
     except Exception as exc:
         LOG.exception("Knowledge agent output failed kb_id={}", task.kb_id)
+        await emit_gather_event(
+            "knowledge.qa",
+            "qa_failed",
+            args=(task, context),
+            kb_id=task.kb_id,
+            tenant_id=context.tenant_id,
+            failure_stage="agent_execution",
+            duration_ms=int((monotonic() - started_at) * 1000),
+            error=exc,
+        )
         return await _fallback_result(
             task,
             context,
             started_at,
-            str(exc),
+            "agent_error",
             retrieved_chunks,
         )
 
@@ -474,7 +523,7 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
     )
     runtime.validate_graph_budget(tool_call_count, model_call_count)
     top_k = task.top_k or 5
-    return AgentResult(
+    agent_result = AgentResult(
         answer=answer.answer,
         citations=citations,
         mode=mode,
@@ -486,6 +535,19 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
         termination_reason=answer.termination_reason,
         duration_ms=int((monotonic() - started_at) * 1000),
     )
+    await emit_gather_event(
+        "knowledge.qa",
+        "qa_completed",
+        args=(task, context),
+        result=agent_result,
+        kb_id=task.kb_id,
+        tenant_id=context.tenant_id,
+        hit_count=agent_result.hit_count,
+        citation_count=len(agent_result.citations),
+        termination_reason=agent_result.termination_reason,
+        duration_ms=agent_result.duration_ms,
+    )
+    return agent_result
 
 
 __all__ = ("choose_mode", "get_knowledge_agent", "run_knowledge_agent")

@@ -37,6 +37,7 @@ class AgentContext(BaseModel):
     index_version_id: int | None = Field(default=None, gt=0)
     knowledge_base_prompt: str | None = None
     qa_config: dict[str, Any] = Field(default_factory=dict)
+    purpose: Literal["business", "monitor_probe"] = "business"
 
 
 class ToolCall(BaseModel):

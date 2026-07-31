@@ -71,6 +71,7 @@ def _config(payload: EvaluationTaskRequest, execution_user_id: int) -> dict[str,
         "user_id": execution_user_id,
         "concurrency": payload.execution.get("concurrency", 3),
         "request_timeout_seconds": payload.execution.get("request_timeout_seconds", 120),
+        "run_timeout_seconds": payload.execution.get("run_timeout_seconds", 3600),
         "retry_count": payload.execution.get("retry_count", 0),
         "keep_conversation": payload.execution.get("keep_conversation", False),
         "gates": payload.gates,
@@ -234,14 +235,27 @@ def _validate_text_fields(payload: EvaluationTaskRequest) -> None:
         payload.questions_content, "questions_content", max_length=10 * 1024 * 1024
     )
     common_validation.validate_free_text(
-        payload.questions_instruction, "questions_instruction", max_length=form_limits.EVALUATION_INSTRUCTION
+        payload.questions_instruction,
+        "questions_instruction",
+        max_length=form_limits.EVALUATION_INSTRUCTION,
     )
     common_validation.validate_free_text(
-        payload.business_description, "business_description", max_length=form_limits.EVALUATION_SCOPE
+        payload.business_description,
+        "business_description",
+        max_length=form_limits.EVALUATION_SCOPE,
     )
     for field, value in payload.execution.items():
         if isinstance(value, str):
             common_validation.validate_free_text(value, f"execution.{field}", max_length=255)
+    run_timeout_seconds = payload.execution.get("run_timeout_seconds", 3600)
+    if (
+        isinstance(run_timeout_seconds, bool)
+        or not isinstance(run_timeout_seconds, (int, float))
+        or not 0 < float(run_timeout_seconds) <= 86400
+    ):
+        raise BusiException(
+            "CONFIG_INVALID: execution.run_timeout_seconds 必须在 0 到 86400 秒之间"
+        )
 
 
 @check_db_connected
@@ -382,9 +396,7 @@ async def create_optimization(
     }
     current_chunk_size = (knowledge_base or {}).get("chunk_size") or 600
     current_top_k = (knowledge_base or {}).get("retrieval_top_k") or 5
-    failure_hint = (
-        f"补充{question}相关操作说明" if question else "补充失败问题相关操作说明"
-    )
+    failure_hint = f"补充{question}相关操作说明" if question else "补充失败问题相关操作说明"
     candidate_config = payload.candidate_config or {
         "chunk_size": {
             "current": current_chunk_size,

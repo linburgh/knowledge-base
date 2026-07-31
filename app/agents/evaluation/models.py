@@ -45,6 +45,7 @@ class EvaluationConfig(BaseModel):
     user_id: int | None = Field(default=None, gt=0)
     concurrency: int = Field(default=3, ge=1, le=32)
     request_timeout_seconds: float = Field(default=120, gt=0, le=3600)
+    run_timeout_seconds: float = Field(default=3600, gt=0, le=86400)
     retry_count: int = Field(default=0, ge=0, le=5)
     keep_conversation: bool = False
     gates: dict[str, Gate] = Field(default_factory=dict)

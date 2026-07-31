@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.core.common.log import LOG
+from app.core.monitoring import emit_gather_event
 
 from .models import CaseResult, EvaluationQuestion
 
@@ -19,8 +20,11 @@ class EvaluationRuntime:
         self,
         questions: list[EvaluationQuestion],
         execute: Callable[[int, EvaluationQuestion], Awaitable[CaseResult]],
+        *,
+        monitoring_fields: dict | None = None,
     ) -> list[CaseResult]:
         semaphore = asyncio.Semaphore(self.concurrency)
+        event_fields = monitoring_fields or {}
 
         async def one(case_no: int, question: EvaluationQuestion) -> CaseResult:
             async with semaphore:
@@ -31,6 +35,13 @@ class EvaluationRuntime:
                     len(question.question),
                 )
                 for attempt in range(self.retry_count + 1):
+                    await emit_gather_event(
+                        "evaluation.run",
+                        "evaluation_case_started",
+                        case_no=case_no,
+                        attempt=attempt + 1,
+                        **event_fields,
+                    )
                     try:
                         LOG.info(
                             "自主评测Agent case attempt case_no={} attempt={}",
@@ -44,6 +55,16 @@ class EvaluationRuntime:
                             "自主评测Agent case finished case_no={} status={}",
                             case_no,
                             result.status,
+                        )
+                        await emit_gather_event(
+                            "evaluation.run",
+                            "evaluation_case_completed",
+                            case_no=case_no,
+                            duration_ms=result.duration_ms,
+                            hit_count=result.hit_count,
+                            citation_count=result.citation_count,
+                            status=result.status,
+                            **event_fields,
                         )
                         return result
                     except TimeoutError:
@@ -67,7 +88,25 @@ class EvaluationRuntime:
                                 case_no,
                                 result.status,
                             )
+                            await emit_gather_event(
+                                "evaluation.run",
+                                "evaluation_case_completed",
+                                case_no=case_no,
+                                duration_ms=result.duration_ms,
+                                hit_count=0,
+                                citation_count=0,
+                                status="timeout",
+                                **event_fields,
+                            )
                             return result
+                        await emit_gather_event(
+                            "evaluation.run",
+                            "evaluation_case_retry",
+                            case_no=case_no,
+                            attempt=attempt + 1,
+                            error_category="timeout",
+                            **event_fields,
+                        )
                     except Exception as exc:
                         LOG.opt(exception=exc).warning(
                             "自主评测Agent case error case_no={} attempt={}",
@@ -89,7 +128,25 @@ class EvaluationRuntime:
                                 case_no,
                                 result.status,
                             )
+                            await emit_gather_event(
+                                "evaluation.run",
+                                "evaluation_case_completed",
+                                case_no=case_no,
+                                duration_ms=result.duration_ms,
+                                hit_count=0,
+                                citation_count=0,
+                                status="failed",
+                                **event_fields,
+                            )
                             return result
+                        await emit_gather_event(
+                            "evaluation.run",
+                            "evaluation_case_retry",
+                            case_no=case_no,
+                            attempt=attempt + 1,
+                            error_category=type(exc).__name__,
+                            **event_fields,
+                        )
                 raise AssertionError("unreachable")
 
         LOG.info(

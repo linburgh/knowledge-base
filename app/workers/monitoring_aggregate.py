@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from app.core.monitoring import emit_gather_event
 from app.core.services.monitoring import apply_rule
 from app.db import monitor_event as event_db
 from app.db import monitor_metric_rule as rule_db
@@ -18,6 +19,7 @@ async def run_once() -> int:
     count = 0
     now = datetime.now(UTC)
     events = await event_db.list(db, occurred_at__gte=now - timedelta(minutes=5))
+    events = [event for event in events if event.get("source_code") != "knowledge.qa.monitor_probe"]
     for rule in await rule_db.list(db, enabled=True):
         metric = _aggregate(rule["metric_code"], events, now)
         if metric is None:
@@ -80,9 +82,39 @@ def _aggregate(metric_code: str, events: list[dict], now: datetime) -> dict | No
 
 
 async def run_forever(stop_event: asyncio.Event, interval_seconds: int = 60) -> None:
-    while not stop_event.is_set():
-        await run_once()
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
-        except TimeoutError:
-            continue
+    worker_name = "monitoring_aggregate"
+    await emit_gather_event(
+        "worker.lifecycle",
+        "worker_started",
+        worker_name=worker_name,
+        source_code=worker_name,
+    )
+    try:
+        while not stop_event.is_set():
+            try:
+                await run_once()
+                await emit_gather_event(
+                    "worker.lifecycle",
+                    "worker_heartbeat",
+                    worker_name=worker_name,
+                    source_code=worker_name,
+                )
+            except Exception as exc:
+                await emit_gather_event(
+                    "worker.lifecycle",
+                    "worker_failed",
+                    worker_name=worker_name,
+                    source_code=worker_name,
+                    error=exc,
+                )
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+            except TimeoutError:
+                continue
+    finally:
+        await emit_gather_event(
+            "worker.lifecycle",
+            "worker_stopped",
+            worker_name=worker_name,
+            source_code=worker_name,
+        )

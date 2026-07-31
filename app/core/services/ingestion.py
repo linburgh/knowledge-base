@@ -10,6 +10,7 @@ from app.config import CONF
 from app.core import storage as object_storage
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
+from app.core.monitoring import emit_gather_event, monitor_gather
 from app.db import document as document_db
 from app.db import document_chunk as document_chunk_db
 from app.db import indexing_task as indexing_task_db
@@ -105,6 +106,13 @@ async def _execute_claimed_task(task_id: int) -> Any:
         )
     except TimeoutError:
         message = "索引任务超过最大执行时间"
+        await emit_gather_event(
+            "document.indexing",
+            "indexing_timeout",
+            args=(task_id,),
+            task_id=task_id,
+            timeout_stage="indexing_execution",
+        )
         await mark_failed(task_id, message)
         raise BusiException(message) from None
     except BusiException as exc:
@@ -120,6 +128,7 @@ async def _execute_claimed_task(task_id: int) -> Any:
 
 
 @check_db_connected
+@monitor_gather("document.indexing")
 async def run_claimed_task(task_id: int) -> Any:
     """Execute a task that was atomically claimed by the scheduler."""
     if not task_id:
@@ -213,9 +222,7 @@ async def exc_task_body(task_id: int) -> Any:
     chunk_size = int(document_config.get("chunk_size") or knowledge_base["chunk_size"])
     chunk_overlap_value = document_config.get("chunk_overlap")
     chunk_overlap = int(
-        knowledge_base["chunk_overlap"]
-        if chunk_overlap_value is None
-        else chunk_overlap_value
+        knowledge_base["chunk_overlap"] if chunk_overlap_value is None else chunk_overlap_value
     )
     chunks = splitters.split_documents(
         parsed_documents,
@@ -250,7 +257,13 @@ async def exc_task_body(task_id: int) -> Any:
             embedding_model=embedding_model,
             index_version_id=task.get("index_version_id"),
         )
-        return await mark_ready(db, task, document)
+        completed_task = await mark_ready(db, task, document)
+        if completed_task is None:
+            return None
+        result = dict(completed_task)
+        result["document_id"] = document["id"]
+        result["chunk_count"] = len(chunks)
+        return result
 
 
 @check_db_connected
@@ -366,7 +379,7 @@ async def mark_ready(
     db,
     task: dict[str, Any],
     document: dict[str, Any],
-    ) -> dict[str, Any] | None:
+) -> dict[str, Any] | None:
     now = common_utils.utc_now()
     await indexing_task_db.update_(
         db,
@@ -458,9 +471,7 @@ async def _active_index_config_values(db, task: dict[str, Any]) -> dict[str, Any
         kb_id=task["kb_id"],
     )
     embedding_model = (
-        ((config_version or {}).get("config_json") or {})
-        .get("document", {})
-        .get("embedding_model")
+        ((config_version or {}).get("config_json") or {}).get("document", {}).get("embedding_model")
     )
     return {"embedding_model": embedding_model} if embedding_model else {}
 
@@ -531,16 +542,19 @@ async def interrupt_task(
         now = common_utils.utc_now()
         await indexing_task_db.update_(
             db,
-            {"status": TASK_STATUS_CANCELED, "error_message": error_message,
-             "finished_at": now, "updated_at": now},
+            {
+                "status": TASK_STATUS_CANCELED,
+                "error_message": error_message,
+                "finished_at": now,
+                "updated_at": now,
+            },
             id=task_id,
             status=task["status"],
             version=expected_version,
         )
         await document_db.update_(
             db,
-            {"status": DOCUMENT_STATUS_CANCELED, "error_message": error_message,
-             "updated_at": now},
+            {"status": DOCUMENT_STATUS_CANCELED, "error_message": error_message, "updated_at": now},
             id=task["document_id"],
         )
         return await indexing_task_db.get(db, id=task_id)

@@ -41,6 +41,32 @@ async def ensure_bucket() -> None:
         raise BusiException(f"MinIO bucket 初始化失败: {exc}") from exc
 
 
+async def health_check() -> bool:
+    client = _get_minio_client()
+    bucket = CONF.storage.minio_bucket
+    try:
+        return await to_thread.run_sync(client.bucket_exists, bucket)
+    except Exception as exc:
+        raise BusiException(f"MinIO 健康检查失败: {exc}") from exc
+
+
+async def bucket_usage_bytes() -> int:
+    client = _get_minio_client()
+    bucket = CONF.storage.minio_bucket
+
+    def _usage() -> int:
+        if not client.bucket_exists(bucket):
+            raise BusiException("MinIO Bucket 不存在")
+        return sum(int(item.size or 0) for item in client.list_objects(bucket, recursive=True))
+
+    try:
+        return await to_thread.run_sync(_usage)
+    except Exception as exc:
+        if isinstance(exc, BusiException):
+            raise
+        raise BusiException(f"MinIO 容量统计失败: {exc}") from exc
+
+
 async def upload_file(
     object_name: str,
     file_path: Path,
@@ -79,4 +105,10 @@ async def download_file(object_name: str, file_path: Path) -> None:
         raise BusiException(f"MinIO 文件下载失败: {exc}") from exc
 
 
-__all__ = ("ensure_bucket", "upload_file", "download_file")
+__all__ = (
+    "bucket_usage_bytes",
+    "download_file",
+    "ensure_bucket",
+    "health_check",
+    "upload_file",
+)

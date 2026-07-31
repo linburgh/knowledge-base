@@ -18,7 +18,11 @@ class EvaluationAgent:
         self.executor = KnowledgeAgentExecutor(knowledge_runner)
 
     async def run(
-        self, config: EvaluationConfig, questions: list[EvaluationQuestion]
+        self,
+        config: EvaluationConfig,
+        questions: list[EvaluationQuestion],
+        *,
+        monitoring_fields: dict | None = None,
     ) -> tuple[list[CaseResult], EvaluationMetrics]:
         LOG.info(
             "自主评测Agent start kb_id={} question_count={} concurrency={} retry_count={}",
@@ -39,6 +43,7 @@ class EvaluationAgent:
         ).run(
             questions,
             lambda case_no, question: self.executor.execute(case_no, question, config=config),
+            monitoring_fields=monitoring_fields,
         )
         LOG.info(
             "自主评测Agent execution finished kb_id={} result_count={}",

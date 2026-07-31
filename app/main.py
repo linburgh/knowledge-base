@@ -1,6 +1,7 @@
 import asyncio
 import os
 from pathlib import Path
+from time import monotonic
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -13,6 +14,7 @@ from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
 from app.core.common.log import setup as log_setup
+from app.core.monitoring import emit_gather_event
 from app.db import setup as db_setup
 from app.types import constants
 from app.workers import evaluation as evaluation_worker
@@ -88,6 +90,44 @@ else:
     )
 
 app.include_router(api_router, prefix=constants.API_PREFIX)
+
+
+@app.middleware("http")
+async def monitoring_http_middleware(request: Request, call_next):
+    excluded_paths = {"/api/v1/health", "/docs", "/openapi.json"}
+    if request.url.path in excluded_paths:
+        return await call_next(request)
+    started_at = monotonic()
+    trace_id = request.headers.get("X-Trace-ID") or common_utils.new_request_id()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        await emit_gather_event(
+            "api.http",
+            "http_request_failed",
+            method=request.method,
+            path=request.url.path,
+            status_code=500,
+            request_id=request.headers.get("X-Request-ID"),
+            trace_id=trace_id,
+            duration_ms=int((monotonic() - started_at) * 1000),
+            error=exc,
+        )
+        raise
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None) or request.url.path
+    await emit_gather_event(
+        "api.http",
+        ("http_request_failed" if response.status_code >= 500 else "http_request_completed"),
+        method=request.method,
+        path=route_path,
+        status_code=response.status_code,
+        request_id=request.headers.get("X-Request-ID"),
+        trace_id=trace_id,
+        duration_ms=int((monotonic() - started_at) * 1000),
+    )
+    response.headers["X-Trace-ID"] = trace_id
+    return response
 
 
 @app.middleware("http")

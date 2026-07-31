@@ -30,13 +30,20 @@ async def _call(function, *args, **kwargs) -> Any:
 
 
 @router.get("/overview")
-async def get_overview(current_user: auth.CurrentUser = current_user_dependency):
-    return await _call(service.overview, current_user)
+async def get_overview(
+    scope_key: str = "platform",
+    time_range: str = "1h",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.overview, current_user, time_range, scope_key)
 
 
 @router.get("/collection/overview")
-async def collection_overview(current_user: auth.CurrentUser = current_user_dependency):
-    return await _call(service.collection_overview, current_user)
+async def collection_overview(
+    time_range: str = "1h",
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(service.collection_overview, current_user, time_range)
 
 
 @router.get("/collection/targets/page")
@@ -44,9 +51,19 @@ async def target_page(
     page: int = 1,
     page_size: int = 20,
     target_name: str | None = None,
+    target_type: str | None = None,
+    data_status: str | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ):
-    return await _call(service.target_page, current_user, page, page_size, target_name)
+    return await _call(
+        service.target_page,
+        current_user,
+        page,
+        page_size,
+        target_name,
+        target_type,
+        data_status,
+    )
 
 
 @router.get("/metrics/overview")
@@ -54,9 +71,49 @@ async def metrics_overview(current_user: auth.CurrentUser = current_user_depende
     return await _call(service.metrics_overview, current_user)
 
 
+@router.get("/metrics/page")
+async def metric_page(
+    page: int = 1,
+    page_size: int = 20,
+    metric_name: str | None = None,
+    scope_key: str | None = None,
+    data_status: str | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(
+        service.metric_page,
+        current_user,
+        page,
+        page_size,
+        metric_name,
+        scope_key,
+        data_status,
+    )
+
+
 @router.get("/tasks/overview")
 async def tasks_overview(current_user: auth.CurrentUser = current_user_dependency):
     return await _call(service.tasks_overview, current_user)
+
+
+@router.get("/tasks/page")
+async def task_page(
+    page: int = 1,
+    page_size: int = 20,
+    task_name: str | None = None,
+    task_type: str | None = None,
+    status: str | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(
+        service.task_page,
+        current_user,
+        page,
+        page_size,
+        task_name,
+        task_type,
+        status,
+    )
 
 
 @router.post("/events")
@@ -78,9 +135,19 @@ async def event_page(
     page: int = 1,
     page_size: int = 20,
     event_type: str | None = None,
+    source_code: str | None = None,
+    status: str | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ):
-    return await _call(service.event_page, current_user, page, page_size, event_type)
+    return await _call(
+        service.event_page,
+        current_user,
+        page,
+        page_size,
+        event_type,
+        source_code,
+        status,
+    )
 
 
 @router.get("/alerts/page")
@@ -88,9 +155,19 @@ async def alert_page(
     page: int = 1,
     page_size: int = 20,
     status: str | None = None,
+    severity: str | None = None,
+    resource_code: str | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ):
-    return await _call(service.alert_page, current_user, page, page_size, status)
+    return await _call(
+        service.alert_page,
+        current_user,
+        page,
+        page_size,
+        status,
+        severity,
+        resource_code,
+    )
 
 
 @router.post("/alerts/{alert_id}/{action}")
@@ -115,6 +192,24 @@ async def list_rules(current_user: auth.CurrentUser = current_user_dependency):
     return await _call(service.list_rules, current_user)
 
 
+@router.get("/rules/page")
+async def rule_page(
+    page: int = 1,
+    page_size: int = 20,
+    metric_name: str | None = None,
+    enabled: bool | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(
+        service.rule_page,
+        current_user,
+        page,
+        page_size,
+        metric_name,
+        enabled,
+    )
+
+
 @router.post("/rules")
 async def create_rule(
     payload: MetricRuleRequest, current_user: auth.CurrentUser = current_user_dependency
@@ -127,6 +222,22 @@ async def list_channels(current_user: auth.CurrentUser = current_user_dependency
     return await _call(service.list_channels, current_user)
 
 
+@router.get("/notifications/channels/page")
+async def channel_page(
+    page: int = 1,
+    page_size: int = 20,
+    channel_name: str | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(
+        service.channel_page,
+        current_user,
+        page,
+        page_size,
+        channel_name,
+    )
+
+
 @router.post("/notifications/channels")
 async def create_channel(
     payload: NotificationChannelRequest, current_user: auth.CurrentUser = current_user_dependency
@@ -137,6 +248,22 @@ async def create_channel(
 @router.get("/notifications/policies")
 async def list_policies(current_user: auth.CurrentUser = current_user_dependency):
     return await _call(service.list_policies, current_user)
+
+
+@router.get("/notifications/policies/page")
+async def policy_page(
+    page: int = 1,
+    page_size: int = 20,
+    policy_name: str | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(
+        service.policy_page,
+        current_user,
+        page,
+        page_size,
+        policy_name,
+    )
 
 
 @router.get("/notifications/records/page")
@@ -172,9 +299,22 @@ async def analysis_overview(current_user: auth.CurrentUser = current_user_depend
 async def audit_page(
     page: int = 1,
     page_size: int = 20,
+    actor_id: str | None = None,
+    action: str | None = None,
+    result: str | None = None,
+    target_id: str | None = None,
     current_user: auth.CurrentUser = current_user_dependency,
 ):
-    return await _call(service.audit_page, current_user, page, page_size)
+    return await _call(
+        service.audit_page,
+        current_user,
+        page,
+        page_size,
+        actor_id,
+        action,
+        result,
+        target_id,
+    )
 
 
 @router.get("/analysis/conversations")
