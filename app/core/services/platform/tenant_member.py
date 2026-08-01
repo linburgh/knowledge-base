@@ -4,10 +4,10 @@ from typing import Any
 
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import audit as audit_service
-from app.db import tenant as tenant_db
-from app.db import tenant_member as tenant_member_db
-from app.db import user as user_db
+from app.core.services.platform import audit as audit_service
+from app.db.platform import tenant as tenant_db
+from app.db.platform import tenant_member as tenant_member_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.tenant_member import TENANT_MEMBER_STATUSES, TENANT_ROLES

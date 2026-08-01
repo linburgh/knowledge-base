@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 from app.config import configure
 from app.core.common.auth import CurrentUser
-from app.core.services import knowledge_base_overview, platform_overview
+from app.core.services.knowledge_base import overview as knowledge_base_overview
+from app.core.services.platform import overview as platform_overview
 from app.db import base
 
 
@@ -23,7 +24,7 @@ async def main() -> None:
             raise RuntimeError("P1 fixture admin is required")
         fixture_user_id = str(fixture["id"])
         with patch(
-            "app.core.services.platform_overview.platform_overview_db.metrics",
+            "app.core.services.platform.overview.platform_overview_db.metrics",
             new=AsyncMock(side_effect=RuntimeError("injected platform metrics failure")),
         ):
             try:
@@ -35,7 +36,7 @@ async def main() -> None:
                 raise AssertionError("platform overview did not propagate injected dependency failure")
 
         with patch(
-            "app.core.services.knowledge_base_overview.overview_db.metrics",
+            "app.core.services.knowledge_base.overview.overview_db.metrics",
             new=AsyncMock(side_effect=RuntimeError("injected knowledge-base metrics failure")),
         ):
             try:

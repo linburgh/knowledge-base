@@ -22,7 +22,7 @@
 
 ## 监控整改
 
-监控专属查询实现已迁移到 `app/agents/monitoring/tools/queries.py`。`app/core/services/monitoring_analysis_tools.py` 仅保留兼容导出，不再实现查询函数；Service 只负责构造可信上下文和转换响应。
+监控专属查询实现已迁移到 `app/agents/monitoring/tools/queries.py`。`app/core/services/monitoring/analysis_tools.py` 仅保留兼容导出，不再实现查询函数；Service 只负责构造可信上下文和转换响应。
 
 Planner 显式加载分析 Skill，Answer Composer 显式加载回答 Skill。时间表达、工具计划和回答结构可以由模型动态生成，但中国标准时间、工具白名单、可信范围、结论编码、证据 ID 和数据不足判断继续由确定性代码约束。
 

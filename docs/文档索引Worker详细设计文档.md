@@ -308,7 +308,7 @@ APScheduler 每 5 秒触发 process_pending_tasks()
     ↓
 数据库条件更新领取 pending 任务
     ↓
-app.core.services.ingestion.run_claimed_task()
+app.core.services.knowledge_base.ingestion.run_claimed_task()
     ↓
 MinIO / Loader / Splitter / Embedding / PostgreSQL
 ```

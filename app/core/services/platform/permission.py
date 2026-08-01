@@ -5,8 +5,8 @@ from typing import Any
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.common.roles import is_platform_super_admin
-from app.db import system_menu_action as system_menu_action_db
-from app.db import user as user_db
+from app.db.platform import system_menu_action as system_menu_action_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 

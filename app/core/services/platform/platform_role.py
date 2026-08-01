@@ -4,9 +4,9 @@ from typing import Any
 
 from app.core.common import audit as audit_context
 from app.core.common.exception import BusiException
-from app.core.services import audit as audit_service
-from app.db import platform_role as platform_role_db
-from app.db import user as user_db
+from app.core.services.platform import audit as audit_service
+from app.db.platform import platform_role as platform_role_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 

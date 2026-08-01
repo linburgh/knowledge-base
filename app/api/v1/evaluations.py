@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.common import auth, utils
 from app.core.common.exception import BusiException
-from app.core.services import evaluation as service
+from app.core.services.platform import evaluation as service
 from app.schemas.evaluation import EvaluationRunRequest, EvaluationTaskRequest, OptimizationRequest
 
 router = APIRouter()

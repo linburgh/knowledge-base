@@ -81,7 +81,7 @@
 1. 缺少项目标准结构要求的 `skills/`。
 2. 规划规则和回答规则分别硬编码在 `planner.py`、`answering.py`、`planning.py` 和 `agent.py`，模型指导与编排代码耦合。
 3. Agent 的 `context`、事实、工具结果和最终结果大量使用 `dict[str, Any]`，跨层约束不足。
-4. 工具处理器位于 `app/core/services/monitoring_analysis_tools.py`，监控 Harness 的 `tools/` 只有 Registry，专属工具边界不完整。
+4. 工具处理器位于 `app/core/services/monitoring/analysis_tools.py`，监控 Harness 的 `tools/` 只有 Registry，专属工具边界不完整。
 5. 工具失败使用 `BusiException` 或普通异常，缺少统一的 Agent 错误码、停止原因和失败阶段。
 6. `build_overview()` 与 `analyze()` 返回松散字典，Service 只能依靠字段约定保存消息元数据。
 7. Runtime 没有工具级可配置重试和明确的取消状态。

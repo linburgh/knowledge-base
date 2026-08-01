@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 from sqlalchemy.dialects import postgresql
 
 from app.core.common.exception import BusiException
-from app.core.services.organization import (
+from app.core.services.platform.organization import (
     _decode_tree_cursor,
     _encode_tree_cursor,
 )
-from app.db.organization import (
+from app.db.platform.organization import (
     locate_search,
     organization_member_counts,
     tree_children,

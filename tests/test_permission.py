@@ -17,7 +17,7 @@ class PermissionDecoratorTest(unittest.IsolatedAsyncioTestCase):
 
         current_user = CurrentUser(user_id="1")
         with patch(
-            "app.core.services.permission.require_action",
+            "app.core.services.platform.permission.require_action",
             new=AsyncMock(),
         ) as permission_check:
             result = await create(current_user=current_user)

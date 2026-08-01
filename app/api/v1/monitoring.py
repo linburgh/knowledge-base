@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends
 
 from app.core.common import auth, utils
 from app.core.common.exception import BusiException
-from app.core.services import monitoring as service
-from app.core.services import monitoring_analysis as analysis_service
+from app.core.services.monitoring import analysis as analysis_service
+from app.core.services.monitoring import mgr as service
 from app.schemas.monitoring import (
     AlertActionRequest,
     AnalysisConversationRequest,

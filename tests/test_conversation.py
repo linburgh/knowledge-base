@@ -1,7 +1,7 @@
 import unittest
 
 from app.core.common.exception import BusiException
-from app.core.services import conversation
+from app.core.services.knowledge_base import conversation
 from app.schemas.conversation import ConversationDto, ConversationMessageDto, MessageCitationDto
 
 

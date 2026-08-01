@@ -8,9 +8,9 @@ from app.agents.monitoring.planner import build_monitoring_planner
 from app.core.common import utils
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import audit as audit_service
-from app.db import conversation as conversation_db
-from app.db import conversation_message as message_db
+from app.core.services.platform import audit as audit_service
+from app.db.knowledge_base import conversation as conversation_db
+from app.db.knowledge_base import conversation_message as message_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.monitoring import (
@@ -20,8 +20,8 @@ from app.schemas.monitoring import (
     MonitoringContext,
 )
 
-from .monitoring_access import require_monitoring_access, tenant_scope
-from .monitoring_analysis_tools import build_monitoring_tool_registry
+from .access import require_monitoring_access, tenant_scope
+from .analysis_tools import build_monitoring_tool_registry
 
 
 def _conversation_filter(conversation_id: int, scope: int | None) -> dict[str, Any]:
@@ -38,7 +38,7 @@ async def create_conversation(
     await require_monitoring_access(current_user)
     scope = await tenant_scope(current_user)
     db = DB.get()
-    from app.core.services import monitoring as monitoring_service
+    from app.core.services.monitoring import mgr as monitoring_service
 
     time_range = str(payload.context.get("time_range") or "1h")
     requested_scope_key = payload.scope_key or str(payload.context.get("scope_key") or "platform")

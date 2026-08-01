@@ -10,9 +10,9 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from app.config import configure
-from app.core.services import ingestion
+from app.core.services.knowledge_base import ingestion
 from app.db import base as db_base
-from app.db import indexing_task as indexing_task_db
+from app.db.knowledge_base import indexing_task as indexing_task_db
 from app.db.models import IndexingTask
 from app.workers import indexing as indexing_worker
 

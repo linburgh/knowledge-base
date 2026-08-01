@@ -10,13 +10,13 @@ from app.agents.evaluation.models import CaseResult, EvaluationConfig, Evaluatio
 from app.config import CONF
 from app.core.common.log import LOG
 from app.core.monitoring import emit_gather_event, monitor_gather
-from app.core.services import knowledge_base_qa_config as qa_config_service
-from app.db import document_chunk as document_chunk_db
-from app.db import evaluation_case_result as case_db
-from app.db import evaluation_optimization as optimization_db
-from app.db import evaluation_run as run_db
-from app.db import evaluation_task as task_db
-from app.db import knowledge_base as knowledge_base_db
+from app.core.services.knowledge_base import qa_config as qa_config_service
+from app.db.knowledge_base import document_chunk as document_chunk_db
+from app.db.platform import evaluation_case_result as case_db
+from app.db.platform import evaluation_optimization as optimization_db
+from app.db.platform import evaluation_run as run_db
+from app.db.platform import evaluation_task as task_db
+from app.db.knowledge_base import mgr as knowledge_base_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.evaluation import EvaluationAgentContext, EvaluationAgentTask

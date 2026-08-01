@@ -51,8 +51,7 @@ def test_agents_do_not_import_other_agent_private_modules() -> None:
 
 
 def test_monitoring_service_only_keeps_tool_compatibility_import() -> None:
-    service = (ROOT / "app/core/services/monitoring_analysis_tools.py").read_text(
-        encoding="utf-8"
-    )
+    service_path = ROOT / "app/core/services/monitoring/analysis_tools.py"
+    service = service_path.read_text(encoding="utf-8")
     assert "async def query_" not in service
     assert "app.agents.monitoring.tools.queries" in service

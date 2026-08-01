@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.common import audit as audit_context
-from app.db import audit_log as audit_log_db
+from app.db.platform import audit_log as audit_log_db
 
 ACTION_CN_MAP: dict[str, str] = {
     "add_organization_member": "添加组织成员",

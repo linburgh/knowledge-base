@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, patch
 
 from app.config import configure
 from app.core.common.auth import CurrentUser
-from app.core.services import document as document_service
-from app.core.services import knowledge_base_qa_config as qa_service
+from app.core.services.knowledge_base import document as document_service
+from app.core.services.knowledge_base import qa_config as qa_service
 from app.db import base
-from app.db import document as document_db
-from app.db import indexing_task as indexing_task_db
-from app.db import knowledge_base_qa_config as qa_config_db
+from app.db.knowledge_base import document as document_db
+from app.db.knowledge_base import indexing_task as indexing_task_db
+from app.db.knowledge_base import qa_config as qa_config_db
 from app.db.models import Document
 from app.schemas.document import DocumentCreateDto
 
@@ -54,7 +54,7 @@ async def main() -> None:
             )
 
         with patch(
-            "app.core.services.document.audit_service.record",
+            "app.core.services.knowledge_base.document.audit_service.record",
             new=AsyncMock(side_effect=RuntimeError("injected audit failure")),
         ):
             try:
@@ -76,7 +76,7 @@ async def main() -> None:
             raise AssertionError("QA draft was not created")
         published_before = await qa_config_db.get_version(db, kb_id=34, status="published")
         with patch(
-            "app.core.services.knowledge_base_qa_config.qa_config_db.insert_audit",
+            "app.core.services.knowledge_base.qa_config.qa_config_db.insert_audit",
             new=AsyncMock(side_effect=RuntimeError("injected config audit failure")),
         ):
             try:

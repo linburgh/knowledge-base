@@ -398,14 +398,14 @@ from (
             'document.ingestion',
             '文档入库处理',
             'method',
-            '{"module":"app.core.services.document","callable":"upload","collector":"document_ingestion_collector","input_mapping":{"kb_id":"args.1","source_type":"kwargs.source_type"},"output_mapping":{"document_id":"result.id","file_size":"result.file_size"}}',
+            '{"module":"app.core.services.knowledge_base.document","callable":"upload","collector":"document_ingestion_collector","input_mapping":{"kb_id":"args.1","source_type":"kwargs.source_type"},"output_mapping":{"document_id":"result.id","file_size":"result.file_size"}}',
             true
         ),
         (
             'document.indexing',
             '文档索引构建',
             'method',
-            '{"module":"app.core.services.ingestion","callable":"run_claimed_task","collector":"document_indexing_collector","input_mapping":{"task_id":"args.0"},"output_mapping":{"document_id":"result.document_id","kb_id":"result.kb_id","chunk_count":"result.chunk_count","index_version":"result.index_version_id"}}',
+            '{"module":"app.core.services.knowledge_base.ingestion","callable":"run_claimed_task","collector":"document_indexing_collector","input_mapping":{"task_id":"args.0"},"output_mapping":{"document_id":"result.document_id","kb_id":"result.kb_id","chunk_count":"result.chunk_count","index_version":"result.index_version_id"}}',
             true
         ),
         (

@@ -13,44 +13,44 @@ from app.core.monitoring.resources import (
     runtime_resource_name,
     runtime_resource_sort_key,
 )
-from app.core.services import audit as audit_service
-from app.db import audit_log as audit_log_db
-from app.db import evaluation_run as evaluation_run_db
-from app.db import evaluation_task as evaluation_task_db
-from app.db import indexing_task as indexing_task_db
-from app.db import knowledge_base as knowledge_base_db
-from app.db import (
-    monitor_alert as alert_db,
+from app.core.services.platform import audit as audit_service
+from app.db.platform import audit_log as audit_log_db
+from app.db.platform import evaluation_run as evaluation_run_db
+from app.db.platform import evaluation_task as evaluation_task_db
+from app.db.knowledge_base import indexing_task as indexing_task_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.monitoring import (
+    alert as alert_db,
 )
-from app.db import monitor_alert_evidence as alert_evidence_db
-from app.db import (
-    monitor_event as event_db,
+from app.db.monitoring import alert_evidence as alert_evidence_db
+from app.db.monitoring import (
+    event as event_db,
 )
-from app.db import monitor_gather_action as gather_action_db
-from app.db import monitor_gather_target as gather_target_db
-from app.db import monitor_metric_definition as definition_db
-from app.db import (
-    monitor_metric_rule as rule_db,
+from app.db.monitoring import gather_action as gather_action_db
+from app.db.monitoring import gather_target as gather_target_db
+from app.db.monitoring import metric_definition as definition_db
+from app.db.monitoring import (
+    metric_rule as rule_db,
 )
-from app.db import (
-    monitor_metric_value as value_db,
+from app.db.monitoring import (
+    metric_value as value_db,
 )
-from app.db import (
-    monitor_notification_channel as channel_db,
+from app.db.monitoring import (
+    notification_channel as channel_db,
 )
-from app.db import (
-    monitor_notification_policy as policy_db,
+from app.db.monitoring import (
+    notification_policy as policy_db,
 )
-from app.db import (
-    monitor_notification_policy_channel as policy_channel_db,
+from app.db.monitoring import (
+    notification_policy_channel as policy_channel_db,
 )
-from app.db import (
-    monitor_notification_record as notification_record_db,
+from app.db.monitoring import (
+    notification_record as notification_record_db,
 )
-from app.db import (
-    monitor_state_snapshot as snapshot_db,
+from app.db.monitoring import (
+    state_snapshot as snapshot_db,
 )
-from app.db import user as user_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.monitoring import (
@@ -61,8 +61,8 @@ from app.schemas.monitoring import (
     NotificationPolicyRequest,
 )
 
-from .monitoring_access import require_monitoring_access, tenant_scope
-from .monitoring_rule import evaluate_rule
+from .access import require_monitoring_access, tenant_scope
+from .rule import evaluate_rule
 
 
 def _scope_filter(scope: int | None) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 import unittest
 
 from app.core.common.exception import BusiException
-from app.core.services.knowledge_base_qa_config import default_config, validate_config
+from app.core.services.knowledge_base.qa_config import default_config, validate_config
 
 
 class KnowledgeBaseQaConfigTest(unittest.TestCase):

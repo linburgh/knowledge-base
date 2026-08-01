@@ -5,20 +5,20 @@ from decimal import Decimal
 from typing import Any
 
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
-from app.db import (
-    monitor_alert as alert_db,
+from app.db.monitoring import (
+    alert as alert_db,
 )
-from app.db import (
-    monitor_event as event_db,
+from app.db.monitoring import (
+    event as event_db,
 )
-from app.db import (
-    monitor_metric_definition as definition_db,
+from app.db.monitoring import (
+    metric_definition as definition_db,
 )
-from app.db import (
-    monitor_metric_value as value_db,
+from app.db.monitoring import (
+    metric_value as value_db,
 )
-from app.db import (
-    monitor_state_snapshot as snapshot_db,
+from app.db.monitoring import (
+    state_snapshot as snapshot_db,
 )
 from app.db.base import DB
 

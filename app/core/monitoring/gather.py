@@ -13,13 +13,13 @@ from typing import Any, TypeVar, cast
 
 from app.core.common import utils
 from app.core.common.log import LOG
-from app.db import evaluation_run as evaluation_run_db
-from app.db import evaluation_task as evaluation_task_db
-from app.db import indexing_task as indexing_task_db
-from app.db import knowledge_base as knowledge_base_db
-from app.db import monitor_event as event_db
-from app.db import monitor_gather_action as action_db
-from app.db import monitor_gather_target as target_db
+from app.db.platform import evaluation_run as evaluation_run_db
+from app.db.platform import evaluation_task as evaluation_task_db
+from app.db.knowledge_base import indexing_task as indexing_task_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.monitoring import event as event_db
+from app.db.monitoring import gather_action as action_db
+from app.db.monitoring import gather_target as target_db
 from app.db.base import DB, inject_db
 
 F = TypeVar("F", bound=Callable[..., Any])

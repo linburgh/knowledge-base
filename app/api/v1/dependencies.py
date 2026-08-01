@@ -5,8 +5,8 @@ from fastapi import Depends
 from app.core.common import auth
 from app.core.common.roles import is_platform_super_admin
 from app.core.common.exception import BusiException
-from app.core.services.evaluation_access import require_super_admin
-from app.db import user as user_db
+from app.core.services.platform.evaluation_access import require_super_admin
+from app.db.platform import user as user_db
 from app.db.base import DB
 
 current_user_dependency = Depends(auth.get_current_user)

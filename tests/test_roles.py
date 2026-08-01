@@ -1,8 +1,8 @@
 import unittest
 
 from app.core.common.roles import effective_role, is_platform_super_admin
-from app.core.services.permission import _role_pairs as permission_role_pairs
-from app.core.services.system_menu import _role_pairs as menu_role_pairs
+from app.core.services.platform.permission import _role_pairs as permission_role_pairs
+from app.core.services.platform.system_menu import _role_pairs as menu_role_pairs
 
 
 class EffectiveRoleTest(unittest.TestCase):

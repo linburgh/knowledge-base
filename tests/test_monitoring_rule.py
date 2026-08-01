@@ -1,4 +1,4 @@
-from app.core.services.monitoring_rule import evaluate_rule
+from app.core.services.monitoring.rule import evaluate_rule
 
 
 def test_critical_threshold_fires():

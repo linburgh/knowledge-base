@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app.agents.evaluation.metrics import calculate_metrics
 from app.agents.evaluation.models import CaseResult, EvaluationQuestion
-from app.core.services import evaluation as evaluation_service
+from app.core.services.platform import evaluation as evaluation_service
 from app.db.base import DB
 from app.schemas.evaluation import EvaluationAgentResult, EvaluationRunSummary
 from app.workers import evaluation as evaluation_worker

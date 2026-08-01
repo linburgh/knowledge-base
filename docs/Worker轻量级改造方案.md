@@ -73,7 +73,7 @@ APScheduler 定时触发任务处理
 - 新增一个后端内置的 APScheduler 调度模块。
 - 注册一个文档索引周期任务。
 - 删除文档索引 Worker 的常驻 `asyncio` 轮询入口。
-- 保留 `app/core/services/ingestion.py` 作为索引业务执行入口。
+- 保留 `app/core/services/knowledge_base/ingestion.py` 作为索引业务执行入口。
 - 保留 `t_indexing_task` 作为任务持久化表。
 - 增加后端启动时的失联任务恢复。
 - 使用单个后端进程运行 APScheduler。
@@ -169,8 +169,8 @@ app/
 | 文件 | 职责 |
 | --- | --- |
 | `app/workers/indexing.py` | 文档索引 Worker、APScheduler 注册、启动和关闭调度器 |
-| `app/core/services/ingestion.py` | 执行文档下载、解析、切分、Embedding、写入和状态收口 |
-| `app/db/indexing_task.py` | 原子领取待处理任务、分页查询历史任务、更新任务状态 |
+| `app/core/services/knowledge_base/ingestion.py` | 执行文档下载、解析、切分、Embedding、写入和状态收口 |
+| `app/db/knowledge_base/indexing_task.py` | 原子领取待处理任务、分页查询历史任务、更新任务状态 |
 | `app/main.py` | 在 FastAPI 生命周期中调用调度器启动和关闭方法 |
 | `app/workers/evaluation.py` | 从原 `workers/evaluation.py` 迁移的自主评测 Worker 代码 |
 | `workers/` | 改造完成后删除整个目录 |
@@ -214,9 +214,9 @@ app/main.py
     ↓
 app/workers/indexing.py
     ↓
-app/core/services/ingestion.py
+app/core/services/knowledge_base/ingestion.py
     ↓
-app/db/indexing_task.py
+app/db/knowledge_base/indexing_task.py
     ↓
 PostgreSQL
 ```
@@ -225,8 +225,8 @@ PostgreSQL
 
 - `app/main.py` 只负责应用生命周期，不执行索引业务；
 - `app/workers/indexing.py` 负责文档索引 Worker、APScheduler 注册、周期触发和任务恢复；
-- `app/core/services/ingestion.py` 负责完整的文档索引业务流程；
-- `app/db/indexing_task.py` 负责数据库任务查询和状态更新。
+- `app/core/services/knowledge_base/ingestion.py` 负责完整的文档索引业务流程；
+- `app/db/knowledge_base/indexing_task.py` 负责数据库任务查询和状态更新。
 
 `app/workers/evaluation.py` 负责自主评测任务执行逻辑。自主评测的业务逻辑本次不重写，只迁移模块位置和导入路径；原 `workers/` 目录不再保留。
 
@@ -327,8 +327,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import CONF
 from app.core.common.log import LOG
-from app.core.services import ingestion
-from app.db import indexing_task as indexing_task_db
+from app.core.services.knowledge_base import ingestion
+from app.db.knowledge_base import indexing_task as indexing_task_db
 from app.db.base import DB
 
 indexing_scheduler = AsyncIOScheduler()
@@ -774,7 +774,7 @@ recover_stale_tasks() -> Coroutine
 
 索引 Worker 和评测 Worker 迁移完成后，使用 `rg` 确认没有 `workers` 模块引用，再删除整个 `workers/` 目录。删除前必须完成后端导入检查和测试。
 
-### 12.8 `app/core/services/ingestion.py`
+### 12.8 `app/core/services/knowledge_base/ingestion.py`
 
 保留现有索引业务流程，重点调整：
 

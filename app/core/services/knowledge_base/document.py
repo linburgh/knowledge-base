@@ -13,12 +13,12 @@ from app.core.common import validation as common_validation
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.monitoring import monitor_gather
-from app.core.services import audit as audit_service
-from app.core.services import ingestion as ingestion_service
-from app.db import document as document_db
-from app.db import document_chunk as document_chunk_db
-from app.db import indexing_task as indexing_task_db
-from app.db import knowledge_base as knowledge_base_db
+from app.core.services.platform import audit as audit_service
+from app.core.services.knowledge_base import ingestion as ingestion_service
+from app.db.knowledge_base import document as document_db
+from app.db.knowledge_base import document_chunk as document_chunk_db
+from app.db.knowledge_base import indexing_task as indexing_task_db
+from app.db.knowledge_base import mgr as knowledge_base_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.document import DocumentCreateDto, DocumentModifyDto

@@ -10,7 +10,7 @@ from app.api.v1 import monitoring as monitoring_api
 from app.core.common import auth
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import monitoring
+from app.core.services.monitoring import mgr as monitoring
 from app.db import api as db_api
 from app.db.base import DB
 

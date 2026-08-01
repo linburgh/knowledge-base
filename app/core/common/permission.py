@@ -27,7 +27,7 @@ def require_action(action_code: str, *, user_parameter: str = "current_user"):
             if not isinstance(current_user, CurrentUser):
                 raise BusiException("缺少权限上下文", status_code=401)
 
-            from app.core.services import permission as permission_service
+            from app.core.services.platform import permission as permission_service
 
             await permission_service.require_action(current_user, action_code)
             return await function(*args, **kwargs)

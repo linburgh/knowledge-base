@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.services import document
+from app.core.services.knowledge_base import document
 
 
 class _Upload:

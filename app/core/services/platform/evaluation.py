@@ -6,13 +6,13 @@ from app.core.common import form_limits, utils
 from app.core.common import validation as common_validation
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import audit as audit_service
-from app.db import evaluation_case_result as case_db
-from app.db import evaluation_optimization as optimization_db
-from app.db import evaluation_run as run_db
-from app.db import evaluation_task as task_db
-from app.db import knowledge_base as knowledge_base_db
-from app.db import user as user_db
+from app.core.services.platform import audit as audit_service
+from app.db.platform import evaluation_case_result as case_db
+from app.db.platform import evaluation_optimization as optimization_db
+from app.db.platform import evaluation_run as run_db
+from app.db.platform import evaluation_task as task_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.evaluation import EvaluationTaskRequest, OptimizationRequest

@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.core.common.auth import CurrentUser
-from app.core.services import monitoring
+from app.core.services.monitoring import mgr as monitoring
 from app.db import api as db_api
 from app.db.base import DB
 from app.workers import monitoring_collect

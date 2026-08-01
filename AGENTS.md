@@ -45,8 +45,8 @@
 ## 目录边界
 
 - `app/api/v1/`：HTTP 接口层，只负责请求解析、认证上下文、调用 Service 和响应转换。
-- `app/core/services/`：业务编排层，负责校验、事务边界和调用 DB、RAG、外部服务。
-- `app/db/`：数据访问层，负责连接、表结构、Repository 和向量库适配。
+- `app/core/services/`：业务编排层，负责校验、事务边界和调用 DB、RAG、外部服务；业务 Service 必须分别归入 `platform/`（平台管理，含自主评测管理）、`knowledge_base/`（知识库管理）和 `monitoring/`（自主监控），不得继续平铺在该目录根层。包内主业务管理模块统一命名为 `mgr.py`，其他文件不得重复使用所属包的 `knowledge_base_`、`monitoring_` 等前缀。
+- `app/db/`：数据访问层，负责连接、表结构、Repository 和向量库适配；业务 Repository 必须分别归入 `platform/`、`knowledge_base/` 和 `monitoring/`，根目录只保留连接、通用访问、模型定义和向量库适配等基础设施。包内主 Repository 统一命名为 `mgr.py`，其他文件不得重复使用所属包名前缀。
 - `app/rag/`：LangChain 能力封装层，负责 Loader、Splitter、Embedding、Retriever 和 Chain。
 - `app/schemas/`：请求、响应、分页和内部协议模型。
 - `app/core/common/`：认证、异常、日志和纯工具函数。
@@ -97,7 +97,7 @@ Agent 可以根据自身业务在独立目录内增加 `graph.py`、`state.py`�
 - API 层不得直接访问数据库、向量库或 LLM。
 - Service 层不得依赖 FastAPI 的 `Request`、`Response` 或 `HTTPException`。
 - Service 层的新增、修改、删除等数据库写操作必须显式包裹在 `async with db.transaction():` 事务中；涉及多步数据库写入或读写组合时也必须使用同一事务，确保异常时能够完整回滚。纯查询方法无需额外开启事务。
-- Service 层调用 DB 时优先调用对应表模块，例如 `app/db/document.py`；已有表模块时不要直接操作 `app/db/models.py` 或通用 `app/db/api.py`。
+- Service 层调用 DB 时优先调用对应表模块，例如 `app/db/knowledge_base/document.py`；已有表模块时不要直接操作 `app/db/models.py` 或通用 `app/db/api.py`。
 - DB 层不得拼接 Prompt、生成自然语言答案或处理 HTTP 展示文案。
 - DB 层按表封装 `insert_`、`batch_insert`、`update_`、`delete_`、`get`、`list` 等通用方法，内部复用 `app/db/api.py`；过滤条件统一使用关键字参数传入。
 - DB 层不要新增 `list_by_xxx`、`list_pending`、`delete_by_xxx`、`update_by_xxx` 这类只绑定单一字段或单一状态的方法。

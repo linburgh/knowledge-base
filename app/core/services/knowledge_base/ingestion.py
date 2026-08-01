@@ -11,12 +11,12 @@ from app.core import storage as object_storage
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
 from app.core.monitoring import emit_gather_event, monitor_gather
-from app.db import document as document_db
-from app.db import document_chunk as document_chunk_db
-from app.db import indexing_task as indexing_task_db
-from app.db import knowledge_base as knowledge_base_db
-from app.db import knowledge_base_index_version as index_version_db
-from app.db import knowledge_base_qa_config as qa_config_db
+from app.db.knowledge_base import document as document_db
+from app.db.knowledge_base import document_chunk as document_chunk_db
+from app.db.knowledge_base import indexing_task as indexing_task_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.knowledge_base import index_version as index_version_db
+from app.db.knowledge_base import qa_config as qa_config_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.rag import embeddings, loaders, splitters

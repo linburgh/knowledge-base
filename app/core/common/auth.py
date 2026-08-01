@@ -141,7 +141,7 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
         current_user = parse_token(token)
         if current_user.token_type != "access" or not current_user.jti:
             raise BusiException("Token 类型无效", status_code=401)
-        from app.db import auth_session as auth_session_db
+        from app.db.platform import auth_session as auth_session_db
         from app.db.base import DB, inject_db
 
         await inject_db()

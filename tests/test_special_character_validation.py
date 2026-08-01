@@ -7,10 +7,10 @@ from app.core.common.validation import (
     validate_mainland_mobile,
     validate_text,
 )
-from app.core.services.evaluation import _validate_text_fields
-from app.core.services.organization import validate as validate_organization
-from app.core.services.tenant import validate as validate_tenant
-from app.core.services.user import validate as validate_user
+from app.core.services.platform.evaluation import _validate_text_fields
+from app.core.services.platform.organization import validate as validate_organization
+from app.core.services.platform.tenant import validate as validate_tenant
+from app.core.services.platform.user import validate as validate_user
 from app.schemas.evaluation import EvaluationTaskRequest
 from app.schemas.organization import OrganizationDto
 from app.schemas.tenant import TenantDto

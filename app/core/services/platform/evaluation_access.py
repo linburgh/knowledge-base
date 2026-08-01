@@ -1,8 +1,8 @@
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.common.roles import is_platform_super_admin
-from app.db import platform_role as platform_role_db
-from app.db import user as user_db
+from app.db.platform import platform_role as platform_role_db
+from app.db.platform import user as user_db
 from app.db.base import DB
 from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN
 

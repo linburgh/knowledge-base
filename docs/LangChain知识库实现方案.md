@@ -744,16 +744,16 @@ answer = llm.invoke(...)
 
 | 文件 | 具体作用 |
 |---|---|
-| `app/core/services/ingestion.py` | 文档入库业务编排。检查文件类型和大小、保存原文件、创建文档记录、提交索引任务、更新索引状态和处理失败重试。 |
-| `app/core/services/retrieval.py` | 检索业务。根据用户和知识库权限构造过滤条件，调用向量检索、关键词检索、结果合并和重排序，输出标准化的检索片段。 |
-| `app/core/services/chat.py` | 问答业务。处理问题改写、调用检索 Service、组装上下文、调用问答链、校验引用、保存会话和返回最终结果。 |
+| `app/core/services/knowledge_base/ingestion.py` | 文档入库业务编排。检查文件类型和大小、保存原文件、创建文档记录、提交索引任务、更新索引状态和处理失败重试。 |
+| `app/core/services/knowledge_base/retrieval.py` | 检索业务。根据用户和知识库权限构造过滤条件，调用向量检索、关键词检索、结果合并和重排序，输出标准化的检索片段。 |
+| `app/core/services/knowledge_base/chat.py` | 问答业务。处理问题改写、调用检索 Service、组装上下文、调用问答链、校验引用、保存会话和返回最终结果。 |
 
 一次问答的调用关系通常是：
 
 ```text
 app/api/v1/chat.py
-    → app/core/services/chat.py
-        → app/core/services/retrieval.py
+    → app/core/services/knowledge_base/chat.py
+        → app/core/services/knowledge_base/retrieval.py
             → app/rag/retrievers.py
         → app/rag/chains.py
         → app/db/                     保存会话和引用
@@ -763,7 +763,7 @@ app/api/v1/chat.py
 
 ```text
 app/api/v1/documents.py
-    → app/core/services/ingestion.py
+    → app/core/services/knowledge_base/ingestion.py
         → workers/tasks.py             异步执行
             → app/rag/loaders.py
             → app/rag/splitters.py

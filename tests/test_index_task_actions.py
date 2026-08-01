@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.core.common.exception import BusiException
 from app.core.common.auth import CurrentUser
-from app.core.services import document as document_service
+from app.core.services.knowledge_base import document as document_service
 from app.db import base as db_base
 
 

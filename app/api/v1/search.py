@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, status
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import retrieval as retrieval_service
+from app.core.services.knowledge_base import retrieval as retrieval_service
 from app.schemas.retrieval import RetrievalRequest
 
 router = APIRouter(dependencies=[Depends(auth.get_current_user)])

@@ -11,7 +11,8 @@ from app.agents.monitoring.tools.registry import MonitoringToolRegistry
 from app.core.common import utils
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import monitoring, monitoring_analysis
+from app.core.services.monitoring import analysis as monitoring_analysis
+from app.core.services.monitoring import mgr as monitoring
 from app.db import api as db_api
 from app.db.base import DB
 from app.schemas.monitoring import (

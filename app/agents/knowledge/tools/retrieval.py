@@ -6,8 +6,8 @@ from langchain.tools import ToolRuntime, tool
 
 from app.agents.knowledge.policies import authorize_tool
 from app.core.common.exception import BusiException
-from app.core.services import retrieval as retrieval_service
-from app.db import knowledge_base as knowledge_base_db
+from app.core.services.knowledge_base import retrieval as retrieval_service
+from app.db.knowledge_base import mgr as knowledge_base_db
 from app.db.base import DB
 from app.schemas.agent import (
     AgentContext,

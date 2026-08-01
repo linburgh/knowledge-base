@@ -45,7 +45,7 @@ APScheduler 周期调用 process_pending_tasks()
     ↓
 数据库条件更新领取 pending 任务
     ↓
-调用 app.core.services.ingestion.run_claimed_task()
+调用 app.core.services.knowledge_base.ingestion.run_claimed_task()
     ↓
 解析、切分、Embedding、写入向量
 ```
@@ -141,10 +141,10 @@ POST /api/v1/documents/upload
 
 ```text
 API
-  → app.core.services.document.upload()
+  → app.core.services.knowledge_base.document.upload()
   → 上传文件到 MinIO
   → 写入 t_document
-  → app.core.services.ingestion.create_task()
+  → app.core.services.knowledge_base.ingestion.create_task()
   → 写入 t_indexing_task(status=pending)
   → 返回文档记录
 ```
@@ -164,7 +164,7 @@ API
 
 ### 5.3 执行索引
 
-`app/core/services/ingestion.py` 中的 `run_claimed_task()` 负责执行已经领取的任务：
+`app/core/services/knowledge_base/ingestion.py` 中的 `run_claimed_task()` 负责执行已经领取的任务：
 
 1. 校验任务当前为 `running`。
 2. 将当前文档改为 `processing`。
@@ -272,8 +272,8 @@ tail -f log/app.log
 ## 10. 推荐学习顺序
 
 1. [app/api/v1/documents.py](../app/api/v1/documents.py)：上传和手动索引接口。
-2. [app/core/services/document.py](../app/core/services/document.py)：文件保存和任务创建。
-3. [app/core/services/ingestion.py](../app/core/services/ingestion.py)：任务状态和索引流程。
+2. [app/core/services/knowledge_base/document.py](../app/core/services/knowledge_base/document.py)：文件保存和任务创建。
+3. [app/core/services/knowledge_base/ingestion.py](../app/core/services/knowledge_base/ingestion.py)：任务状态和索引流程。
 4. [app/workers/indexing.py](../app/workers/indexing.py)：APScheduler 调度和任务恢复。
 5. [app/rag/loaders.py](../app/rag/loaders.py)：文件解析。
 6. [app/rag/splitters.py](../app/rag/splitters.py)：文本切分。

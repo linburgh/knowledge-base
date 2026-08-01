@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, status
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import knowledge_base as knowledge_base_service
+from app.core.services.knowledge_base import mgr as knowledge_base_service
 from app.schemas.knowledge_base import KnowledgeBaseDto, KnowledgeBaseRequest
 from app.schemas.knowledge_base_organization import (
     KnowledgeBaseOrganizationBatchRequest,

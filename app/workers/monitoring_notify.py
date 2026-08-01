@@ -4,9 +4,9 @@ import asyncio
 
 from app.core.common import utils
 from app.core.monitoring import emit_gather_event
-from app.core.services import audit as audit_service
-from app.db import monitor_notification_channel as channel_db
-from app.db import monitor_notification_record as record_db
+from app.core.services.platform import audit as audit_service
+from app.db.monitoring import notification_channel as channel_db
+from app.db.monitoring import notification_record as record_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 

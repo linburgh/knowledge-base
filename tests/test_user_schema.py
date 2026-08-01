@@ -1,6 +1,6 @@
 import unittest
 
-from app.core.services.user import _normalize_filter
+from app.core.services.platform.user import _normalize_filter
 from app.schemas.user import UserCreateRequest, UserModifyRequest
 
 

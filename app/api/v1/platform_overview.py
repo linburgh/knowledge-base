@@ -9,7 +9,7 @@ from app.api.v1.dependencies import require_platform_management
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import platform_overview as platform_overview_service
+from app.core.services.platform import overview as platform_overview_service
 from app.schemas.platform_overview import PlatformOverviewResponse
 
 router = APIRouter(dependencies=[Depends(require_platform_management)])

@@ -7,8 +7,8 @@ from typing import Any
 from app.core.common.auth import CurrentUser
 from app.core.common.roles import is_platform_super_admin
 from app.core.common.time_range import resolve_range
-from app.db import platform_overview as platform_overview_db
-from app.db import user as user_db
+from app.db.platform import overview as platform_overview_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 

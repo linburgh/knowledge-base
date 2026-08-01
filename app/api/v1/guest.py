@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, status
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import guest as guest_service
+from app.core.services.knowledge_base import guest as guest_service
 from app.core.common.auth import CurrentUser
 from app.schemas.chat import GuestChatRequest
 from app.schemas.conversation import GuestConversationModifyRequest

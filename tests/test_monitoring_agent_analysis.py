@@ -15,7 +15,7 @@ from app.agents.monitoring.planning import build_plan, resolve_time_range
 from app.agents.monitoring.runtime import MonitoringRuntime
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
 from app.core.common.exception import BusiException
-from app.core.services import monitoring_analysis_tools
+from app.core.services.monitoring import analysis_tools as monitoring_analysis_tools
 
 
 def test_yesterday_is_resolved_as_shanghai_natural_day():

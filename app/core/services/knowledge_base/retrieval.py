@@ -5,9 +5,9 @@ from typing import Any
 from app.config import CONF
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
-from app.db import knowledge_base as knowledge_base_db
-from app.db import knowledge_base_index_version as index_version_db
-from app.db import knowledge_base_qa_config as qa_config_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.knowledge_base import index_version as index_version_db
+from app.db.knowledge_base import qa_config as qa_config_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.rag import embeddings, retrievers

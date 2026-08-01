@@ -12,14 +12,14 @@ from app.core.common import validation as common_validation
 from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import permission as permission_service
-from app.core.services import retrieval as retrieval_service
-from app.db import document as document_db
-from app.db import indexing_task as indexing_task_db
-from app.db import knowledge_base as knowledge_base_db
-from app.db import knowledge_base_index_version as index_version_db
-from app.db import knowledge_base_qa_config as qa_config_db
-from app.db import platform_role as platform_role_db
+from app.core.services.platform import permission as permission_service
+from app.core.services.knowledge_base import retrieval as retrieval_service
+from app.db.knowledge_base import document as document_db
+from app.db.knowledge_base import indexing_task as indexing_task_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.knowledge_base import index_version as index_version_db
+from app.db.knowledge_base import qa_config as qa_config_db
+from app.db.platform import platform_role as platform_role_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN

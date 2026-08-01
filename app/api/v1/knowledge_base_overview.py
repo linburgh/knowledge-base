@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import knowledge_base_overview as overview_service
+from app.core.services.knowledge_base import overview as overview_service
 from app.schemas.knowledge_base_overview import KnowledgeBaseOverviewResponse
 
 router = APIRouter(dependencies=[Depends(auth.get_current_user)])

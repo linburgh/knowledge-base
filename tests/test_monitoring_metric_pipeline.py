@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from app.core.services.monitoring import _aggregate_metric_window
-from app.core.services.monitoring_rule import evaluate_rule
+from app.core.services.monitoring.mgr import _aggregate_metric_window
+from app.core.services.monitoring.rule import evaluate_rule
 from app.workers.monitoring_aggregate import _aggregate, _definition_scopes
 
 ROOT = Path(__file__).resolve().parents[1]

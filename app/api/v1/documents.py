@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import document as document_service
+from app.core.services.knowledge_base import document as document_service
 from app.schemas.document import (
     DocumentCreateDto,
     DocumentCreateRequest,

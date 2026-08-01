@@ -4,11 +4,11 @@ from typing import Any
 
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import chat as chat_service
-from app.db import conversation as conversation_db
-from app.db import conversation_message as conversation_message_db
-from app.db import knowledge_base as knowledge_base_db
-from app.db import user as user_db
+from app.core.services.knowledge_base import chat as chat_service
+from app.db.knowledge_base import conversation as conversation_db
+from app.db.knowledge_base import conversation_message as conversation_message_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 

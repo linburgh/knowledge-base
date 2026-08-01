@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from sqlalchemy.dialects import postgresql
 
 from app.core.common.exception import BusiException
-from app.db.platform_overview import NON_BUSINESS_ACTIVITY_ACTIONS, recent_activities
-from app.core.services.platform_overview import _resolve_range
+from app.db.platform.overview import NON_BUSINESS_ACTIVITY_ACTIONS, recent_activities
+from app.core.services.platform.overview import _resolve_range
 
 
 class CaptureDB:

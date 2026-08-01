@@ -7,9 +7,9 @@ from typing import Any
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.common.time_range import resolve_range
-from app.db import knowledge_base as knowledge_base_db
-from app.db import platform_role as platform_role_db
-from app.db import knowledge_base_overview as overview_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.platform import platform_role as platform_role_db
+from app.db.knowledge_base import overview as overview_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.types.constants import PLATFORM_ROLE_SUPER_ADMIN

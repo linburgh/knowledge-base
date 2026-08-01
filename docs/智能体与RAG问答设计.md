@@ -83,7 +83,7 @@ Agent 的核心是“决策和编排”，RAG 只是 Agent 可以调用的一种
 
 当前聊天流程位于（其中 `app/rag/chains.py` 是待迁移和移除的过渡实现）：
 
-- `app/core/services/chat.py`
+- `app/core/services/knowledge_base/chat.py`
 - `app/rag/chains.py`（目标方案不再保留）
 
 当前流程是：
@@ -473,7 +473,7 @@ knowledge-base/
 | 文件 | 职责 |
 |---|---|
 | `app/api/v1/chat.py` | 解析聊天请求、获取认证上下文、调用 Chat Service、转换响应和异常；不实现 Agent Loop，不直接访问 DB、RAG 或 LLM。 |
-| `app/core/services/chat.py` | 校验会话、租户、知识库和用户权限，管理用户消息与助手消息的事务边界，调用 Agent，并保存最终结果。 |
+| `app/core/services/knowledge_base/chat.py` | 校验会话、租户、知识库和用户权限，管理用户消息与助手消息的事务边界，调用 Agent，并保存最终结果。 |
 | `app/schemas/agent.py` | 定义 Agent 输入、运行上下文、工具调用结果、最终答案、引用和运行摘要等 Pydantic 协议。 |
 
 调用方向保持为：

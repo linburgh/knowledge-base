@@ -7,8 +7,8 @@ from app.core.common import utils as common_utils
 from app.core.common import validation as common_validation
 from app.core.common import form_limits
 from app.core.common.exception import BusiException
-from app.core.services import audit as audit_service
-from app.db import tenant as tenant_db
+from app.core.services.platform import audit as audit_service
+from app.db.platform import tenant as tenant_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.schemas.tenant import TenantDto

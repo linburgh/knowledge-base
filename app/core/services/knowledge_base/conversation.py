@@ -6,10 +6,10 @@ from app.core.common import utils as common_utils
 from app.core.common import validation as common_validation
 from app.core.common import form_limits
 from app.core.common.exception import BusiException
-from app.db import conversation as conversation_db
-from app.db import conversation_message as conversation_message_db
-from app.db import knowledge_base as knowledge_base_db
-from app.db import message_citation as message_citation_db
+from app.db.knowledge_base import conversation as conversation_db
+from app.db.knowledge_base import conversation_message as conversation_message_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.knowledge_base import message_citation as message_citation_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 from app.schemas.conversation import ConversationDto, ConversationMessageDto, MessageCitationDto

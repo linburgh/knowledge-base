@@ -9,8 +9,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import CONF
 from app.core.common.log import LOG
 from app.core.monitoring import emit_gather_event
-from app.core.services import ingestion
-from app.db import indexing_task as indexing_task_db
+from app.core.services.knowledge_base import ingestion
+from app.db.knowledge_base import indexing_task as indexing_task_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 

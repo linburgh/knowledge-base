@@ -10,16 +10,16 @@ from app.core.common import validation as common_validation
 from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import audit as audit_service
-from app.db import knowledge_base as knowledge_base_db
-from app.db import knowledge_base_organization as knowledge_base_organization_db
-from app.db import knowledge_base_prompt as knowledge_base_prompt_db
-from app.db import knowledge_base_user as knowledge_base_user_db
-from app.db import organization as organization_db
-from app.db import platform_role as platform_role_db
-from app.db import tenant as tenant_db
-from app.db import tenant_member as tenant_member_db
-from app.db import user as user_db
+from app.core.services.platform import audit as audit_service
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.knowledge_base import organization as knowledge_base_organization_db
+from app.db.knowledge_base import prompt as knowledge_base_prompt_db
+from app.db.knowledge_base import user as knowledge_base_user_db
+from app.db.platform import organization as organization_db
+from app.db.platform import platform_role as platform_role_db
+from app.db.platform import tenant as tenant_db
+from app.db.platform import tenant_member as tenant_member_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB, PageRecord
 from app.db.models import Conversation, Document

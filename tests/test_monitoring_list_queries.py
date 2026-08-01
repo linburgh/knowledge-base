@@ -6,7 +6,7 @@ import pytest
 
 from app.core.common import utils
 from app.core.common.auth import CurrentUser
-from app.core.services import monitoring
+from app.core.services.monitoring import mgr as monitoring
 from app.db import api as db_api
 from app.db.base import DB
 from app.schemas.monitoring import MetricRuleRequest

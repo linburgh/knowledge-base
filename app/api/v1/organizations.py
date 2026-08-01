@@ -11,7 +11,7 @@ from app.api.v1.dependencies import (
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import organization as organization_service
+from app.core.services.platform import organization as organization_service
 from app.schemas.organization import (
     OrganizationCreateRequest,
     OrganizationDto,

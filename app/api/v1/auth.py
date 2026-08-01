@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, Request
 from app.core.common import auth
 from app.core.common import utils as common_utils
 from app.core.common.exception import BusiException
-from app.core.services import authentication as authentication_service
-from app.core.services import permission as permission_service
-from app.core.services import system_menu as system_menu_service
+from app.core.services.platform import authentication as authentication_service
+from app.core.services.platform import permission as permission_service
+from app.core.services.platform import system_menu as system_menu_service
 from app.schemas.auth import (
     AuthContextResponse,
     LoginRequest,

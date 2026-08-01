@@ -46,8 +46,8 @@ EXPECTED_TARGETS = {
 METHOD_TARGETS = {
     "knowledge.qa": ("app.agents.knowledge.agent", "run_knowledge_agent"),
     "evaluation.run": ("app.workers.evaluation", "run_evaluation"),
-    "document.ingestion": ("app.core.services.document", "upload"),
-    "document.indexing": ("app.core.services.ingestion", "run_claimed_task"),
+    "document.ingestion": ("app.core.services.knowledge_base.document", "upload"),
+    "document.indexing": ("app.core.services.knowledge_base.ingestion", "run_claimed_task"),
 }
 
 

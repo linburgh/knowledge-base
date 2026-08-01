@@ -1184,8 +1184,8 @@ app/agents/evaluation/metrics.py
 app/agents/evaluation/report.py
 app/agents/evaluation/policies.py
 app/api/v1/platform_evaluations.py
-app/core/services/platform_evaluation.py
-app/db/platform_evaluation.py
+app/core/services/platform/evaluation.py
+app/db/platform/evaluation_*.py
 app/schemas/platform_evaluation.py
 scripts/db/data_table_ddl.sql
 scripts/db/data_table_dml.sql

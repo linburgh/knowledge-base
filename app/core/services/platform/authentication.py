@@ -9,10 +9,10 @@ from app.core.common import validation as common_validation
 from app.core.common import form_limits
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
-from app.core.services import audit as audit_service
-from app.db import auth_session as auth_session_db
-from app.db import login_log as login_log_db
-from app.db import user as user_db
+from app.core.services.platform import audit as audit_service
+from app.db.platform import auth_session as auth_session_db
+from app.db.platform import login_log as login_log_db
+from app.db.platform import user as user_db
 from app.db.api import check_db_connected
 from app.db.base import DB
 
