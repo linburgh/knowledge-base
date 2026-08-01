@@ -44,9 +44,11 @@
 
 ## 目录边界
 
+Service 与 DB 的业务归属、文件命名、导入方式、迁移流程和验收要求统一遵守 [`后端分层目录组织开发规约.md`](docs/后端分层目录组织开发规约.md)。
+
 - `app/api/v1/`：HTTP 接口层，只负责请求解析、认证上下文、调用 Service 和响应转换。
 - `app/core/services/`：业务编排层，负责校验、事务边界和调用 DB、RAG、外部服务；业务 Service 必须分别归入 `platform/`（平台管理，含自主评测管理）、`knowledge_base/`（知识库管理）和 `monitoring/`（自主监控），不得继续平铺在该目录根层。包内主业务管理模块统一命名为 `mgr.py`，其他文件不得重复使用所属包的 `knowledge_base_`、`monitoring_` 等前缀。
-- `app/db/`：数据访问层，负责连接、表结构、Repository 和向量库适配；业务 Repository 必须分别归入 `platform/`、`knowledge_base/` 和 `monitoring/`，根目录只保留连接、通用访问、模型定义和向量库适配等基础设施。包内主 Repository 统一命名为 `mgr.py`，其他文件不得重复使用所属包名前缀。
+- `app/db/`：数据访问层，负责连接、表结构、Repository 和向量库适配；业务 Repository 必须分别归入 `platform/`、`knowledge_base/` 和 `monitoring/`，根目录只保留连接、通用访问、模型定义和向量库适配等基础设施。包内主 Repository 统一命名为 `mgr.py`；`knowledge_base/`、`monitoring/` 内的其他文件不得重复使用所属包名前缀，稳定领域实体命名例外以目录规约为准。
 - `app/rag/`：LangChain 能力封装层，负责 Loader、Splitter、Embedding、Retriever 和 Chain。
 - `app/schemas/`：请求、响应、分页和内部协议模型。
 - `app/core/common/`：认证、异常、日志和纯工具函数。
