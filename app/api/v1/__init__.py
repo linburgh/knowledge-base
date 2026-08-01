@@ -9,23 +9,25 @@ from app.api.v1 import (
     evaluations,
     guest,
     health,
-    knowledge_base_overview,
-    knowledge_base_qa_config,
-    knowledge_bases,
     monitoring,
     organizations,
-    platform_overview,
-    platform_roles,
     search,
     tenants,
     users,
 )
+from app.api.v1.knowledge_base import mgr as knowledge_base_mgr
+from app.api.v1.knowledge_base import overview as knowledge_base_overview
+from app.api.v1.knowledge_base import qa_config as knowledge_base_qa_config
+from app.api.v1.platform import overview as platform_overview
+from app.api.v1.platform import roles as platform_roles
 
 api_router = APIRouter()
 api_router.include_router(open_router)
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(health.router, prefix="/health", tags=["Health"])
-api_router.include_router(knowledge_bases.router, prefix="/knowledge-bases", tags=["KnowledgeBase"])
+api_router.include_router(
+    knowledge_base_mgr.router, prefix="/knowledge-bases", tags=["KnowledgeBase"]
+)
 api_router.include_router(
     knowledge_base_overview.router, prefix="/knowledge-bases", tags=["KnowledgeBase"]
 )

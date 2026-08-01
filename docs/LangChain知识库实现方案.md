@@ -724,7 +724,7 @@ pip install -r requirements.txt
 
 | 文件 | 具体作用 | 典型接口 |
 |---|---|---|
-| `app/api/v1/knowledge_bases.py` | 知识库管理接口。负责创建知识库、修改描述、查询列表、配置检索参数和删除知识库。 | `POST /knowledge-bases`、`GET /knowledge-bases` |
+| `app/api/v1/knowledge_base/mgr.py` | 知识库管理接口。负责创建知识库、修改描述、查询列表、配置检索参数和删除知识库。 | `POST /knowledge-bases`、`GET /knowledge-bases` |
 | `app/api/v1/documents.py` | 文档管理接口。负责上传文件、接收网页地址、查询索引状态、删除文档和触发重新索引。 | `POST /knowledge-bases/{id}/documents`、`GET /documents/{id}` |
 | `app/api/v1/chat.py` | 问答和检索接口。负责接收问题、会话 ID、知识库 ID，调用问答 Service，并返回答案、引用和检索信息。 | `POST /chat`、`POST /search` |
 | `app/api/v1/health.py` | 健康检查接口。检查应用进程和数据库等关键依赖是否可用。 | `GET /health` |
