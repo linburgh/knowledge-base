@@ -163,6 +163,17 @@ _EVENT_STATUS_NAMES = {
     "firing": "触发中",
     "resolved": "已恢复",
 }
+_EVENT_FOCUS_STATUS_RANK = {
+    "warning": 1,
+    "retrying": 1,
+    "stale": 1,
+    "degraded": 2,
+    "timeout": 3,
+    "stopped": 3,
+    "firing": 4,
+    "failed": 4,
+    "error": 4,
+}
 _EVENT_RESOURCE_NAMES = {
     "api.http": "接口服务",
     "db.execute": "数据库访问",
@@ -212,6 +223,46 @@ def _event_source_category(event: dict[str, Any]) -> str:
     if source_type in {"document_index", "evaluation_agent", "task"}:
         return "task"
     return "collection"
+
+
+def _event_focus_identity(event: dict[str, Any]) -> tuple[str, str]:
+    source_category = _event_source_category(event)
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    if source_category == "worker":
+        identity = event.get("source_code")
+    elif source_category == "alert":
+        identity = (
+            payload.get("alert_id")
+            or event.get("trace_id")
+            or event.get("request_id")
+            or event.get("event_id")
+        )
+    elif source_category == "task":
+        identity = (
+            event.get("run_id")
+            or event.get("task_id")
+            or event.get("trace_id")
+            or event.get("event_id")
+        )
+    else:
+        identity = event.get("source_code") or event.get("event_id")
+    return source_category, str(identity or event.get("event_id") or "unknown")
+
+
+def _current_event_states(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for event in events:
+        identity = _event_focus_identity(event)
+        current = latest.get(identity)
+        event_time = event.get("occurred_at") or datetime.min.replace(tzinfo=UTC)
+        current_time = (
+            current.get("occurred_at") or datetime.min.replace(tzinfo=UTC)
+            if current is not None
+            else datetime.min.replace(tzinfo=UTC)
+        )
+        if current is None or event_time > current_time:
+            latest[identity] = event
+    return list(latest.values())
 
 
 def _event_domain(event: dict[str, Any]) -> str:
@@ -3066,10 +3117,58 @@ async def events_overview(current_user: CurrentUser, time_range: str = "1h") -> 
     occurred_times = [
         event["occurred_at"] for event in events if isinstance(event.get("occurred_at"), datetime)
     ]
+    focus_candidates = [
+        event
+        for event in _current_event_states(events)
+        if str(event.get("status") or "") in _EVENT_FOCUS_STATUS_RANK
+    ]
+    focus_event = None
+    if focus_candidates:
+        focus_source = max(
+            focus_candidates,
+            key=lambda event: (
+                _EVENT_FOCUS_STATUS_RANK[str(event.get("status"))],
+                event.get("occurred_at") or datetime.min.replace(tzinfo=UTC),
+            ),
+        )
+        association_fields = ("trace_id", "task_id", "run_id", "request_id")
+        related_events = [
+            event
+            for event in events
+            if any(
+                focus_source.get(field) is not None
+                and event.get(field) == focus_source.get(field)
+                for field in association_fields
+            )
+        ]
+        focus_view = _event_view(focus_source)
+        source_category = _event_source_category(focus_source)
+        related_alert_count = sum(
+            _event_source_category(event) == "alert" for event in related_events
+        )
+        related_task_keys = {
+            str(event.get("task_id") or event.get("run_id"))
+            for event in related_events
+            if event.get("task_id") is not None or event.get("run_id") is not None
+        }
+        focus_event = {
+            "event_id": focus_view.get("event_id"),
+            "event_type_name": focus_view.get("event_type_name"),
+            "event_content": focus_view.get("event_content"),
+            "monitor_domain_name": focus_view.get("monitor_domain_name"),
+            "resource_name": focus_view.get("resource_name"),
+            "status": focus_view.get("status"),
+            "status_name": focus_view.get("status_name"),
+            "occurred_at": focus_view.get("occurred_at"),
+            "related_alert_count": related_alert_count
+            or (1 if source_category == "alert" else 0),
+            "related_task_count": len(related_task_keys)
+            or (1 if source_category == "task" else 0),
+        }
     if not events:
         conclusion = "暂无事件"
         conclusion_detail = "当前时间范围内暂无监控事件。"
-    elif abnormal_count or alert_related_count:
+    elif focus_event is not None:
         conclusion = "需要关注"
         conclusion_detail = (
             f"当前共记录 {len(events)} 条事件，其中异常事件 {abnormal_count} 条，"
@@ -3085,6 +3184,7 @@ async def events_overview(current_user: CurrentUser, time_range: str = "1h") -> 
         "abnormal_count": abnormal_count,
         "alert_related_count": alert_related_count,
         "latest_event_at": max(occurred_times) if occurred_times else None,
+        "focus_event": focus_event,
         "trend": _event_trend(events),
         "source_distribution": [
             {

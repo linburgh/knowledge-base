@@ -378,7 +378,7 @@ async def test_overviews_use_real_full_range_data(list_context, monkeypatch):
                 "source_code": "index-task",
                 "task_id": 1,
                 "run_id": 1,
-                "status": "running",
+                "status": "failed",
                 "occurred_at": now,
             },
             {
@@ -417,6 +417,18 @@ async def test_overviews_use_real_full_range_data(list_context, monkeypatch):
     assert metric_result["trend"][0]["warning"] == 1
     assert task_result["total_count"] == 1
     assert event_result["total_count"] == 2
+    assert event_result["focus_event"] == {
+        "event_id": "task-1",
+        "event_type_name": "任务状态",
+        "event_content": "index-task：失败",
+        "monitor_domain_name": "异步任务",
+        "resource_name": "index-task",
+        "status": "failed",
+        "status_name": "失败",
+        "occurred_at": now,
+        "related_alert_count": 0,
+        "related_task_count": 1,
+    }
     assert event_result["source_distribution"] == [
         {
             "source_category": "task",
@@ -443,6 +455,49 @@ async def test_overviews_use_real_full_range_data(list_context, monkeypatch):
             "color": "#aeb9c8",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_events_overview_excludes_recovered_worker_stop_from_focus(
+    list_context, monkeypatch
+):
+    now = utils.utc_now()
+
+    async def events(*_, **__):
+        return [
+            {
+                "event_id": "notify-stopped",
+                "event_type": "worker_stopped",
+                "source_type": "worker",
+                "source_code": "monitoring_notify",
+                "status": "stopped",
+                "occurred_at": now - timedelta(minutes=10),
+            },
+            {
+                "event_id": "notify-started",
+                "event_type": "worker_started",
+                "source_type": "worker",
+                "source_code": "monitoring_notify",
+                "status": "started",
+                "occurred_at": now - timedelta(minutes=9),
+            },
+            {
+                "event_id": "notify-heartbeat",
+                "event_type": "worker_heartbeat",
+                "source_type": "worker",
+                "source_code": "monitoring_notify",
+                "status": "healthy",
+                "occurred_at": now,
+            },
+        ]
+
+    monkeypatch.setattr(monitoring.event_db, "list", events)
+
+    result = await monitoring.events_overview(list_context)
+
+    assert result["abnormal_count"] == 1
+    assert result["focus_event"] is None
+    assert result["conclusion"] == "运行正常"
 
 
 @pytest.mark.asyncio
