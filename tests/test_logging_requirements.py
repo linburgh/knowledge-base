@@ -5,7 +5,13 @@ from unittest.mock import AsyncMock, patch
 
 from app.agents.evaluation.agent import EvaluationAgent
 from app.agents.evaluation.models import EvaluationConfig, EvaluationQuestion
+from app.agents.evaluation.tools.registry import EvaluationToolRegistry
 from app.db.base import LoggingDatabase
+from app.schemas.evaluation import (
+    EvaluationAgentContext,
+    EvaluationAgentTask,
+    KnowledgeAgentCallResult,
+)
 
 
 class DatabaseLoggingTest(unittest.IsolatedAsyncioTestCase):
@@ -31,18 +37,20 @@ class DatabaseLoggingTest(unittest.IsolatedAsyncioTestCase):
 
 class EvaluationAgentLoggingTest(unittest.IsolatedAsyncioTestCase):
     async def test_agent_logs_lifecycle(self) -> None:
-        async def runner(task, context):
-            del task, context
+        async def runner(payload, context):
+            del payload, context
             from app.schemas.agent import AgentResult
 
-            return AgentResult(
-                answer="答案",
-                mode="single_retrieval",
-                status="completed",
-                top_k=5,
-                hit_count=1,
-                termination_reason="completed",
-                duration_ms=1,
+            return KnowledgeAgentCallResult(
+                result=AgentResult(
+                    answer="答案",
+                    mode="single_retrieval",
+                    status="completed",
+                    top_k=5,
+                    hit_count=1,
+                    termination_reason="completed",
+                    duration_ms=1,
+                )
             )
 
         config = EvaluationConfig(
@@ -52,10 +60,21 @@ class EvaluationAgentLoggingTest(unittest.IsolatedAsyncioTestCase):
             business_scope_source="description",
             business_description="测试范围",
         )
+        registry = EvaluationToolRegistry()
+        registry.register("call_knowledge_agent", runner)
         with patch("app.agents.evaluation.agent.LOG") as agent_log:
-            await EvaluationAgent(runner).run(
-                config,
-                [EvaluationQuestion(question="测试问题")],
+            await EvaluationAgent(registry=registry).run(
+                EvaluationAgentTask(
+                    config=config.model_dump(mode="json"),
+                    questions=[EvaluationQuestion(question="测试问题").model_dump(mode="json")],
+                ),
+                EvaluationAgentContext(
+                    run_id=1,
+                    task_id=1,
+                    user_id="2",
+                    kb_id=1,
+                    is_super_admin=True,
+                ),
             )
 
         messages = " ".join(str(call.args) for call in agent_log.info.call_args_list)

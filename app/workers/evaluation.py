@@ -1,25 +1,25 @@
 """Autonomous evaluation worker managed by the backend application."""
 
 import asyncio
-import inspect
 from datetime import UTC, datetime
 from time import monotonic
 
 from app.agents.evaluation.agent import EvaluationAgent
 from app.agents.evaluation.dataset import load_questions, load_questions_content
-from app.agents.evaluation.models import EvaluationConfig
-from app.agents.evaluation.report import build_report
-from app.agents.knowledge.agent import run_knowledge_agent
+from app.agents.evaluation.models import CaseResult, EvaluationConfig, EvaluationMetrics
 from app.config import CONF
 from app.core.common.log import LOG
 from app.core.monitoring import emit_gather_event, monitor_gather
+from app.core.services import knowledge_base_qa_config as qa_config_service
 from app.db import document_chunk as document_chunk_db
 from app.db import evaluation_case_result as case_db
 from app.db import evaluation_optimization as optimization_db
 from app.db import evaluation_run as run_db
 from app.db import evaluation_task as task_db
+from app.db import knowledge_base as knowledge_base_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.schemas.evaluation import EvaluationAgentContext, EvaluationAgentTask
 
 
 def _now():
@@ -39,25 +39,6 @@ async def _load_generation_context(db, config, fallback: str | None) -> str | No
         if str(chunk.get("content") or "").strip()
     )
     return knowledge_text or fallback
-
-
-async def _run_agent_with_budget(
-    evaluation_agent,
-    config: EvaluationConfig,
-    questions,
-    event_fields: dict,
-    timeout_seconds: float,
-):
-    run_parameters = inspect.signature(evaluation_agent.run).parameters
-    if "monitoring_fields" in run_parameters:
-        operation = evaluation_agent.run(
-            config,
-            questions,
-            monitoring_fields=event_fields,
-        )
-    else:
-        operation = evaluation_agent.run(config, questions)
-    return await asyncio.wait_for(operation, timeout=max(0.001, timeout_seconds))
 
 
 @check_db_connected
@@ -157,18 +138,47 @@ async def run_evaluation(run_id: int) -> int:
             id=run_id,
         )
         LOG.info("自主评测Worker Agent execution started run_id={}", run_id)
-        evaluation_agent = EvaluationAgent(run_knowledge_agent)
+        async def is_cancelled() -> bool:
+            latest_run = await run_db.get(db, id=run_id)
+            return latest_run is None or latest_run.get("status") == "cancelled"
+
+        evaluation_agent = EvaluationAgent(cancel_check=is_cancelled)
         remaining_seconds = max(
             0.001,
             config.run_timeout_seconds - (monotonic() - run_started_at),
         )
         try:
-            results, metrics = await _run_agent_with_budget(
-                evaluation_agent,
-                config,
-                questions,
-                event_fields,
-                remaining_seconds,
+            knowledge_base = await knowledge_base_db.get(db, id=config.kb_id)
+            if knowledge_base is None or knowledge_base.get("status") == "deleted":
+                raise ValueError("评测知识库不存在")
+            qa_config = await qa_config_service.get_effective_config(
+                db,
+                config.kb_id,
+                knowledge_base.get("system_prompt") or "",
+            )
+            agent_result = await asyncio.wait_for(
+                evaluation_agent.run(
+                    EvaluationAgentTask(
+                        config=config.model_dump(mode="json"),
+                        questions=[item.model_dump(mode="json") for item in questions],
+                    ),
+                    EvaluationAgentContext(
+                        run_id=run_id,
+                        task_id=int(run["task_id"]),
+                        user_id=str(config.user_id),
+                        tenant_id=task.get("tenant_id") or knowledge_base.get("tenant_id"),
+                        organization_ids=list(
+                            task["config"].get("organization_ids") or []
+                        ),
+                        kb_id=config.kb_id,
+                        index_version_id=knowledge_base.get("active_index_version_id"),
+                        knowledge_base_prompt=knowledge_base.get("system_prompt"),
+                        qa_config=qa_config,
+                        is_super_admin=True,
+                        monitoring_fields=event_fields,
+                    ),
+                ),
+                timeout=remaining_seconds,
             )
         except TimeoutError:
             await run_db.update_(
@@ -191,6 +201,30 @@ async def run_evaluation(run_id: int) -> int:
                 **event_fields,
             )
             return run_id
+        if agent_result.summary.status == "cancelled":
+            cancelled_results = [
+                CaseResult.model_validate(item) for item in agent_result.case_results
+            ]
+            async with db.transaction():
+                for result in cancelled_results:
+                    await case_db.insert_(db, run_id=run_id, **result.model_dump())
+                await run_db.update_(
+                    db,
+                    {
+                        "status": "cancelled",
+                        "stage": "execute",
+                        "completed_count": len(cancelled_results),
+                        "failed_count": sum(
+                            item.status != "completed" for item in cancelled_results
+                        ),
+                        "finished_at": _now(),
+                    },
+                    id=run_id,
+                )
+            return run_id
+        results = [CaseResult.model_validate(item) for item in agent_result.case_results]
+        metrics = EvaluationMetrics.model_validate(agent_result.metrics)
+        report = agent_result.report
         LOG.info(
             "自主评测Worker Agent execution completed run_id={} result_count={} conclusion={}",
             run_id,
@@ -215,7 +249,6 @@ async def run_evaluation(run_id: int) -> int:
             },
             id=run_id,
         )
-        report = build_report(config, results, metrics)
         LOG.info(
             "自主评测Worker persistence started run_id={} case_count={}",
             run_id,

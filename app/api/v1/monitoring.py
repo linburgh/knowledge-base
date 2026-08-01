@@ -12,7 +12,9 @@ from app.core.services import monitoring_analysis as analysis_service
 from app.schemas.monitoring import (
     AlertActionRequest,
     AnalysisConversationRequest,
+    AnalysisConversationModifyRequest,
     AnalysisMessageRequest,
+    AnalysisMessageResponse,
     MetricRuleRequest,
     MonitorEventRequest,
     MonitorSnapshotRequest,
@@ -480,8 +482,30 @@ async def audit_detail(
 
 
 @router.get("/analysis/conversations")
-async def list_conversations(current_user: auth.CurrentUser = current_user_dependency):
-    return await _call(analysis_service.list_conversations, current_user)
+async def list_conversations(
+    keyword: str | None = None,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(analysis_service.list_conversations, current_user, keyword)
+
+
+@router.put("/analysis/conversations/{conversation_id}")
+async def modify_conversation(
+    conversation_id: int,
+    payload: AnalysisConversationModifyRequest,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(
+        analysis_service.modify_conversation, conversation_id, payload, current_user
+    )
+
+
+@router.delete("/analysis/conversations/{conversation_id}")
+async def remove_conversation(
+    conversation_id: int,
+    current_user: auth.CurrentUser = current_user_dependency,
+):
+    return await _call(analysis_service.remove_conversation, conversation_id, current_user)
 
 
 @router.get("/analysis/conversations/{conversation_id}/messages")
@@ -489,7 +513,10 @@ async def messages(conversation_id: int, current_user: auth.CurrentUser = curren
     return await _call(analysis_service.messages, conversation_id, current_user)
 
 
-@router.post("/analysis/conversations/{conversation_id}/messages")
+@router.post(
+    "/analysis/conversations/{conversation_id}/messages",
+    response_model=AnalysisMessageResponse,
+)
 async def send_message(
     conversation_id: int,
     payload: AnalysisMessageRequest,

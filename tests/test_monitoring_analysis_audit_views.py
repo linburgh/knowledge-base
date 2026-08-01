@@ -5,12 +5,21 @@ from datetime import timedelta
 import pytest
 
 from app.agents.monitoring import MonitoringAgent
+from app.agents.monitoring.answering import DeterministicMarkdownAnswerComposer
+from app.agents.monitoring.planner import RuleBasedMonitoringPlanner
+from app.agents.monitoring.tools.registry import MonitoringToolRegistry
 from app.core.common import utils
 from app.core.common.auth import CurrentUser
+from app.core.common.exception import BusiException
 from app.core.services import monitoring, monitoring_analysis
 from app.db import api as db_api
 from app.db.base import DB
-from app.schemas.monitoring import AnalysisConversationRequest, AnalysisMessageRequest
+from app.schemas.monitoring import (
+    AnalysisConversationModifyRequest,
+    AnalysisConversationRequest,
+    AnalysisMessageRequest,
+    AnalysisMessageResponse,
+)
 
 
 @pytest.fixture
@@ -26,9 +35,14 @@ def service_context(monkeypatch):
     async def scope(*_):
         return None
 
+    async def empty(*_, **__):
+        return []
+
     monkeypatch.setattr(db_api, "inject_db", inject_db)
     monkeypatch.setattr(monitoring, "require_monitoring_access", allow)
     monkeypatch.setattr(monitoring, "tenant_scope", scope)
+    monkeypatch.setattr(monitoring.event_db, "list", empty)
+    monkeypatch.setattr(monitoring, "_task_records", empty)
     return CurrentUser(user_id="11")
 
 
@@ -93,6 +107,13 @@ async def test_analysis_overview_returns_structured_agent_result(service_context
 
     assert result["analysis_status"] == "completed"
     assert result["incident_id"] == "INC-7"
+    assert result["presentation_state"] == "alert"
+    assert result["impact_overview"]["status_name"] == "已确认影响"
+    assert result["action_overview"]["status_name"] == "优先处理"
+    assert result["report_no"].startswith("AMR-")
+    assert result["generated_at"]
+    assert len(result["checks"]) == 4
+    assert result["judgment_boundary"]
     assert result["confidence"] >= 55
     assert result["impacts"][0]["impact_status"] == "confirmed"
     assert {item["evidence_level"] for item in result["evidence"]} == {"direct", "context"}
@@ -137,8 +158,173 @@ async def test_analysis_failure_preserves_facts(service_context, monkeypatch):
 
     assert result["analysis_status"] == "unavailable"
     assert result["conclusion"] == "分析暂不可用"
+    assert result["presentation_state"] == "unknown"
+    assert result["impact_overview"]["status_name"] == "无法判断"
+    assert result["action_overview"]["status_name"] == "补充证据"
     assert len(result["alerts"]) == 1
     assert len(result["evidence"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_analysis_overview_uses_metric_evidence_without_active_alerts(
+    service_context,
+    monkeypatch,
+):
+    now = utils.utc_now()
+
+    async def definitions(*_, **__):
+        return [
+            {
+                "metric_code": "qa_success_rate",
+                "metric_name": "问答成功率",
+                "metric_domain": "qa",
+                "status": "active",
+                "version": 1,
+            }
+        ]
+
+    async def alerts(*_, **__):
+        return []
+
+    async def evidence(*_, **__):
+        return []
+
+    async def values(*_, **filters):
+        assert filters["scope_key"] == "platform"
+        return [
+            {
+                "id": 31,
+                "metric_code": "qa_success_rate",
+                "metric_value": 1,
+                "sample_count": 5,
+                "data_status": "ready",
+                "assessment_status": "ready",
+                "window_end": now,
+            }
+        ]
+
+    async def events(*_, **__):
+        return [
+            {
+                "id": 61,
+                "event_id": "event-normal-61",
+                "event_type": "probe_completed",
+                "source_type": "probe",
+                "source_code": "probe.qa",
+                "status": "healthy",
+                "occurred_at": now,
+                "data_status": "ready",
+            }
+        ]
+
+    async def tasks(*_, **__):
+        return [
+            {
+                "task_key": "indexing-71",
+                "task_name": "索引构建 71",
+                "status": "completed",
+                "status_name": "已完成",
+                "created_at": now,
+                "updated_at": now,
+            }
+        ]
+
+    monkeypatch.setattr(monitoring.definition_db, "list", definitions)
+    monkeypatch.setattr(monitoring.alert_db, "list", alerts)
+    monkeypatch.setattr(monitoring.alert_evidence_db, "list", evidence)
+    monkeypatch.setattr(monitoring.value_db, "list", values)
+    monkeypatch.setattr(monitoring.event_db, "list", events)
+    monkeypatch.setattr(monitoring, "_task_records", tasks)
+
+    result = await monitoring.analysis_overview(service_context)
+
+    assert result["analysis_status"] == "completed"
+    assert result["attention_status"] == "none"
+    assert result["presentation_state"] == "normal"
+    assert result["impact_overview"]["title"] == "未发现已确认影响"
+    assert result["action_overview"]["title"] == "当前无需处置"
+    assert result["conclusion"] == "当前平台运行正常，未发现已确认的业务影响"
+    assert result["data_status"] == "ready"
+    assert any(item["title"] == "问答成功率" for item in result["evidence"])
+    assert result["timeline"] == result["evidence"]
+    checks = {item["dimension"]: item for item in result["checks"]}
+    assert checks["core_metrics"]["status_name"] == "达标"
+    assert checks["runtime_events"]["evidence_count"] == 1
+    assert checks["task_runtime"]["evidence_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_analysis_overview_is_empty_only_when_all_facts_are_empty(
+    service_context,
+    monkeypatch,
+):
+    async def empty(*_, **__):
+        return []
+
+    monkeypatch.setattr(monitoring.definition_db, "list", empty)
+    monkeypatch.setattr(monitoring.alert_db, "list", empty)
+    monkeypatch.setattr(monitoring.alert_evidence_db, "list", empty)
+    monkeypatch.setattr(monitoring.value_db, "list", empty)
+
+    result = await monitoring.analysis_overview(service_context)
+
+    assert result["analysis_status"] == "not_required"
+    assert result["conclusion"] == "现有证据不足，暂时无法判断平台运行状态和影响范围"
+    assert result["presentation_state"] == "unknown"
+    assert result["impact_overview"]["status_name"] == "无法判断"
+    assert result["action_overview"]["status_name"] == "补充证据"
+    assert result["data_status"] == "empty"
+    assert result["evidence"] == []
+    assert result["confidence"] is None
+    assert result["checks"][1]["status_name"] == "缺少数据"
+
+
+@pytest.mark.asyncio
+async def test_analysis_overview_marks_warning_metric_as_pending_impact(
+    service_context,
+    monkeypatch,
+):
+    now = utils.utc_now()
+
+    async def definitions(*_, **__):
+        return [
+            {
+                "metric_code": "qa_p95",
+                "metric_name": "问答响应耗时",
+                "metric_domain": "qa",
+                "status": "active",
+                "version": 1,
+            }
+        ]
+
+    async def values(*_, **__):
+        return [
+            {
+                "id": 41,
+                "metric_code": "qa_p95",
+                "metric_value": 1.8,
+                "sample_count": 12,
+                "data_status": "ready",
+                "assessment_status": "warning",
+                "window_end": now,
+            }
+        ]
+
+    async def empty(*_, **__):
+        return []
+
+    monkeypatch.setattr(monitoring.definition_db, "list", definitions)
+    monkeypatch.setattr(monitoring.alert_db, "list", empty)
+    monkeypatch.setattr(monitoring.alert_evidence_db, "list", empty)
+    monkeypatch.setattr(monitoring.value_db, "list", values)
+
+    result = await monitoring.analysis_overview(service_context)
+
+    assert result["presentation_state"] == "warning"
+    assert result["impact_overview"]["status_name"] == "待验证影响"
+    assert result["action_overview"]["status_name"] == "人工核查"
+    assert result["impacts"][0]["impact_status"] == "pending"
+    assert result["suggestions"][0]["target_module"] == "metrics"
 
 
 @pytest.mark.asyncio
@@ -276,6 +462,15 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
         row = await get_conversation(_, **filters)
         row.update(values)
 
+    async def list_conversations(_, keyword=None, **filters):
+        return [
+            row
+            for row in conversations
+            if row.get("conversation_type") == filters.get("conversation_type")
+            and row.get("status") != "deleted"
+            and (not keyword or keyword.lower() in str(row.get("title") or "").lower())
+        ]
+
     async def insert_message(_, **values):
         message_id = len(messages) + 1
         messages.append({"id": message_id, **values, "created_at": utils.utc_now()})
@@ -291,8 +486,24 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     monkeypatch.setattr(monitoring_analysis.conversation_db, "insert_", insert_conversation)
     monkeypatch.setattr(monitoring_analysis.conversation_db, "get", get_conversation)
     monkeypatch.setattr(monitoring_analysis.conversation_db, "update_", update_conversation)
+    monkeypatch.setattr(monitoring_analysis.conversation_db, "list", list_conversations)
     monkeypatch.setattr(monitoring_analysis.message_db, "insert_", insert_message)
     monkeypatch.setattr(monitoring_analysis.audit_service, "record", audit)
+    monkeypatch.setattr(
+        monitoring_analysis,
+        "build_monitoring_tool_registry",
+        lambda **_: MonitoringToolRegistry(),
+    )
+    monkeypatch.setattr(
+        monitoring_analysis,
+        "build_monitoring_planner",
+        lambda: RuleBasedMonitoringPlanner(),
+    )
+    monkeypatch.setattr(
+        monitoring_analysis,
+        "build_monitoring_answer_composer",
+        lambda: DeterministicMarkdownAnswerComposer(),
+    )
 
     user = CurrentUser(user_id="11")
     conversation = await monitoring_analysis.create_conversation(
@@ -308,13 +519,34 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
         AnalysisMessageRequest(content="有哪些直接证据？", context={}),
         user,
     )
+    with pytest.raises(BusiException, match="会话名称不能为空"):
+        await monitoring_analysis.modify_conversation(
+            conversation["id"], AnalysisConversationModifyRequest(title="   "), user
+        )
+    renamed = await monitoring_analysis.modify_conversation(
+        conversation["id"], AnalysisConversationModifyRequest(title="Worker 心跳分析"), user
+    )
+    filtered = await monitoring_analysis.list_conversations(user, "心跳")
+    deleted = await monitoring_analysis.remove_conversation(conversation["id"], user)
+    remaining = await monitoring_analysis.list_conversations(user, "心跳")
 
     assert conversation["metadata"]["incident_id"] == "INC-7"
     assert conversation["metadata"]["evidence"][0]["id"] == "alert-7"
     assert all(item.get("id") != "forged" for item in conversation["metadata"]["evidence"])
-    assert result["agent"] == "自主监控Agent"
+    assert result["agent"] == "自主监控智能体"
+    assert result["intent"] == "evidence_review"
+    assert result["time_range"]["source"] == "conversation"
+    assert renamed["title"] == "Worker 心跳分析"
+    assert [item["id"] for item in filtered] == [conversation["id"]]
+    assert deleted["status"] == "deleted"
+    assert remaining == []
     assert messages[-1]["metadata"]["evidence"][0]["id"] == "alert-7"
+    assert messages[-1]["metadata"]["intent"] == "evidence_review"
+    assert messages[-1]["metadata"]["time_range"]["source"] == "conversation"
+    AnalysisMessageResponse.model_validate(result)
     assert {item["action"] for item in audits} == {
         "monitor_analysis_conversation_created",
+        "monitor_analysis_conversation_deleted",
+        "monitor_analysis_conversation_renamed",
         "monitor_analysis_message_sent",
     }

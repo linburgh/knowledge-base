@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>自主监控结构化明细列表效果图</title>
+    <style>
+      :root {
+        --font:
+          "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC",
+          "Segoe UI", Arial, sans-serif;
+        --ink: #23304a;
+        --muted: #71809a;
+        --line: #e4e9f2;
+        --soft: #f7f9fc;
+        --primary: #5d6cf0;
+        --primary-soft: #eef0ff;
+        --success: #35a978;
+        --warning: #d99a2b;
+        --danger: #d75b66;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 1500px;
+        min-height: 1280px;
+        margin: 0;
+        color: var(--ink);
+        background: #eef2f8;
+        font-family: var(--font);
+        font-size: 13px;
+      }
+
+      .canvas {
+        width: 1500px;
+        min-height: 1210px;
+        margin: 36px auto;
+        overflow: hidden;
+        border: 1px solid #dfe5ef;
+        border-radius: 20px;
+        background: #f6f8fc;
+        box-shadow: 0 28px 70px rgba(35, 48, 74, 0.14);
+      }
+
+      .topbar {
+        display: flex;
+        height: 70px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 28px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .brand,
+      .review-meta,
+      .brand-copy,
+      .title-line,
+      .panel-heading,
+      .query-bar,
+      .query-actions,
+      .record,
+      .identity-line,
+      .status-line,
+      .pagination,
+      .pagination-actions {
+        display: flex;
+        align-items: center;
+      }
+
+      .brand {
+        gap: 12px;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 11px;
+        color: #fff;
+        background: linear-gradient(145deg, #7382f6, #5263da);
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .brand-copy {
+        align-items: baseline;
+        gap: 9px;
+      }
+
+      .brand-copy strong {
+        font-size: 16px;
+      }
+
+      .brand-copy span,
+      .review-meta {
+        color: var(--muted);
+      }
+
+      .review-meta {
+        gap: 16px;
+      }
+
+      .review-badge {
+        padding: 6px 10px;
+        border: 1px solid #d9ddff;
+        border-radius: 999px;
+        color: #5263d8;
+        background: #f3f4ff;
+        font-weight: 600;
+      }
+
+      main {
+        padding: 24px 28px 30px;
+      }
+
+      .page-heading {
+        margin-bottom: 20px;
+      }
+
+      .title-line {
+        gap: 10px;
+      }
+
+      .title-line h1 {
+        margin: 0;
+        font-size: 24px;
+        letter-spacing: -0.02em;
+      }
+
+      .concept-tag {
+        padding: 5px 9px;
+        border-radius: 7px;
+        color: #5263d8;
+        background: var(--primary-soft);
+        font-weight: 600;
+      }
+
+      .page-heading p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .concept-section {
+        margin-top: 20px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: #fff;
+        box-shadow: 0 10px 28px rgba(35, 48, 74, 0.055);
+      }
+
+      .panel-heading {
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .panel-heading h2 {
+        margin: 0 0 5px;
+        font-size: 18px;
+      }
+
+      .panel-heading p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 20px;
+      }
+
+      .panel-note {
+        color: #8290a7;
+      }
+
+      .query-bar {
+        gap: 10px;
+        margin-bottom: 15px;
+        padding: 13px 14px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: #fafbfe;
+      }
+
+      .query-field {
+        display: grid;
+        min-width: 150px;
+        gap: 5px;
+      }
+
+      .query-field.wide {
+        min-width: 190px;
+      }
+
+      .query-field label {
+        color: #53617a;
+        font-size: 12px;
+      }
+
+      .input {
+        display: flex;
+        height: 36px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 11px;
+        border: 1px solid #dce2ed;
+        border-radius: 8px;
+        color: #8793a7;
+        background: #fff;
+        white-space: nowrap;
+      }
+
+      .query-actions {
+        align-self: flex-end;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      button {
+        height: 36px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 8px;
+        color: #53617a;
+        background: #edf1f6;
+        font: inherit;
+      }
+
+      button.primary {
+        color: #fff;
+        background: var(--primary);
+      }
+
+      .record-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .record {
+        position: relative;
+        min-height: 92px;
+        gap: 20px;
+        padding: 16px 18px 16px 20px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        transition: 0.18s ease;
+      }
+
+      .record::before {
+        position: absolute;
+        top: 14px;
+        bottom: 14px;
+        left: 0;
+        width: 3px;
+        border-radius: 0 4px 4px 0;
+        background: #aab4c5;
+        content: "";
+      }
+
+      .record.warning::before {
+        background: var(--warning);
+      }
+
+      .record.success::before {
+        background: var(--success);
+      }
+
+      .record.danger::before {
+        background: var(--danger);
+      }
+
+      .record:hover {
+        border-color: #cfd6ff;
+        box-shadow: 0 8px 22px rgba(35, 48, 74, 0.07);
+      }
+
+      .record-identity {
+        width: 300px;
+        min-width: 300px;
+      }
+
+      .identity-line {
+        gap: 9px;
+      }
+
+      .record-identity strong {
+        overflow: hidden;
+        font-size: 15px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .domain-tag,
+      .type-tag {
+        padding: 4px 7px;
+        border-radius: 6px;
+        color: #5e6b82;
+        background: #f0f3f7;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .record-identity small {
+        display: block;
+        margin-top: 9px;
+        color: #8995a9;
+        font-size: 12px;
+      }
+
+      .record-value {
+        width: 150px;
+        min-width: 150px;
+      }
+
+      .record-value strong {
+        color: #243659;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+      }
+
+      .record-value small {
+        margin-left: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .record-value span {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+      }
+
+      .record-status {
+        width: 150px;
+        min-width: 150px;
+      }
+
+      .status-line {
+        gap: 7px;
+        font-weight: 700;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #aab4c5;
+      }
+
+      .warning .status-dot {
+        background: var(--warning);
+        box-shadow: 0 0 0 4px rgba(217, 154, 43, 0.12);
+      }
+
+      .success .status-dot {
+        background: var(--success);
+        box-shadow: 0 0 0 4px rgba(53, 169, 120, 0.12);
+      }
+
+      .danger .status-dot {
+        background: var(--danger);
+        box-shadow: 0 0 0 4px rgba(215, 91, 102, 0.12);
+      }
+
+      .record-status span:last-child {
+        display: block;
+        margin-top: 9px;
+        color: var(--muted);
+      }
+
+      .record-meta {
+        display: grid;
+        min-width: 0;
+        flex: 1;
+        grid-template-columns: repeat(2, minmax(140px, 1fr));
+        gap: 9px 20px;
+      }
+
+      .meta-item {
+        overflow: hidden;
+        color: #4f5d75;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .meta-item span {
+        margin-right: 7px;
+        color: #8a96a9;
+      }
+
+      .record-action {
+        display: flex;
+        width: 90px;
+        align-items: center;
+        justify-content: flex-end;
+        flex-shrink: 0;
+        color: var(--primary);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .record-action b {
+        margin-left: 7px;
+        font-size: 18px;
+        font-weight: 400;
+      }
+
+      .pagination {
+        justify-content: space-between;
+        margin-top: 15px;
+        padding-top: 14px;
+        border-top: 1px solid #edf0f5;
+        color: #7f8ca1;
+      }
+
+      .pagination-actions {
+        gap: 5px;
+      }
+
+      .page-button {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        place-items: center;
+        border-radius: 7px;
+        color: #53617a;
+      }
+
+      .page-button.active {
+        color: var(--primary);
+        background: var(--primary-soft);
+        font-weight: 700;
+      }
+
+      .page-size {
+        margin-left: 10px;
+        color: #53617a;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">M</span>
+          <div class="brand-copy">
+            <strong>自主监控</strong>
+            <span>明细列表视觉方案</span>
+          </div>
+        </div>
+        <div class="review-meta">
+          <span>查询条件与分页保持不变</span>
+          <span class="review-badge">独立效果稿</span>
+        </div>
+      </header>
+
+      <main>
+        <div class="page-heading">
+          <div class="title-line">
+            <h1>结构化条目列表</h1>
+            <span class="concept-tag">推荐方案</span>
+          </div>
+          <p>保留纵向扫描效率，将相关字段组合成信息块，减少无意义的横向列。</p>
+        </div>
+
+        <section class="concept-section">
+          <div class="panel-heading">
+            <div>
+              <h2>指标明细</h2>
+              <p>突出当前数值、考核判断和统计可信度，完整口径继续在详情中查看。</p>
+            </div>
+            <span class="panel-note">配置版本由系统发布</span>
+          </div>
+
+          <div class="query-bar">
+            <div class="query-field wide">
+              <label>指标名称</label>
+              <div class="input">请输入指标名称</div>
+            </div>
+            <div class="query-field">
+              <label>监控领域</label>
+              <div class="input">全部 <span>⌄</span></div>
+            </div>
+            <div class="query-field">
+              <label>数据范围</label>
+              <div class="input">全平台 <span>⌄</span></div>
+            </div>
+            <div class="query-field">
+              <label>时间窗口</label>
+              <div class="input">最近1小时 <span>⌄</span></div>
+            </div>
+            <div class="query-field">
+              <label>数据状态</label>
+              <div class="input">全部 <span>⌄</span></div>
+            </div>
+            <div class="query-actions">
+              <button class="primary">查询</button>
+              <button>重置</button>
+            </div>
+          </div>
+
+          <div class="record-list">
+            <article class="record warning">
+              <div class="record-identity">
+                <div class="identity-line">
+                  <strong>问答响应第九十五百分位</strong>
+                  <span class="domain-tag">问答领域</span>
+                </div>
+                <small>qa_p95</small>
+              </div>
+              <div class="record-value">
+                <strong>1.82</strong><small>秒</small>
+                <span>当前统计结果</span>
+              </div>
+              <div class="record-status">
+                <div class="status-line"><i class="status-dot"></i>需要关注</div>
+                <span>数据完整</span>
+              </div>
+              <div class="record-meta">
+                <div class="meta-item"><span>样本数量</span>328</div>
+                <div class="meta-item"><span>统计窗口</span>5 分钟</div>
+                <div class="meta-item"><span>生成时间</span>2026年08月01日 14:20:00</div>
+                <div class="meta-item"><span>最低样本</span>100</div>
+              </div>
+              <div class="record-action">查看详情 <b>›</b></div>
+            </article>
+
+            <article class="record success">
+              <div class="record-identity">
+                <div class="identity-line">
+                  <strong>知识检索命中率</strong>
+                  <span class="domain-tag">检索领域</span>
+                </div>
+                <small>retrieval_hit_rate</small>
+              </div>
+              <div class="record-value">
+                <strong>94.6</strong><small>%</small>
+                <span>当前统计结果</span>
+              </div>
+              <div class="record-status">
+                <div class="status-line"><i class="status-dot"></i>表现正常</div>
+                <span>数据完整</span>
+              </div>
+              <div class="record-meta">
+                <div class="meta-item"><span>样本数量</span>1,284</div>
+                <div class="meta-item"><span>统计窗口</span>15 分钟</div>
+                <div class="meta-item"><span>生成时间</span>2026年08月01日 14:15:00</div>
+                <div class="meta-item"><span>最低样本</span>200</div>
+              </div>
+              <div class="record-action">查看详情 <b>›</b></div>
+            </article>
+          </div>
+
+          <div class="pagination">
+            <span>共 26 条指标</span>
+            <div class="pagination-actions">
+              <span class="page-button">‹</span>
+              <span class="page-button active">1</span>
+              <span class="page-button">2</span>
+              <span class="page-button">3</span>
+              <span class="page-button">›</span>
+              <span class="page-size">10 条 / 页⌄</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="concept-section">
+          <div class="panel-heading">
+            <div>
+              <h2>目标明细</h2>
+              <p>突出采集健康状态、最近采集时间和耗时，快速定位异常目标。</p>
+            </div>
+            <span class="panel-note">配置版本由系统发布</span>
+          </div>
+
+          <div class="query-bar">
+            <div class="query-field wide">
+              <label>目标名称</label>
+              <div class="input">请输入目标名称</div>
+            </div>
+            <div class="query-field wide">
+              <label>采集类型</label>
+              <div class="input">全部 <span>⌄</span></div>
+            </div>
+            <div class="query-field wide">
+              <label>数据状态</label>
+              <div class="input">全部 <span>⌄</span></div>
+            </div>
+            <div class="query-actions">
+              <button class="primary">查询</button>
+              <button>重置</button>
+              <button>刷新</button>
+            </div>
+          </div>
+
+          <div class="record-list">
+            <article class="record success">
+              <div class="record-identity">
+                <div class="identity-line">
+                  <strong>模型服务健康探针</strong>
+                  <span class="type-tag">依赖探针</span>
+                </div>
+                <small>llm-service · 全平台资源</small>
+              </div>
+              <div class="record-value">
+                <strong>86</strong><small>毫秒</small>
+                <span>本次采集耗时</span>
+              </div>
+              <div class="record-status">
+                <div class="status-line"><i class="status-dot"></i>采集正常</div>
+                <span>连续正常 48 次</span>
+              </div>
+              <div class="record-meta">
+                <div class="meta-item"><span>最近采集</span>2026年08月01日 14:20:00</div>
+                <div class="meta-item"><span>目标版本</span>V3</div>
+                <div class="meta-item"><span>关联资源</span>模型服务</div>
+                <div class="meta-item"><span>采集类型</span>周期采集</div>
+              </div>
+              <div class="record-action">查看详情 <b>›</b></div>
+            </article>
+
+            <article class="record danger">
+              <div class="record-identity">
+                <div class="identity-line">
+                  <strong>向量服务连接探针</strong>
+                  <span class="type-tag">依赖探针</span>
+                </div>
+                <small>vector-service · 检索资源</small>
+              </div>
+              <div class="record-value">
+                <strong>—</strong>
+                <span>暂无有效耗时</span>
+              </div>
+              <div class="record-status">
+                <div class="status-line"><i class="status-dot"></i>获取失败</div>
+                <span>连续失败 2 次</span>
+              </div>
+              <div class="record-meta">
+                <div class="meta-item"><span>最近采集</span>2026年08月01日 14:18:00</div>
+                <div class="meta-item"><span>目标版本</span>V2</div>
+                <div class="meta-item"><span>关联资源</span>向量数据库</div>
+                <div class="meta-item"><span>失败摘要</span>连接超时</div>
+              </div>
+              <div class="record-action">查看详情 <b>›</b></div>
+            </article>
+          </div>
+
+          <div class="pagination">
+            <span>共 18 个采集目标</span>
+            <div class="pagination-actions">
+              <span class="page-button">‹</span>
+              <span class="page-button active">1</span>
+              <span class="page-button">2</span>
+              <span class="page-button">›</span>
+              <span class="page-size">10 条 / 页⌄</span>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

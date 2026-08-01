@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.agents.monitoring import MonitoringAgent
 from app.core.common import utils
@@ -25,6 +26,7 @@ from app.db import monitor_alert_evidence as alert_evidence_db
 from app.db import (
     monitor_event as event_db,
 )
+from app.db import monitor_gather_action as gather_action_db
 from app.db import monitor_gather_target as gather_target_db
 from app.db import monitor_metric_definition as definition_db
 from app.db import (
@@ -370,9 +372,14 @@ def _rule_view(rule: dict[str, Any], definitions: dict[str, dict[str, Any]]) -> 
     warning_threshold = rule.get("warning_threshold")
     severity = "critical" if critical_threshold is not None else "warning"
     threshold = critical_threshold if critical_threshold is not None else warning_threshold
-    operator = str(definition.get("threshold_operator") or ">")
+    trigger_type = str(rule.get("trigger_type") or "higher_than")
+    operator = "<" if trigger_type == "lower_than" else ">"
     trigger_expression = (
-        f"{metric_code} {operator} {threshold}" if threshold is not None else metric_code
+        "仅记录数据可用性"
+        if trigger_type == "informational"
+        else f"{metric_code} {operator} {threshold}"
+        if threshold is not None
+        else metric_code
     )
     consecutive_periods = int(rule.get("consecutive_periods") or 1)
     recovery_periods = int(rule.get("recovery_periods") or 1)
@@ -491,7 +498,7 @@ def _alert_overview_trend(
 
 
 def _metric_status(metric: dict[str, Any]) -> str:
-    if metric.get("data_status") != "ready":
+    if metric.get("data_status") not in {"ready", "partial"}:
         return "unknown"
     assessment = str(metric.get("assessment_status") or "ready")
     if assessment in {"unknown", "unavailable", "indeterminate"}:
@@ -539,6 +546,141 @@ def _metric_definition_map(definitions: list[dict[str, Any]]) -> dict[str, dict[
     active = [definition for definition in definitions if definition.get("status") == "active"]
     latest = _latest_rows(active, ("metric_code",), "version")
     return {str(definition["metric_code"]): definition for definition in latest}
+
+
+_METRIC_RATIO_CODES = {
+    "qa_success_rate",
+    "qa_error_rate",
+    "qa_timeout_rate",
+    "qa_reference_rate",
+    "vector_service_availability",
+    "task_success_rate",
+    "evaluation_completion_rate",
+    "evaluation_evidence_completeness",
+}
+_METRIC_SUM_CODES = {"qa_request_count", "request_count"}
+_METRIC_PERCENTILE_CODES = {"qa_p95", "p95", "task_wait_p95"}
+
+
+def _metric_rule_map(rules: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
+    return {
+        (str(rule.get("metric_code") or ""), str(rule.get("scope_type") or "all")): rule
+        for rule in _latest_rule_versions(rules)
+        if rule.get("enabled")
+    }
+
+
+def _metric_rule(
+    rules: dict[tuple[str, str], dict[str, Any]], metric_code: str, scope_type: str
+) -> dict[str, Any] | None:
+    return rules.get((metric_code, scope_type)) or rules.get((metric_code, "all"))
+
+
+def _metric_assessment(row: dict[str, Any], rule: dict[str, Any] | None) -> dict[str, Any]:
+    result = dict(row)
+    if result.get("data_status") not in {"ready", "partial"} or result.get("metric_value") is None:
+        result["assessment_status"] = "unknown"
+        return result
+    if rule is None:
+        return result
+    decision = evaluate_rule(rule, result.get("metric_value"), int(result.get("sample_count") or 0))
+    if decision.action == "fire":
+        result["assessment_status"] = "failed" if decision.severity == "critical" else "warning"
+    elif decision.reason in {"insufficient_sample", "rule_disabled"}:
+        result["assessment_status"] = "unknown"
+    else:
+        result["assessment_status"] = "ready"
+    result["rule_version"] = int(rule.get("version") or 1)
+    return result
+
+
+def _weighted_percentile(rows: list[dict[str, Any]], percentile: float) -> float | None:
+    weighted = sorted(
+        (
+            float(row["metric_value"]),
+            max(1, int(row.get("sample_count") or 1)),
+        )
+        for row in rows
+        if row.get("metric_value") is not None
+    )
+    total = sum(weight for _, weight in weighted)
+    if not total:
+        return None
+    target = max(1, round(total * percentile))
+    consumed = 0
+    for value, weight in weighted:
+        consumed += weight
+        if consumed >= target:
+            return value
+    return weighted[-1][0]
+
+
+def _aggregate_metric_window(
+    definition: dict[str, Any],
+    rows: list[dict[str, Any]],
+    rule: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not rows:
+        return _metric_view(definition, None)
+    ordered = sorted(
+        rows,
+        key=lambda row: row.get("window_end") or datetime.min.replace(tzinfo=UTC),
+    )
+    usable = [
+        row
+        for row in ordered
+        if row.get("data_status") in {"ready", "partial"} and row.get("metric_value") is not None
+    ]
+    if not usable:
+        return _metric_view(definition, _metric_assessment(ordered[-1], rule))
+    metric_code = str(definition.get("metric_code") or "")
+    aggregate = dict(usable[-1])
+    if metric_code in _METRIC_RATIO_CODES:
+        numerator = sum(float(row.get("numerator") or 0) for row in usable)
+        denominator = sum(float(row.get("denominator") or 0) for row in usable)
+        aggregate.update(
+            numerator=numerator,
+            denominator=denominator,
+            metric_value=numerator / denominator if denominator else None,
+            sample_count=int(denominator),
+        )
+    elif metric_code in _METRIC_SUM_CODES:
+        aggregate.update(
+            numerator=sum(
+                float(row.get("numerator") or row.get("metric_value") or 0) for row in usable
+            ),
+            denominator=1,
+            metric_value=sum(float(row.get("metric_value") or 0) for row in usable),
+            sample_count=sum(int(row.get("sample_count") or 0) for row in usable),
+        )
+    elif metric_code in _METRIC_PERCENTILE_CODES:
+        aggregate.update(
+            metric_value=_weighted_percentile(usable, 0.95),
+            sample_count=sum(int(row.get("sample_count") or 0) for row in usable),
+        )
+    aggregate.update(
+        window_start=min(
+            (row.get("window_start") for row in ordered if row.get("window_start") is not None),
+            default=aggregate.get("window_start"),
+        ),
+        window_end=max(
+            (row.get("window_end") for row in ordered if row.get("window_end") is not None),
+            default=aggregate.get("window_end"),
+        ),
+        calculated_at=max(
+            (row.get("calculated_at") for row in usable if row.get("calculated_at") is not None),
+            default=aggregate.get("calculated_at"),
+        ),
+        data_status="ready" if len(usable) == len(ordered) else "partial",
+        source_summary={
+            "window_count": len(ordered),
+            "ready_window_count": len(usable),
+            "event_count": sum(
+                int((row.get("source_summary") or {}).get("event_count") or 0) for row in ordered
+            ),
+        },
+    )
+    return _metric_view(definition, _metric_assessment(aggregate, rule))
 
 
 def _metric_view(definition: dict[str, Any], value: dict[str, Any] | None) -> dict[str, Any]:
@@ -1313,9 +1455,17 @@ async def overview(
     }
 
 
-_COLLECTION_STATUS_RANK = {"empty": 0, "ready": 1, "stale": 2, "partial": 3, "error": 4}
+_COLLECTION_STATUS_RANK = {
+    "empty": 0,
+    "idle": 1,
+    "ready": 2,
+    "stale": 3,
+    "partial": 4,
+    "error": 5,
+}
 _COLLECTION_STATUS_NAME = {
     "ready": "正常",
+    "idle": "等待触发",
     "partial": "部分失败",
     "error": "获取失败",
     "stale": "数据过期",
@@ -1357,9 +1507,29 @@ def _collection_event_status(event: dict[str, Any]) -> str:
     if data_status in {"error", "failed", "unavailable"}:
         return "error"
     status = str(event.get("status") or "").lower()
-    if status in {"healthy", "ok", "success", "completed", "ready", "resolved", "closed"}:
+    if status in {
+        "healthy",
+        "ok",
+        "success",
+        "completed",
+        "ready",
+        "resolved",
+        "closed",
+        "recovered",
+        "idle",
+    }:
         return "ready"
-    if status in {"warning", "degraded", "partial", "running", "started", "acknowledged"}:
+    if status in {
+        "warning",
+        "degraded",
+        "partial",
+        "running",
+        "started",
+        "acknowledged",
+        "retrying",
+        "stopped",
+        "cancelled",
+    }:
         return "partial"
     if status in {"failed", "error", "timeout", "unavailable"}:
         return "error"
@@ -1378,18 +1548,35 @@ def _collection_target_event(
     target: dict[str, Any],
     events: list[dict[str, Any]],
     at: datetime,
+    action_event_types: dict[str, set[str]] | None = None,
 ) -> dict[str, Any] | None:
     codes = _collection_target_resource_codes(target)
+    event_types = (action_event_types or {}).get(str(target.get("target_code") or ""), set())
     return next(
         (
             event
             for event in events
             if event.get("occurred_at")
             and event["occurred_at"] <= at
-            and str(event.get("source_code") or "") in codes
+            and (
+                str(event.get("source_code") or "") in codes
+                or str(event.get("event_type") or "") in event_types
+            )
         ),
         None,
     )
+
+
+def _collection_action_event_types(
+    actions: list[dict[str, Any]],
+) -> dict[str, set[str]]:
+    result: dict[str, set[str]] = {}
+    for action in actions:
+        target_code = str(action.get("target_code") or "")
+        event_type = str(action.get("event_type") or "")
+        if target_code and event_type:
+            result.setdefault(target_code, set()).add(event_type)
+    return result
 
 
 def _collection_target_status(
@@ -1398,6 +1585,8 @@ def _collection_target_status(
     at: datetime,
 ) -> str:
     if event is None:
+        if str(target.get("target_type") or "") == "method":
+            return "idle"
         return "empty"
     locator = target.get("target_locator") or {}
     stale_after = locator.get("stale_after_seconds")
@@ -1406,6 +1595,12 @@ def _collection_target_status(
     occurred_at = event.get("occurred_at")
     if stale_after and occurred_at and occurred_at + timedelta(seconds=int(stale_after)) < at:
         return "stale"
+    target_type = str(target.get("target_type") or "")
+    event_data_status = str(event.get("data_status") or "").lower()
+    if target_type in {"method", "api", "db", "worker"} and event_data_status == "ready":
+        # 事件型适配器成功记录业务失败，仍说明采集链路可用；业务状态由事件、
+        # 指标和告警模块解释，不能反向污染采集健康度。
+        return "ready"
     return _collection_event_status(event)
 
 
@@ -1413,8 +1608,9 @@ def _collection_target_view(
     target: dict[str, Any],
     events: list[dict[str, Any]],
     at: datetime,
+    action_event_types: dict[str, set[str]] | None = None,
 ) -> dict[str, Any]:
-    event = _collection_target_event(target, events, at)
+    event = _collection_target_event(target, events, at, action_event_types)
     status = _collection_target_status(target, event, at)
     target_type = str(target.get("target_type") or "")
     locator = target.get("target_locator") or {}
@@ -1439,6 +1635,7 @@ def _collection_timeline(
     events: list[dict[str, Any]],
     start_at: datetime,
     end_at: datetime,
+    action_event_types: dict[str, set[str]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     bucket = _bucket_5m(start_at)
     bucket_end = _bucket_5m(end_at)
@@ -1458,7 +1655,12 @@ def _collection_timeline(
         domain_statuses: dict[str, list[str]] = {code: [] for code, _ in domain_order}
         observation_at = min(window_end + timedelta(minutes=5), end_at)
         for target in targets:
-            event = _collection_target_event(target, events, observation_at)
+            event = _collection_target_event(
+                target,
+                events,
+                observation_at,
+                action_event_types,
+            )
             status = _collection_target_status(target, event, observation_at)
             counts[status] += 1
             domain_statuses[_collection_domain(target)[0]].append(status)
@@ -1497,15 +1699,23 @@ async def collection_overview(
         **_scope_filter(scope),
         occurred_at__gte=now - timedelta(hours=1),
     )
-    targets = await gather_target_db.list(db, **_scope_filter(scope))
-    views = [_collection_target_view(target, events, now) for target in targets]
+    targets = await gather_target_db.list(db, enabled=True, **_scope_filter(scope))
+    actions = await gather_action_db.list(db, enabled=True)
+    action_event_types = _collection_action_event_types(actions)
+    views = [_collection_target_view(target, events, now, action_event_types) for target in targets]
     status_counts = {status: 0 for status in _COLLECTION_STATUS_RANK}
     for view in views:
         status_counts[str(view["data_status"])] += 1
     executed_count = sum(status_counts[status] for status in ("ready", "partial", "error", "stale"))
     success_count = status_counts["ready"]
     concern_count = status_counts["partial"] + status_counts["error"] + status_counts["stale"]
-    trend, heatmap = _collection_timeline(targets, events, now - timedelta(hours=1), now)
+    trend, heatmap = _collection_timeline(
+        targets,
+        events,
+        now - timedelta(hours=1),
+        now,
+        action_event_types,
+    )
     domains: list[dict[str, Any]] = []
     for domain_code, domain_name in dict(_collection_domain(target) for target in targets).items():
         domain_views = [view for view in views if _collection_domain(view)[0] == domain_code]
@@ -1581,14 +1791,16 @@ async def target_page(
     await require_monitoring_access(current_user)
     db = DB.get()
     scope_filter = _scope_filter(await tenant_scope(current_user))
-    targets = await gather_target_db.list(db, **scope_filter)
+    targets = await gather_target_db.list(db, enabled=True, **scope_filter)
+    actions = await gather_action_db.list(db, enabled=True)
+    action_event_types = _collection_action_event_types(actions)
     now = utils.utc_now()
     events = await event_db.list(
         db,
         **scope_filter,
         occurred_at__gte=now - timedelta(hours=1),
     )
-    rows = [_collection_target_view(target, events, now) for target in targets]
+    rows = [_collection_target_view(target, events, now, action_event_types) for target in targets]
     if target_name:
         rows = [
             row for row in rows if target_name.lower() in str(row.get("target_name", "")).lower()
@@ -1620,20 +1832,32 @@ async def metrics_overview(
     if data_scope == "tenant" and current_user.tenant_id is None:
         raise BusiException("当前未选择租户")
     filters = _scope_filter(scope)
+    if scope is None:
+        filters["scope_key"] = "platform"
     if data_scope == "platform":
-        filters["tenant_id"] = None
+        filters.pop("tenant_id", None)
+        filters["scope_key"] = "platform"
     if data_scope == "tenant" and current_user.tenant_id is not None:
         filters["tenant_id"] = current_user.tenant_id
+        filters["scope_key"] = f"tenant:{current_user.tenant_id}"
     rows = await value_db.list(
         DB.get(),
         **filters,
         window_end__gte=start_at,
+        window_end__lte=end_at,
     )
     definitions = _metric_definition_map(await definition_db.list(DB.get()))
-    latest_values = _latest_rows(rows, ("metric_code",), "window_end")
-    values_by_code = {str(row.get("metric_code")): row for row in latest_values}
+    rule_map = _metric_rule_map(await rule_db.list(DB.get(), enabled=True))
+    values_by_code: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        values_by_code.setdefault(str(row.get("metric_code")), []).append(row)
+    scope_type = "tenant" if str(filters.get("scope_key")).startswith("tenant:") else "platform"
     latest = [
-        _metric_view(definition, values_by_code.get(metric_code))
+        _aggregate_metric_window(
+            definition,
+            values_by_code.get(metric_code, []),
+            _metric_rule(rule_map, metric_code, scope_type),
+        )
         for metric_code, definition in definitions.items()
     ]
     status_distribution = {"ready": 0, "warning": 0, "failed": 0, "unknown": 0}
@@ -1668,6 +1892,10 @@ async def metrics_overview(
         domain["healthy_rate"] = domain["ready"] / observed_count if observed_count else None
     concern_count = status_distribution["warning"] + status_distribution["failed"]
     unknown_count = status_distribution["unknown"]
+    has_usable_metrics = any(
+        row["data_status"] in {"ready", "partial"} and row.get("metric_value") is not None
+        for row in latest
+    )
     attention = [
         row["metric_name"]
         for row in latest
@@ -1676,14 +1904,14 @@ async def metrics_overview(
     return {
         "conclusion": (
             "empty"
-            if not rows
+            if not has_usable_metrics
             else "success"
             if not concern_count and not unknown_count
             else "partial"
         ),
         "conclusion_text": (
             "当前时间范围暂无有效指标结果"
-            if not rows
+            if not has_usable_metrics
             else "当前指标结果整体达标"
             if not concern_count and not unknown_count
             else f"当前有 {concern_count + unknown_count} 项指标需要关注"
@@ -1697,7 +1925,15 @@ async def metrics_overview(
         ),
         "total_count": len(latest),
         "status_distribution": status_distribution,
-        "trend": _metric_trend(rows),
+        "trend": _metric_trend(
+            [
+                _metric_assessment(
+                    row,
+                    _metric_rule(rule_map, str(row.get("metric_code")), scope_type),
+                )
+                for row in rows
+            ]
+        ),
         "domains": sorted(
             domains.values(),
             key=lambda domain: _METRIC_DOMAIN_ORDER.get(str(domain["domain_code"]), 99),
@@ -1710,7 +1946,13 @@ async def metrics_overview(
         "time_range": time_range,
         "window_start": start_at,
         "window_end": end_at,
-        "data_status": "ready" if rows else "empty",
+        "data_status": (
+            "ready"
+            if latest and all(row["data_status"] == "ready" for row in latest)
+            else "partial"
+            if any(row["data_status"] in {"ready", "partial"} for row in latest)
+            else "empty"
+        ),
     }
 
 
@@ -1726,7 +1968,7 @@ async def metric_page(
     data_status: str | None = None,
 ) -> dict[str, Any]:
     await require_monitoring_access(current_user)
-    start_at, _ = _overview_window(time_range)
+    start_at, end_at = _overview_window(time_range)
     scope = await tenant_scope(current_user)
     if data_scope not in {"current", "platform", "tenant"}:
         raise BusiException("data_scope 必须是 current、platform 或 tenant")
@@ -1735,16 +1977,32 @@ async def metric_page(
     if data_scope == "tenant" and current_user.tenant_id is None:
         raise BusiException("当前未选择租户")
     filters = _scope_filter(scope)
+    if scope is None:
+        filters["scope_key"] = "platform"
     if data_scope == "platform":
-        filters["tenant_id"] = None
+        filters.pop("tenant_id", None)
+        filters["scope_key"] = "platform"
     if data_scope == "tenant" and current_user.tenant_id is not None:
         filters["tenant_id"] = current_user.tenant_id
-    values = await value_db.list(DB.get(), **filters, window_end__gte=start_at)
-    latest_values = _latest_rows(values, ("metric_code",), "window_end")
-    values_by_code = {str(row.get("metric_code")): row for row in latest_values}
+        filters["scope_key"] = f"tenant:{current_user.tenant_id}"
+    values = await value_db.list(
+        DB.get(),
+        **filters,
+        window_end__gte=start_at,
+        window_end__lte=end_at,
+    )
+    values_by_code: dict[str, list[dict[str, Any]]] = {}
+    for row in values:
+        values_by_code.setdefault(str(row.get("metric_code")), []).append(row)
     definitions = _metric_definition_map(await definition_db.list(DB.get()))
+    rule_map = _metric_rule_map(await rule_db.list(DB.get(), enabled=True))
+    scope_type = "tenant" if str(filters.get("scope_key")).startswith("tenant:") else "platform"
     rows = [
-        _metric_view(definition, values_by_code.get(metric_code))
+        _aggregate_metric_window(
+            definition,
+            values_by_code.get(metric_code, []),
+            _metric_rule(rule_map, metric_code, scope_type),
+        )
         for metric_code, definition in definitions.items()
     ]
     if metric_name:
@@ -2077,9 +2335,7 @@ def _audit_view(row: dict[str, Any], users: dict[str, dict[str, Any]]) -> dict[s
         tenant_scope_name=f"租户 {tenant_id}" if tenant_id is not None else "全平台",
         resource_name=_audit_resource_name(summary),
         request_summary=summary,
-        operation_description=(
-            f"{action_name}：{row.get('target_id') or '未指定资源'}"
-        ),
+        operation_description=(f"{action_name}：{row.get('target_id') or '未指定资源'}"),
     )
     return item
 
@@ -2112,9 +2368,7 @@ async def audit_options(current_user: CurrentUser) -> dict[str, Any]:
                 if row.get("action")
             }
         ),
-        "targets": sorted(
-            {str(row.get("target_id")) for row in views if row.get("target_id")}
-        ),
+        "targets": sorted({str(row.get("target_id")) for row in views if row.get("target_id")}),
         "tenant_scopes": sorted(
             {
                 (int(row["tenant_id"]), str(row["tenant_scope_name"]))
@@ -2148,6 +2402,13 @@ async def analysis_overview(
     await require_monitoring_access(current_user)
     start_at, end_at = _overview_window(time_range)
     scope = await tenant_scope(current_user)
+    if scope_key not in {"platform", "tenant"}:
+        raise BusiException("scope_key 必须是 platform 或 tenant")
+    if scope_key == "tenant" and scope is None:
+        if current_user.tenant_id is None:
+            raise BusiException("当前未选择租户，不能查询租户范围")
+        scope = int(current_user.tenant_id)
+    effective_scope_key = f"tenant:{scope}" if scope is not None else "platform"
     definitions = _metric_definition_map(await definition_db.list(DB.get()))
     alert_rows = await alert_db.list(DB.get(), **_scope_filter(scope))
     alerts = [
@@ -2166,7 +2427,9 @@ async def analysis_overview(
     metric_values = await value_db.list(
         DB.get(),
         **_scope_filter(scope),
+        scope_key=effective_scope_key,
         window_end__gte=start_at,
+        window_end__lte=end_at,
     )
     latest_metrics: dict[str, dict[str, Any]] = {}
     for row in metric_values:
@@ -2175,6 +2438,111 @@ async def analysis_overview(
             "window_end"
         ):
             latest_metrics[code] = row
+
+    event_rows = _visible_events(
+        await event_db.list(
+            DB.get(),
+            **_scope_filter(scope),
+            occurred_at__gte=start_at,
+            occurred_at__lte=end_at,
+            limit=10000,
+        )
+    )
+    task_rows = [
+        row
+        for row in await _task_records(scope)
+        if row.get("status") in {"pending", "running"}
+        or (isinstance(row.get("created_at"), datetime) and start_at <= row["created_at"] <= end_at)
+    ]
+
+    metric_assessments = {
+        metric_code: _metric_status(metric) for metric_code, metric in latest_metrics.items()
+    }
+    warning_metric_codes = [
+        metric_code
+        for metric_code, status in metric_assessments.items()
+        if status in {"warning", "failed"}
+    ]
+    unknown_metric_codes = [
+        metric_code for metric_code, status in metric_assessments.items() if status == "unknown"
+    ]
+    ready_metric_codes = [
+        metric_code for metric_code, status in metric_assessments.items() if status == "ready"
+    ]
+    abnormal_event_rows = [
+        row
+        for row in event_rows
+        if str(row.get("status") or "").lower()
+        in {"warning", "degraded", "failed", "error", "timeout", "stale", "stopped"}
+    ]
+    abnormal_task_rows = [
+        row
+        for row in task_rows
+        if row.get("status") in {"failed", "timeout"}
+        or (row.get("status") == "pending" and int(row.get("wait_seconds") or 0) >= 15 * 60)
+    ]
+
+    if alerts:
+        presentation_state = "alert"
+        presentation_state_name = "告警影响"
+        has_confirmed_impact = any(alert.get("severity") == "critical" for alert in alerts)
+        impact_overview = {
+            "status": "confirmed" if has_confirmed_impact else "pending",
+            "status_name": "已确认影响" if has_confirmed_impact else "待验证影响",
+            "title": "活动告警已关联到监控资源",
+            "detail": "影响明细仅覆盖当前告警直接关联的授权资源，不自动扩大到其他业务。",
+        }
+        action_overview = {
+            "status": "urgent",
+            "status_name": "优先处理",
+            "title": "请优先核查活动告警",
+            "detail": "按告警严重程度和证据链路逐项核查，所有处置仍需人工确认。",
+        }
+    elif warning_metric_codes or abnormal_event_rows or abnormal_task_rows:
+        presentation_state = "warning"
+        presentation_state_name = "指标待验"
+        impact_overview = {
+            "status": "pending",
+            "status_name": "待验证影响",
+            "title": "运行事实变化尚待影响验证",
+            "detail": "当前指标、事件或任务出现需要关注的变化，但没有活动告警直接确认业务影响。",
+        }
+        action_overview = {
+            "status": "investigate",
+            "status_name": "人工核查",
+            "title": "建议核查运行趋势",
+            "detail": "对比连续统计窗口、样本量、同时间段事件和任务状态，确认变化是否持续。",
+        }
+    elif unknown_metric_codes or not ready_metric_codes:
+        presentation_state = "unknown"
+        presentation_state_name = "证据不足"
+        impact_overview = {
+            "status": "unknown",
+            "status_name": "无法判断",
+            "title": "影响范围无法判断",
+            "detail": "缺少有效核心指标，当前既不能确认影响，也不能证明没有影响。",
+        }
+        action_overview = {
+            "status": "supplement",
+            "status_name": "补充证据",
+            "title": "需要补充运行证据",
+            "detail": "请核查数据采集和指标聚合状态，补齐有效样本后重新分析。",
+        }
+    else:
+        presentation_state = "normal"
+        presentation_state_name = "运行正常"
+        impact_overview = {
+            "status": "none",
+            "status_name": "未发现影响",
+            "title": "未发现已确认影响",
+            "detail": "当前有效指标均未显示异常，也没有活动告警指向具体业务影响。",
+        }
+        action_overview = {
+            "status": "observe",
+            "status_name": "持续观察",
+            "title": "当前无需处置",
+            "detail": "建议持续观察核心指标趋势和新增告警，无需创建无依据的处置任务。",
+        }
 
     evidence: list[dict[str, Any]] = []
     for alert in alerts:
@@ -2212,6 +2580,28 @@ async def analysis_overview(
                     "target_id": str(metric["id"]),
                 }
             )
+    for metric_code, metric in latest_metrics.items():
+        definition = definitions.get(metric_code) or {}
+        data_status = str(metric.get("data_status") or "empty")
+        if data_status == "empty":
+            continue
+        assessment_name = _METRIC_STATUS_NAMES[_metric_status(metric)]
+        evidence.append(
+            {
+                "id": f"metric-{metric['id']}",
+                "evidence_type": "metric",
+                "evidence_type_name": "指标",
+                "title": definition.get("metric_name") or metric_code,
+                "summary": (
+                    f"当前值 {metric.get('metric_value')} · 样本 {metric.get('sample_count')} · "
+                    f"{assessment_name}"
+                ),
+                "evidence_level": "direct",
+                "evidence_level_name": "直接证据",
+                "occurred_at": metric.get("window_end"),
+                "target_id": metric_code,
+            }
+        )
     evidence_type_names = {
         "event": "事件",
         "task": "任务",
@@ -2235,6 +2625,43 @@ async def analysis_overview(
                 "evidence_level_name": "上下文证据" if level == "context" else "关联证据",
                 "occurred_at": row.get("occurred_at") or row.get("created_at"),
                 "target_id": str(row.get("evidence_id") or ""),
+            }
+        )
+    for row in event_rows[:20]:
+        event = _event_view(row)
+        event_id = str(row.get("event_id") or row.get("id") or "")
+        is_abnormal = row in abnormal_event_rows
+        evidence.append(
+            {
+                "id": f"event-{event_id}",
+                "evidence_type": "event",
+                "evidence_type_name": "运行事件",
+                "title": event.get("resource_name") or event.get("event_type_name"),
+                "summary": event.get("event_content") or event.get("status_name"),
+                "evidence_level": "associated" if is_abnormal else "context",
+                "evidence_level_name": "关联证据" if is_abnormal else "上下文证据",
+                "occurred_at": row.get("occurred_at"),
+                "target_id": event_id,
+            }
+        )
+    abnormal_task_keys = {str(row.get("task_key")) for row in abnormal_task_rows}
+    for row in task_rows[:10]:
+        task_key = str(row.get("task_key") or "")
+        is_abnormal = task_key in abnormal_task_keys
+        detail_parts = [str(row.get("status_name") or "未知状态")]
+        if row.get("stage"):
+            detail_parts.append(str(row["stage"]))
+        evidence.append(
+            {
+                "id": f"task-{task_key}",
+                "evidence_type": "task",
+                "evidence_type_name": "任务事实",
+                "title": row.get("task_name") or task_key,
+                "summary": " · ".join(detail_parts),
+                "evidence_level": "direct" if is_abnormal else "associated",
+                "evidence_level_name": "直接证据" if is_abnormal else "关联证据",
+                "occurred_at": row.get("updated_at") or row.get("created_at"),
+                "target_id": task_key,
             }
         )
     deduplicated = {str(item["id"]): item for item in evidence}
@@ -2264,6 +2691,54 @@ async def analysis_overview(
                 "detail": f"关联 {alert.get('severity_name')}告警：{alert.get('alert_title')}",
             }
         )
+    if presentation_state == "warning":
+        for metric_code in warning_metric_codes:
+            definition = definitions.get(metric_code) or {}
+            domain_name = definition.get("metric_domain_name") or _METRIC_DOMAIN_NAMES.get(
+                str(definition.get("metric_domain") or ""),
+                "监控指标",
+            )
+            metric_name = definition.get("metric_name") or metric_code
+            if domain_name in seen_resources:
+                continue
+            seen_resources.add(domain_name)
+            impacts.append(
+                {
+                    "resource_name": domain_name,
+                    "monitor_domain": definition.get("metric_domain"),
+                    "monitor_domain_name": domain_name,
+                    "impact_status": "pending",
+                    "impact_status_name": "待验证影响",
+                    "detail": f"{metric_name}出现变化，是否形成业务影响仍需结合连续窗口确认。",
+                }
+            )
+        if abnormal_task_rows and "异步任务" not in seen_resources:
+            seen_resources.add("异步任务")
+            impacts.append(
+                {
+                    "resource_name": "异步任务",
+                    "monitor_domain": "task",
+                    "monitor_domain_name": "异步任务",
+                    "impact_status": "pending",
+                    "impact_status_name": "待验证影响",
+                    "detail": "任务运行出现失败、超时或等待较长，实际业务影响仍需人工确认。",
+                }
+            )
+        for row in abnormal_event_rows[:3]:
+            resource_name = _event_resource_name(row)
+            if resource_name in seen_resources:
+                continue
+            seen_resources.add(resource_name)
+            impacts.append(
+                {
+                    "resource_name": resource_name,
+                    "monitor_domain": _event_domain(row),
+                    "monitor_domain_name": _EVENT_DOMAIN_NAMES[_event_domain(row)],
+                    "impact_status": "pending",
+                    "impact_status_name": "待验证影响",
+                    "detail": "运行事件出现异常状态，是否形成持续业务影响仍需结合后续事实确认。",
+                }
+            )
     suggestions = []
     for index, alert in enumerate(alerts[:3], start=1):
         module = "tasks" if alert.get("monitor_domain") in {"tasks", "evaluation"} else "metrics"
@@ -2279,13 +2754,229 @@ async def analysis_overview(
                 "target_label": "查看任务" if module == "tasks" else "查看指标",
             }
         )
+    if presentation_state == "warning":
+        warning_names = [
+            (definitions.get(metric_code) or {}).get("metric_name") or metric_code
+            for metric_code in warning_metric_codes[:3]
+        ]
+        if warning_names:
+            suggestions.append(
+                {
+                    "priority": len(suggestions) + 1,
+                    "title": f"核查{'、'.join(warning_names)}的连续窗口趋势",
+                    "detail": "对比样本量、统计窗口和同时间段事件，确认预警是否持续。",
+                    "evidence_refs": [
+                        f"metric-{latest_metrics[code]['id']}" for code in warning_metric_codes[:3]
+                    ],
+                    "confirmation_status": "manual_confirmation",
+                    "confirmation_status_name": "人工确认",
+                    "target_module": "metrics",
+                    "target_label": "查看指标",
+                }
+            )
+        if abnormal_task_rows:
+            suggestions.append(
+                {
+                    "priority": len(suggestions) + 1,
+                    "title": "核查异常任务和等待时长",
+                    "detail": "检查失败原因、工作进程状态和最老等待任务，确认是否形成持续积压。",
+                    "evidence_refs": [
+                        f"task-{row.get('task_key')}" for row in abnormal_task_rows[:3]
+                    ],
+                    "confirmation_status": "manual_confirmation",
+                    "confirmation_status_name": "人工确认",
+                    "target_module": "tasks",
+                    "target_label": "查看任务",
+                }
+            )
+        if abnormal_event_rows:
+            suggestions.append(
+                {
+                    "priority": len(suggestions) + 1,
+                    "title": "核查同时间段异常事件",
+                    "detail": "结合事件来源、资源状态和后续恢复事实，确认异常是否持续。",
+                    "evidence_refs": [
+                        f"event-{row.get('event_id') or row.get('id')}"
+                        for row in abnormal_event_rows[:3]
+                    ],
+                    "confirmation_status": "manual_confirmation",
+                    "confirmation_status_name": "人工确认",
+                    "target_module": "events",
+                    "target_label": "查看事件",
+                }
+            )
+    elif presentation_state == "unknown":
+        suggestions.extend(
+            [
+                {
+                    "priority": 1,
+                    "title": "核查监控数据采集状态",
+                    "detail": "确认采集目标最近一次执行结果和数据时效性。",
+                    "evidence_refs": [],
+                    "confirmation_status": "manual_confirmation",
+                    "confirmation_status_name": "人工确认",
+                    "target_module": "collection",
+                    "target_label": "查看采集",
+                },
+                {
+                    "priority": 2,
+                    "title": "核查核心指标聚合结果",
+                    "detail": "确认统计窗口内是否形成有效样本及计算状态。",
+                    "evidence_refs": [
+                        f"metric-{latest_metrics[code]['id']}" for code in unknown_metric_codes[:3]
+                    ],
+                    "confirmation_status": "manual_confirmation",
+                    "confirmation_status_name": "人工确认",
+                    "target_module": "metrics",
+                    "target_label": "查看指标",
+                },
+            ]
+        )
+    if alerts:
+        alert_check_status = (
+            "critical" if any(row.get("severity") == "critical" for row in alerts) else "warning"
+        )
+        alert_check_status_name = "严重" if alert_check_status == "critical" else "预警"
+        alert_check_result = f"{len(alerts)} 条活动告警正在触发或已确认"
+    else:
+        alert_check_status = "normal"
+        alert_check_status_name = "正常"
+        alert_check_result = "未发现活动告警"
+
+    if warning_metric_codes:
+        metric_check_status = "warning"
+        metric_check_status_name = "预警"
+        metric_check_result = f"{len(warning_metric_codes)} 项指标需要继续核查"
+    elif unknown_metric_codes and not ready_metric_codes:
+        metric_check_status = "missing"
+        metric_check_status_name = "缺少数据"
+        metric_check_result = "未形成有效核心指标样本"
+    elif unknown_metric_codes:
+        metric_check_status = "partial"
+        metric_check_status_name = "覆盖不足"
+        metric_check_result = (
+            f"{len(ready_metric_codes)} 项指标有效，{len(unknown_metric_codes)} 项无法判定"
+        )
+    elif ready_metric_codes:
+        metric_check_status = "normal"
+        metric_check_status_name = "达标"
+        metric_check_result = f"{len(ready_metric_codes)} 项指标均处于有效状态"
+    else:
+        metric_check_status = "missing"
+        metric_check_status_name = "缺少数据"
+        metric_check_result = "当前时间窗口没有核心指标结果"
+
+    if abnormal_event_rows:
+        event_check_status = "abnormal"
+        event_check_status_name = "异常"
+        event_check_result = f"发现 {len(abnormal_event_rows)} 条异常运行事件"
+    elif event_rows:
+        event_check_status = "normal"
+        event_check_status_name = "正常"
+        event_check_result = "未发现异常运行事件"
+    else:
+        event_check_status = "missing"
+        event_check_status_name = "无记录"
+        event_check_result = "当前时间窗口没有可用运行事件"
+
+    if abnormal_task_rows:
+        task_check_status = "backlog"
+        task_check_status_name = "积压"
+        task_check_result = f"{len(abnormal_task_rows)} 项任务失败、超时或等待较长"
+    elif task_rows:
+        task_check_status = "normal"
+        task_check_status_name = "正常"
+        task_check_result = "未发现失败或持续积压任务"
+    elif presentation_state == "unknown":
+        task_check_status = "unknown"
+        task_check_status_name = "无法判断"
+        task_check_result = "缺少有效任务运行事实"
+    else:
+        task_check_status = "idle"
+        task_check_status_name = "空闲"
+        task_check_result = "当前窗口暂无任务，未发现失败或持续积压"
+
+    checks = [
+        {
+            "dimension": "active_alerts",
+            "dimension_name": "活动告警",
+            "status": alert_check_status,
+            "status_name": alert_check_status_name,
+            "result": alert_check_result,
+            "evidence_count": len(alerts),
+        },
+        {
+            "dimension": "core_metrics",
+            "dimension_name": "核心指标",
+            "status": metric_check_status,
+            "status_name": metric_check_status_name,
+            "result": metric_check_result,
+            "evidence_count": len(latest_metrics),
+        },
+        {
+            "dimension": "runtime_events",
+            "dimension_name": "运行事件",
+            "status": event_check_status,
+            "status_name": event_check_status_name,
+            "result": event_check_result,
+            "evidence_count": len(event_rows),
+        },
+        {
+            "dimension": "task_runtime",
+            "dimension_name": "任务运行",
+            "status": task_check_status,
+            "status_name": task_check_status_name,
+            "result": task_check_result,
+            "evidence_count": len(task_rows),
+        },
+    ]
+    scope_name = "当前租户" if scope is not None else "全平台"
+    if presentation_state == "normal":
+        judgment_boundary = (
+            f"本次结论覆盖{scope_name}当前时间窗口内已授权的指标、告警、事件和任务事实；"
+            "未对时间窗口外的历史变化作判断。"
+        )
+    elif presentation_state == "warning":
+        judgment_boundary = (
+            "当前预警和异常事件只表示统计窗口内发生变化，时间关联不等同于业务影响；"
+            "需结合后续窗口、样本量和用户侧反馈继续确认。"
+        )
+    elif presentation_state == "alert":
+        affected_names = "、".join(item["resource_name"] for item in impacts[:3])
+        judgment_boundary = (
+            f"已确认或待验证影响仅覆盖当前证据关联的{affected_names or '监控资源'}；"
+            "没有直接异常证据的业务范围不得表述为已发生故障。"
+        )
+    else:
+        judgment_boundary = (
+            "核心指标、运行事件或任务事实覆盖不足，本报告不对平台是否正常作肯定或否定判断；"
+            "没有活动告警不构成运行正常的充分证据。"
+        )
+    generated_at = end_at
+    report_scope = f"T{scope}" if scope is not None else "P"
+    report_no = (
+        f"AMR-{generated_at.astimezone(ZoneInfo('Asia/Shanghai')).strftime('%Y%m%d%H%M%S')}"
+        f"-{report_scope}"
+    )
     context = {
         "role": "tenant_admin" if scope is not None else "platform_super_admin",
+        "user_id": current_user.user_id,
+        "tenant_id": scope,
+        "scope_key": "tenant" if scope is not None else "platform",
+        "time_range": time_range,
         "alerts": alerts,
         "evidence": evidence,
         "impacts": impacts,
         "timeline": evidence,
         "suggestions": suggestions,
+        "presentation_state": presentation_state,
+        "presentation_state_name": presentation_state_name,
+        "impact_overview": impact_overview,
+        "action_overview": action_overview,
+        "report_no": report_no,
+        "generated_at": generated_at,
+        "checks": checks,
+        "judgment_boundary": judgment_boundary,
     }
     try:
         result = await MonitoringAgent().build_overview(context=context)
@@ -2293,11 +2984,47 @@ async def analysis_overview(
         LOG.exception("自主监控Agent overview failed")
         result = {
             "incident_id": f"INC-{alerts[0]['id']}" if alerts else None,
-            "analysis_status": "unavailable" if alerts else "not_required",
+            "analysis_status": "unavailable"
+            if alerts
+            else "completed"
+            if evidence
+            else "not_required",
             "attention_status": "manual_confirmation" if alerts else "none",
             "confidence": None,
-            "conclusion": "分析暂不可用" if alerts else "当前范围暂无需要分析的异常",
-            "conclusion_detail": "原始告警和证据仍可查询，请稍后重试分析。",
+            "report_no": report_no,
+            "generated_at": generated_at,
+            "conclusion": (
+                "分析暂不可用"
+                if alerts
+                else "当前范围未发现需要处置的告警"
+                if evidence
+                else "当前范围暂无可分析数据"
+            ),
+            "conclusion_detail": (
+                "原始告警和证据仍可查询，请稍后重试分析。"
+                if alerts
+                else f"未发现未恢复告警，已核查 {len(evidence)} 条授权运行事实。"
+                if evidence
+                else "当前授权时间窗口内没有可用运行事实。"
+            ),
+            "presentation_state": "unknown",
+            "presentation_state_name": "证据不足",
+            "impact_overview": {
+                "status": "unknown",
+                "status_name": "无法判断",
+                "title": "影响范围无法判断",
+                "detail": "分析执行失败，当前不能基于未完成的分析确认影响范围。",
+            },
+            "action_overview": {
+                "status": "supplement",
+                "status_name": "补充证据",
+                "title": "请稍后重新分析",
+                "detail": "原始告警和证据仍可查询，请核查分析服务状态后重试。",
+            },
+            "checks": checks,
+            "judgment_boundary": (
+                "分析执行失败，本报告只保留原始授权事实，不对影响范围作确定判断。"
+            ),
             "alerts": alerts,
             "impacts": impacts,
             "evidence": evidence,
@@ -2307,13 +3034,13 @@ async def analysis_overview(
             "error": type(exc).__name__,
         }
     result.update(
-        scope_key=scope_key,
-        scope_name="当前租户" if scope is not None else "全平台",
+        scope_key="tenant" if scope is not None else "platform",
+        scope_name=scope_name,
         time_range=time_range,
         window_start=start_at,
         window_end=end_at,
         last_updated=end_at,
-        data_status="ready" if alerts else "empty",
+        data_status="ready" if evidence else "empty",
     )
     return result
 
@@ -2633,8 +3360,14 @@ async def metric_detail(
     if data_scope == "tenant" and current_user.tenant_id is None:
         raise BusiException("当前未选择租户")
     filters = _scope_filter(scope)
+    if scope is None:
+        filters["scope_key"] = "platform"
+    if data_scope == "platform":
+        filters.pop("tenant_id", None)
+        filters["scope_key"] = "platform"
     if data_scope == "tenant":
         filters["tenant_id"] = current_user.tenant_id
+        filters["scope_key"] = f"tenant:{current_user.tenant_id}"
     definitions = _metric_definition_map(await definition_db.list(DB.get()))
     definition = definitions.get(metric_code)
     if definition is None:
@@ -2644,13 +3377,20 @@ async def metric_detail(
         **filters,
         metric_code=metric_code,
         window_end__gte=start_at,
+        window_end__lte=end_at,
     )
-    latest = max(values, key=lambda row: row["window_end"]) if values else None
     rules = await rule_db.list(DB.get(), metric_code=metric_code, enabled=True)
-    rule = max(rules, key=lambda row: int(row.get("version") or 0)) if rules else None
-    alerts = await alert_db.list(DB.get(), **filters, metric_code=metric_code)
+    rule_map = _metric_rule_map(rules)
+    scope_type = "tenant" if str(filters.get("scope_key")).startswith("tenant:") else "platform"
+    rule = _metric_rule(rule_map, metric_code, scope_type)
+    metric = _aggregate_metric_window(definition, values, rule)
+    alert_filters = _scope_filter(scope)
+    metric_scope_key = filters.get("scope_key")
+    if metric_scope_key:
+        alert_filters["resource_code"] = metric_scope_key
+    alerts = await alert_db.list(DB.get(), **alert_filters, metric_code=metric_code)
     return {
-        "metric": _metric_view(definition, latest),
+        "metric": metric,
         "threshold": (
             {
                 "warning_threshold": rule.get("warning_threshold"),
@@ -2663,13 +3403,13 @@ async def metric_detail(
             if rule
             else None
         ),
-        "source_summary": latest.get("source_summary") if latest else {},
-        "trend": values[-200:],
+        "source_summary": metric.get("source_summary") or {},
+        "trend": [_metric_assessment(row, rule) for row in values[-200:]],
         "alerts": alerts[:20],
         "time_range": time_range,
         "window_start": start_at,
         "window_end": end_at,
-        "data_status": "ready" if values else "empty",
+        "data_status": metric["data_status"],
     }
 
 

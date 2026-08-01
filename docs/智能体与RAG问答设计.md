@@ -332,6 +332,8 @@ Knowledge Agent
 
 ## 12. Harness 工程化补充
 
+三个现有 Agent 的代码审计、统一整改目标和分 Agent 实施步骤见 [`三个 Agent Harness 工程整改方案`](三个Agent%20Harness工程整改方案.md)。
+
 本节在前文 Knowledge Agent 与 RAG 检索方案基础上，补充 AI Agent Harness 的工程化结构、运行约束、官方参考和评审项。当前只作为设计合并稿，不预先决定最终落地范围。
 
 ### 12.1 推荐项目目录结构：轻量 Harness
@@ -843,3 +845,7 @@ require_action()
 - [OpenAI：From model to agent: Equipping the Responses API with a computer environment](https://openai.com/index/equip-responses-api-computer-environment/)，包含 Agent Skills、`SKILL.md` 和渐进式加载说明。
 - [OpenAI Academy：Using skills](https://openai.com/academy/skills/)，介绍 Skill 作为可复用工作流的组织方式。
 - [From Prompts to Contracts: Harness Engineering for Auditable Enterprise LLM Agents](https://arxiv.org/abs/2607.08028)
+
+### 12.11 整改结果
+
+2026年08月01日，Knowledge Agent 已完成 Harness 生产链整改：简单问答由统一 Runtime 执行确定性检索，复杂问答真实进入受限 Deep Agent；检索、历史和引用均经过 Registry、Policy 与预算控制，最终答案统一执行引用和结构协议校验。两个问答 Skill 已补充完整指导、版本摘要和运行加载记录。完整文件变化、真实模型验证和测试结果见 [`三个 Agent Harness 整改实施记录`](三个Agent%20Harness整改实施记录.md)。

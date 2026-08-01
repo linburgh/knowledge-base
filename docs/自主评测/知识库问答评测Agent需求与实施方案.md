@@ -1196,3 +1196,7 @@ tests/evals/datasets/default_gates.json
 ```
 
 平台模块只负责任务管理和结果展示；评测编排仍由 `app/agents/evaluation/` 负责，不能把评测编排逻辑进入现有知识库问答 Agent。
+
+## 16. 整改结果
+
+2026年08月01日，自主评测 Agent 已完成独立 Harness 整改。Worker 只调用结构化 `EvaluationAgent.run(task, context)`；生产主链使用真实 LangGraph 八节点工作流；逐题问答只能通过评测 Registry 中的 `call_knowledge_agent` 调用知识 Agent 公开协议。租户、组织、知识库、索引版本和问答配置快照完整传递，运行时统一处理预算、逐题超时、有限重试、取消与部分结果。详细验证见 [`三个 Agent Harness 整改实施记录`](../三个Agent%20Harness整改实施记录.md)。

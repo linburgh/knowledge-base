@@ -74,6 +74,11 @@ async def load_conversation_history_result(
         or conversation.get("status") == STATUS_DELETED
         or conversation.get("kb_id") != context.kb_id
         or str(conversation.get("user_id")) != context.user_id
+        or (
+            context.tenant_id is not None
+            and conversation.get("tenant_id") is not None
+            and conversation.get("tenant_id") != context.tenant_id
+        )
     ):
         return ToolResult(
             call_id=call.call_id,

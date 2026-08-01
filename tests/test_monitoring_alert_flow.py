@@ -91,7 +91,7 @@ def monitoring_flow(monkeypatch):
                 "critical_threshold": 0.8,
                 "recovery_threshold": 0.1,
                 "minimum_sample_count": 1,
-                "scope_type": "platform",
+                "scope_type": "tenant",
             }
         ]
 
@@ -103,6 +103,7 @@ def monitoring_flow(monkeypatch):
                 "metric_domain": "qa",
                 "unit": "ratio",
                 "minimum_sample_count": 1,
+                "dimensions": {"scope": ["platform", "tenant"]},
                 "status": "active",
                 "version": 1,
             }
@@ -110,6 +111,10 @@ def monitoring_flow(monkeypatch):
 
     async def value_insert(_, **values):
         state["values"].append({"id": len(state["values"]) + 1, **values})
+
+    async def value_update(_, values, **filters):
+        row = next(row for row in state["values"] if _match(row, filters))
+        row.update(values)
 
     async def value_list(_, **filters):
         return [row for row in state["values"] if _match(row, filters)]
@@ -156,6 +161,7 @@ def monitoring_flow(monkeypatch):
     monkeypatch.setattr(monitoring.rule_db, "list", rule_list)
     monkeypatch.setattr(monitoring_aggregate.definition_db, "list", definition_list)
     monkeypatch.setattr(monitoring.value_db, "insert_", value_insert)
+    monkeypatch.setattr(monitoring.value_db, "update_", value_update)
     monkeypatch.setattr(monitoring.value_db, "list", value_list)
     monkeypatch.setattr(monitoring.policy_db, "list", policy_list)
     monkeypatch.setattr(monitoring.policy_channel_db, "list", policy_channel_list)
@@ -232,9 +238,7 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
         state["alerts"][0]["id"], "suppress", user, "计划维护期间暂停通知"
     )
     assert suppressed["status"] == "acknowledged"
-    await monitoring.alert_action(
-        state["alerts"][0]["id"], "note", user, "已通知值班人员"
-    )
+    await monitoring.alert_action(state["alerts"][0]["id"], "note", user, "已通知值班人员")
 
     state["events"] = [
         {
@@ -264,14 +268,40 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     assert all(item["status"] == "sent" for item in state["records"])
 
     from app.agents.monitoring import MonitoringAgent
+    from app.agents.monitoring.planner import RuleBasedMonitoringPlanner
 
-    result = await MonitoringAgent().analyze(
+    result = await MonitoringAgent(planner=RuleBasedMonitoringPlanner()).analyze(
         question="为什么刚才触发告警？",
         context={"role": "tenant_admin", "alerts": state["alerts"], "evidence": state["events"]},
     )
-    assert result["agent"] == "自主监控Agent"
+    assert result["agent"] == "自主监控智能体"
     assert result["status"] == "completed"
     assert "告警" in result["answer"]
+
+
+@pytest.mark.asyncio
+async def test_monitoring_agent_introduces_itself_without_unrelated_evidence():
+    from app.agents.monitoring import MonitoringAgent
+    from app.agents.monitoring.planner import RuleBasedMonitoringPlanner
+
+    result = await MonitoringAgent(planner=RuleBasedMonitoringPlanner()).analyze(
+        question="你是谁？介绍一下自己",
+        context={
+            "role": "tenant_admin",
+            "alerts": [{"id": 1, "alert_title": "测试告警"}],
+            "evidence": [{"id": 1, "evidence_type": "event"}],
+        },
+    )
+
+    assert result["agent"] == "自主监控智能体"
+    assert result["status"] == "completed"
+    assert result["answer"].startswith("### 你好，我是自主监控智能分析助手")
+    assert "运行状态排查搭档" in result["answer"]
+    assert "你可以直接问我" in result["answer"]
+    assert "### 能力范围" not in result["answer"]
+    assert "### 安全边界" not in result["answer"]
+    assert "不会替你修改配置、重试任务或执行处置" in result["answer"]
+    assert result["evidence"] == []
 
 
 @pytest.mark.asyncio

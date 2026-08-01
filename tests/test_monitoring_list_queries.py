@@ -25,9 +25,13 @@ def list_context(monkeypatch):
     async def scope(*_):
         return None
 
+    async def rules(*_, **__):
+        return []
+
     monkeypatch.setattr(db_api, "inject_db", inject_db)
     monkeypatch.setattr(monitoring, "require_monitoring_access", allow)
     monkeypatch.setattr(monitoring, "tenant_scope", scope)
+    monkeypatch.setattr(monitoring.rule_db, "list", rules)
     return CurrentUser(user_id="11")
 
 
@@ -42,12 +46,16 @@ async def test_metric_and_task_pages_apply_query_and_pagination(list_context, mo
                 "scope_key": "platform",
                 "window_end": now,
                 "data_status": "ready",
+                "metric_value": 1,
+                "sample_count": 1,
             },
             {
                 "metric_code": "db_usage",
                 "scope_key": "platform",
                 "window_end": now,
                 "data_status": "ready",
+                "metric_value": 0.1,
+                "sample_count": 1,
             },
         ]
 
@@ -203,7 +211,7 @@ async def test_event_alert_and_audit_pages_apply_all_query_fields(list_context, 
                 "result": "success",
                 "target_id": "alert-8",
             },
-            ]
+        ]
 
     async def users(*_, **__):
         return [
@@ -341,6 +349,10 @@ async def test_overviews_use_real_full_range_data(list_context, monkeypatch):
                 "window_end": now,
                 "data_status": "ready",
                 "assessment_status": "warning",
+                "metric_value": 0.9,
+                "sample_count": 10,
+                "numerator": 9,
+                "denominator": 10,
             }
         ]
 
@@ -659,6 +671,8 @@ async def test_task_detail_returns_read_only_real_evidence(list_context, monkeyp
 
 @pytest.mark.asyncio
 async def test_metric_detail_returns_definition_without_fake_value(list_context, monkeypatch):
+    captured_alert_filters = {}
+
     async def definitions(*_, **__):
         return [
             {
@@ -676,10 +690,14 @@ async def test_metric_detail_returns_definition_without_fake_value(list_context,
     async def empty(*_, **__):
         return []
 
+    async def alerts(*_, **filters):
+        captured_alert_filters.update(filters)
+        return []
+
     monkeypatch.setattr(monitoring.definition_db, "list", definitions)
     monkeypatch.setattr(monitoring.value_db, "list", empty)
     monkeypatch.setattr(monitoring.rule_db, "list", empty)
-    monkeypatch.setattr(monitoring.alert_db, "list", empty)
+    monkeypatch.setattr(monitoring.alert_db, "list", alerts)
 
     result = await monitoring.metric_detail(list_context, "qa_p95")
 
@@ -688,6 +706,10 @@ async def test_metric_detail_returns_definition_without_fake_value(list_context,
     assert result["metric"]["metric_value"] is None
     assert result["metric"]["data_status"] == "empty"
     assert result["trend"] == []
+    assert captured_alert_filters == {
+        "resource_code": "platform",
+        "metric_code": "qa_p95",
+    }
 
 
 @pytest.mark.asyncio
@@ -730,18 +752,12 @@ async def test_rule_update_and_toggle_create_audited_versions(monkeypatch):
 
     async def list_rules(*_, **filters):
         return [
-            row
-            for row in rules
-            if all(row.get(key) == value for key, value in filters.items())
+            row for row in rules if all(row.get(key) == value for key, value in filters.items())
         ]
 
     async def get_rule(*_, **filters):
         return next(
-            (
-                row
-                for row in rules
-                if all(row.get(key) == value for key, value in filters.items())
-            ),
+            (row for row in rules if all(row.get(key) == value for key, value in filters.items())),
             None,
         )
 

@@ -1,23 +1,30 @@
 from __future__ import annotations
 
 from time import monotonic
-from typing import Protocol
 
 from app.core.common.log import LOG
-from app.schemas.agent import AgentContext, AgentTask
+from app.schemas.evaluation import EvaluationAgentContext
 
 from .models import CaseResult, EvaluationQuestion
-
-
-class KnowledgeAgentProtocol(Protocol):
-    async def __call__(self, task: AgentTask, context: AgentContext): ...
+from .runtime import EvaluationRuntime
+from .tools.registry import EvaluationToolRegistry
 
 
 class KnowledgeAgentExecutor:
-    def __init__(self, runner: KnowledgeAgentProtocol) -> None:
-        self.runner = runner
+    """逐题执行器；生产路径只通过评测 Registry 调用知识 Agent。"""
 
-    async def execute(self, case_no: int, question: EvaluationQuestion, *, config) -> CaseResult:
+    def __init__(self, registry: EvaluationToolRegistry) -> None:
+        self.registry = registry
+
+    async def execute(
+        self,
+        case_no: int,
+        question: EvaluationQuestion,
+        *,
+        config,
+        context: EvaluationAgentContext | None = None,
+        runtime: EvaluationRuntime | None = None,
+    ) -> CaseResult:
         started = monotonic()
         LOG.info(
             "自主评测Agent knowledge agent start case_no={} kb_id={} question_length={}",
@@ -25,10 +32,15 @@ class KnowledgeAgentExecutor:
             config.kb_id,
             len(question.question),
         )
-        result = await self.runner(
-            AgentTask(kb_id=config.kb_id, question=question.question, user_id=str(config.user_id)),
-            AgentContext(kb_id=config.kb_id, user_id=str(config.user_id)),
+        if context is None or runtime is None:
+            raise RuntimeError("评测 Registry 执行缺少可信上下文或 Runtime")
+        call_result = await runtime.invoke_tool(
+            registry=self.registry,
+            name="call_knowledge_agent",
+            payload={"case_no": case_no, "question": question.question},
+            context=context,
         )
+        result = call_result.result
         status = "fallback" if result.termination_reason == "fallback" else "completed"
         LOG.info(
             "自主评测Agent knowledge agent finished "
@@ -51,6 +63,12 @@ class KnowledgeAgentExecutor:
             hit_count=result.hit_count,
             duration_ms=max(result.duration_ms, int((monotonic() - started) * 1000)),
             metadata={
-                "citations": [citation.model_dump(mode="json") for citation in result.citations]
+                "citations": [citation.model_dump(mode="json") for citation in result.citations],
+                "knowledge_agent_skill_refs": [
+                    item.model_dump() for item in result.skill_refs
+                ],
             },
         )
+
+
+__all__ = ("KnowledgeAgentExecutor",)

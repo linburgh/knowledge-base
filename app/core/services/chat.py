@@ -4,9 +4,9 @@ from typing import Any
 
 from app.agents.knowledge.agent import run_knowledge_agent
 from app.agents.knowledge.runtime import AgentError
+from app.core.common import form_limits
 from app.core.common import utils as common_utils
 from app.core.common import validation as common_validation
-from app.core.common import form_limits
 from app.core.common.exception import BusiException
 from app.core.services import knowledge_base_qa_config as qa_config_service
 from app.db import conversation as conversation_db
@@ -27,7 +27,12 @@ ROLE_ASSISTANT = "assistant"
 
 async def validate(db, kb_id: int, question: str, user_id: str) -> str:
     """校验问答参数和知识库，并返回规范化后的问题。"""
-    common_validation.validate_free_text(question, "question", max_length=form_limits.QUESTION, required=True)
+    common_validation.validate_free_text(
+        question,
+        "question",
+        max_length=form_limits.QUESTION,
+        required=True,
+    )
     normalized_question = common_utils.normalize_space(question)
     if not normalized_question:
         raise BusiException("question 不能为空")
@@ -45,6 +50,7 @@ async def _get_or_create_conversation(
     user_id: str,
     question: str,
     conversation_id: int | None,
+    tenant_id: int | None = None,
 ) -> dict[str, Any]:
     if conversation_id is not None:
         conversation = await conversation_db.get(db, id=conversation_id)
@@ -74,6 +80,7 @@ async def _get_or_create_conversation(
         index_version_id=active_index_version_id,
         title=question[:50],
         status=STATUS_ACTIVE,
+        tenant_id=tenant_id,
     )
     conversation = await conversation_db.get(db, id=new_id)
     if conversation is None:
@@ -123,6 +130,10 @@ async def _build_agent_context(
     db,
     conversation: dict[str, Any],
     user_id: str,
+    *,
+    tenant_id: int | None = None,
+    organization_ids: list[int] | None = None,
+    access_level: str = "platform_admin",
 ) -> AgentContext:
     knowledge_base = await knowledge_base_db.get(db, id=conversation["kb_id"])
     if knowledge_base is None or knowledge_base.get("status") == STATUS_DELETED:
@@ -134,13 +145,15 @@ async def _build_agent_context(
         version_id=conversation.get("qa_config_version_id"),
     )
     return AgentContext(
-        tenant_id=knowledge_base.get("tenant_id"),
+        tenant_id=tenant_id if tenant_id is not None else knowledge_base.get("tenant_id"),
+        organization_ids=organization_ids or [],
         user_id=user_id,
         kb_id=conversation["kb_id"],
         conversation_id=conversation["id"],
         index_version_id=conversation.get("index_version_id"),
         knowledge_base_prompt=knowledge_base.get("system_prompt"),
         qa_config=qa_config,
+        access_level=access_level,
     )
 
 
@@ -206,6 +219,9 @@ async def chat(
     user_id: str,
     conversation_id: int | None = None,
     top_k: int | None = None,
+    tenant_id: int | None = None,
+    organization_ids: list[int] | None = None,
+    access_level: str = "platform_admin",
 ) -> ChatResponse:
     """通过用户消息事务、Agent 执行和结果事务完成一次问答。"""
     db = DB.get()
@@ -218,6 +234,7 @@ async def chat(
             user_id,
             question,
             conversation_id,
+            tenant_id,
         )
         user_message = await _save_message(
             db,
@@ -227,7 +244,14 @@ async def chat(
             {"source": "chat"},
         )
 
-    context = await _build_agent_context(db, conversation, user_id)
+    context = await _build_agent_context(
+        db,
+        conversation,
+        user_id,
+        tenant_id=tenant_id,
+        organization_ids=organization_ids,
+        access_level=access_level,
+    )
     try:
         result = await run_knowledge_agent(
             AgentTask(

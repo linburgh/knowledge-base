@@ -30,6 +30,12 @@ def validate_agent_context(task_kb_id: int, task_user_id: str, context: AgentCon
         raise BusiException("Agent 上下文与问答任务不一致", status_code=403)
     if context.conversation_id is not None and context.conversation_id <= 0:
         raise BusiException("会话上下文无效", status_code=400)
+    if any(item <= 0 for item in context.organization_ids) or len(
+        set(context.organization_ids)
+    ) != len(context.organization_ids):
+        raise BusiException("组织授权上下文无效", status_code=403)
+    if context.access_level == "tenant_member" and context.tenant_id is None:
+        raise BusiException("租户成员上下文缺少租户范围", status_code=403)
 
 
 def validate_agent_result(result: AgentResult, retrieved_chunks: list[dict]) -> None:

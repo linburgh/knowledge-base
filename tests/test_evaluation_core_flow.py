@@ -9,6 +9,7 @@ from app.agents.evaluation.metrics import calculate_metrics
 from app.agents.evaluation.models import CaseResult, EvaluationQuestion
 from app.core.services import evaluation as evaluation_service
 from app.db.base import DB
+from app.schemas.evaluation import EvaluationAgentResult, EvaluationRunSummary
 from app.workers import evaluation as evaluation_worker
 
 
@@ -51,15 +52,28 @@ class EvaluationCoreFlowTest(unittest.IsolatedAsyncioTestCase):
         async def run_update(db, values, **kwargs):
             updates.append(values)
 
-        async def agent_run(config, questions):
+        async def agent_run(agent_task, agent_context):
+            del agent_context
+            question = agent_task.questions[0]["question"]
             result = CaseResult(
                 case_no=1,
-                question=questions[0].question,
-                question_source=questions[0].source,
+                question=question,
+                question_source="imported",
                 answer="仓储管理系统支持入库、出库和库存管理。",
                 status="completed",
             )
-            return [result], calculate_metrics([result], config.gates)
+            metrics = calculate_metrics([result], {})
+            return EvaluationAgentResult(
+                case_results=[result.model_dump(mode="json")],
+                metrics=metrics.model_dump(mode="json"),
+                report={"conclusion": metrics.conclusion},
+                conclusion=metrics.conclusion,
+                summary=EvaluationRunSummary(
+                    status="completed",
+                    termination_reason="completed",
+                    completed_count=1,
+                ),
+            )
 
         async def case_insert(db, **values):
             inserted_cases.append(values)
@@ -98,6 +112,23 @@ class EvaluationCoreFlowTest(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(evaluation_worker.case_db, "insert_", new=case_insert),
             patch.object(evaluation_worker.run_db, "update_", new=run_update),
+            patch.object(
+                evaluation_worker.knowledge_base_db,
+                "get",
+                new=AsyncMock(
+                    return_value={
+                        "id": 28,
+                        "status": "active",
+                        "system_prompt": "",
+                        "active_index_version_id": 1,
+                    }
+                ),
+            ),
+            patch.object(
+                evaluation_worker.qa_config_service,
+                "get_effective_config",
+                new=AsyncMock(return_value={}),
+            ),
             patch.object(evaluation_worker, "EvaluationAgent") as agent_class,
         ):
             agent_class.return_value.run = agent_run

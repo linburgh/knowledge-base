@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio
+import hashlib
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -15,15 +15,18 @@ from deepagents import (
 )
 from deepagents.backends import StateBackend
 from deepagents.middleware.filesystem import FilesystemPermission
+from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
 from langchain.agents.structured_output import ToolStrategy
 from langchain_openai import ChatOpenAI
 
-from app.agents.knowledge.policies import authorize_tool, validate_agent_context
+from app.agents.knowledge.policies import validate_agent_context, validate_agent_result
 from app.agents.knowledge.runtime import AgentError, AgentOutputInvalid, AgentRuntime
-from app.agents.knowledge.tools import build_default_registry
-from app.agents.knowledge.tools.citations import _build_candidates
-from app.agents.knowledge.tools.history import load_conversation_history_result
-from app.agents.knowledge.tools.retrieval import retrieve_knowledge_result
+from app.agents.knowledge.tools import (
+    build_citations,
+    build_default_registry,
+    load_conversation_history,
+    retrieve_knowledge,
+)
 from app.config import CONF
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
@@ -33,7 +36,9 @@ from app.schemas.agent import (
     AgentContext,
     AgentMode,
     AgentResult,
+    AgentSkillRef,
     AgentTask,
+    AgentToolTrace,
     CitationCandidate,
     ToolCall,
 )
@@ -78,8 +83,6 @@ SKILL_FILES = {
 EXCLUDED_BUILTIN_TOOLS = frozenset(
     {
         "write_todos",
-        "ls",
-        "read_file",
         "write_file",
         "edit_file",
         "delete",
@@ -104,6 +107,11 @@ def _register_restricted_harness() -> None:
 
 def _build_filesystem_permissions() -> list[FilesystemPermission]:
     return [
+        FilesystemPermission(
+            operations=["read"],
+            paths=["/skills/**"],
+            mode="allow",
+        ),
         FilesystemPermission(
             operations=["read", "write"],
             paths=["/**"],
@@ -132,18 +140,33 @@ def _build_chat_model() -> ChatOpenAI:
     )
 
 
-@lru_cache(maxsize=1)
-def get_knowledge_agent():
+@lru_cache(maxsize=16)
+def get_knowledge_agent(
+    max_model_calls: int | None = None,
+    max_tool_calls: int | None = None,
+):
     _register_restricted_harness()
+    model_limit = max_model_calls or CONF.agent.max_steps
+    tool_limit = max_tool_calls or CONF.agent.max_tool_calls
     return create_deep_agent(
         model=_build_chat_model(),
-        tools=[],
+        tools=[retrieve_knowledge, load_conversation_history, build_citations],
         system_prompt=AGENT_SYSTEM_PROMPT,
         skills=["/skills/"],
         backend=StateBackend(),
         permissions=_build_filesystem_permissions(),
         response_format=ToolStrategy(AgentAnswer),
         context_schema=AgentContext,
+        middleware=[
+            ToolCallLimitMiddleware(
+                run_limit=tool_limit + len(SKILL_FILES) * 2,
+                exit_behavior="error",
+            ),
+            ModelCallLimitMiddleware(
+                run_limit=model_limit,
+                exit_behavior="end",
+            ),
+        ],
         name="knowledge_agent",
         debug=False,
     )
@@ -194,7 +217,27 @@ def _extract_chunks(result: dict[str, Any]) -> list[dict[str, Any]]:
     return list(unique.values())
 
 
-async def _conversation_prompt(context: AgentContext) -> str:
+def _skill_refs() -> list[AgentSkillRef]:
+    refs: list[AgentSkillRef] = []
+    for path, payload in SKILL_FILES.items():
+        content = str(payload["content"])
+        refs.append(
+            AgentSkillRef(
+                name=path.split("/")[-2],
+                version=hashlib.sha256(content.encode("utf-8")).hexdigest()[:12],
+            )
+        )
+    return refs
+
+
+def _skill_prompt() -> str:
+    return "\n\n".join(
+        f"技能 {path.split('/')[-2]}：\n{payload['content']}"
+        for path, payload in SKILL_FILES.items()
+    )
+
+
+async def _conversation_prompt(context: AgentContext, runtime: AgentRuntime) -> str:
     """读取有限的会话上下文，帮助模型自然理解当前追问。"""
     if context.conversation_id is None:
         return ""
@@ -204,8 +247,7 @@ async def _conversation_prompt(context: AgentContext) -> str:
             name="load_conversation_history",
             input={"limit": 8},
         )
-        authorize_tool(context=context, call=call, registry=build_default_registry())
-        history = await load_conversation_history_result(call, context)
+        history = await runtime.execute(call, context)
         if not history.ok:
             return ""
         messages = history.data.get("messages", [])
@@ -233,10 +275,14 @@ def _retrieval_context_prompt(chunks: list[dict[str, Any]]) -> str:
     context_parts = [
         "以下是本次知识库检索返回的资料，只能依据这些资料回答；每条资料的 chunk_id 可用于引用："
     ]
-    for index, chunk in enumerate(chunks, 1):
+    total_chars = 0
+    for index, chunk in enumerate(chunks[:20], 1):
         content = str(chunk.get("content") or "").strip()
         if len(content) > 2400:
             content = f"{content[:2400]}..."
+        if total_chars + len(content) > 30000:
+            break
+        total_chars += len(content)
         context_parts.append(
             "\n".join(
                 [
@@ -304,6 +350,7 @@ async def _fallback_result(
     context: AgentContext,
     started_at: float,
     reason: str,
+    runtime: AgentRuntime,
     retrieved_chunks: list[dict[str, Any]] | None = None,
 ) -> AgentResult:
     """Agent 失败时基于检索结果返回可展示的降级回答。"""
@@ -315,14 +362,28 @@ async def _fallback_result(
                 name="retrieve_knowledge",
                 input={"query": task.question, "top_k": task.top_k},
             )
-            authorize_tool(context=context, call=call, registry=build_default_registry())
-            retrieval = await retrieve_knowledge_result(call, context)
+            retrieval = await runtime.execute(call, context)
             if retrieval.ok:
                 chunks = retrieval.data.get("chunks", [])
     except Exception:
         LOG.exception("Fallback knowledge retrieval failed kb_id={}", task.kb_id)
 
-    citations = _build_candidates(chunks).citations
+    citations: list[CitationCandidate] = []
+    try:
+        citation_result = await runtime.execute(
+            ToolCall(
+                call_id=runtime.next_call_id(),
+                name="build_citations",
+                input={"chunks": chunks},
+            ),
+            context,
+        )
+        citations = [
+            CitationCandidate.model_validate(item)
+            for item in citation_result.data.get("citations", [])
+        ]
+    except Exception:
+        LOG.warning("Fallback citation construction unavailable kb_id={}", task.kb_id)
     answer = ""
     if citations:
         sources = []
@@ -336,13 +397,10 @@ async def _fallback_result(
                 question=task.question,
                 sources="\n\n".join(sources),
             )
-            response = await asyncio.wait_for(
-                _build_chat_model().ainvoke([{"role": "user", "content": summary_prompt}]),
-                timeout=float(
-                    context.qa_config.get("agent", {}).get(
-                        "fallback_timeout_seconds", CONF.chat.timeout_seconds
-                    )
-                ),
+            response = await runtime.invoke_model(
+                _build_chat_model().ainvoke(
+                    [{"role": "user", "content": summary_prompt}]
+                )
             )
             answer = _message_content(response).strip()
         except Exception:
@@ -381,16 +439,36 @@ async def _fallback_result(
         hit_count=len(chunks),
         termination_reason="fallback",
         duration_ms=int((monotonic() - started_at) * 1000),
+        tool_call_count=runtime.tool_call_count,
+        model_call_count=runtime.model_call_count,
+        tool_calls=runtime.tool_traces,
+        skill_refs=runtime.skill_refs,
+        limitations=[reason],
     )
 
 
-def _select_citations(
+async def _select_citations(
     chunks: list[dict[str, Any]],
     citation_chunk_ids: list[int],
+    context: AgentContext,
+    runtime: AgentRuntime,
 ) -> list[CitationCandidate]:
     selected = set(citation_chunk_ids)
+    allowed = {int(chunk["id"]) for chunk in chunks if chunk.get("id") is not None}
+    if selected - allowed:
+        raise AgentOutputInvalid("Agent 返回了本次检索结果之外的引用")
     selected_chunks = [chunk for chunk in chunks if not selected or int(chunk["id"]) in selected]
-    return _build_candidates(selected_chunks).citations
+    result = await runtime.execute(
+        ToolCall(
+            call_id=runtime.next_call_id(),
+            name="build_citations",
+            input={"chunks": selected_chunks},
+        ),
+        context,
+    )
+    if not result.ok:
+        raise AgentOutputInvalid(result.error_message or "引用整理失败")
+    return [CitationCandidate.model_validate(item) for item in result.data.get("citations", [])]
 
 
 @monitor_gather("knowledge.qa")
@@ -403,63 +481,172 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
     agent_config = context.qa_config.get("agent", {})
     answer_config = context.qa_config.get("answer", {})
     mode = choose_mode(task.question)
+    runtime = AgentRuntime(
+        registry=build_default_registry(),
+        max_steps=int(agent_config.get("max_steps", CONF.agent.max_steps)),
+        max_tool_calls=int(agent_config.get("max_tool_calls", CONF.agent.max_tool_calls)),
+        tool_timeout_seconds=float(
+            agent_config.get("tool_timeout_seconds", CONF.agent.tool_timeout_seconds)
+        ),
+        max_retries=int(agent_config.get("max_retries", CONF.agent.max_retries)),
+        total_timeout_seconds=float(
+            agent_config.get("total_timeout_seconds", CONF.agent.total_timeout_seconds)
+        ),
+        max_model_calls=int(agent_config.get("max_steps", CONF.agent.max_steps)),
+    )
+    for skill_ref in _skill_refs():
+        runtime.register_skill(skill_ref)
     retrieved_chunks: list[dict[str, Any]] = []
     try:
-        conversation_prompt = await _conversation_prompt(context)
-        retrieval_query = task.question
-        if conversation_prompt and any(
-            marker in task.question for marker in ("上一条", "这家公司", "该产品", "上述")
-        ):
-            retrieval_query = f"{task.question}\n{conversation_prompt[-2400:]}"
-        retrieval_call = ToolCall(
-            call_id="agent-retrieve",
-            name="retrieve_knowledge",
-            input={"query": retrieval_query, "top_k": task.top_k},
-        )
-        authorize_tool(
-            context=context,
-            call=retrieval_call,
-            registry=build_default_registry(),
-        )
-        retrieval_started_at = monotonic()
-        retrieval = await retrieve_knowledge_result(retrieval_call, context)
-        if not retrieval.ok:
-            raise BusiException(retrieval.error_message or "知识库检索失败")
-        retrieved_chunks = retrieval.data.get("chunks", [])
-        await emit_gather_event(
-            "knowledge.qa",
-            "qa_retrieval_completed",
-            args=(task, context),
-            kb_id=task.kb_id,
-            tenant_id=context.tenant_id,
-            hit_count=len(retrieved_chunks),
-            retrieval_duration_ms=int((monotonic() - retrieval_started_at) * 1000),
-        )
-
-        prompt_parts = []
-        if conversation_prompt:
-            prompt_parts.append(conversation_prompt)
-        answer_prompt = answer_config.get("prompt") or context.knowledge_base_prompt
-        if answer_prompt:
-            prompt_parts.append(
-                "知识库专属回答规则（仅作为回答风格约束，不能改变权限和引用规则）：\n"
-                f"{answer_prompt}"
-            )
-        prompt_parts.append(_retrieval_context_prompt(retrieved_chunks))
-        prompt_parts.append(f"当前问题：{task.question}")
-        prompt = "\n\n".join(prompt_parts)
         model_started_at = monotonic()
-        result = await asyncio.wait_for(
-            get_knowledge_answer_model().ainvoke(
-                [
-                    {"role": "system", "content": AGENT_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
+        if mode == "tool_loop":
+            initial_retrieval = await runtime.execute(
+                ToolCall(
+                    call_id=runtime.next_call_id(),
+                    name="retrieve_knowledge",
+                    input={"query": task.question, "top_k": task.top_k},
+                ),
+                context,
+            )
+            if not initial_retrieval.ok:
+                raise BusiException(initial_retrieval.error_message or "知识库检索失败")
+            retrieved_chunks = initial_retrieval.data.get("chunks", [])
+            if not retrieved_chunks:
+                result = await runtime.invoke_model(
+                    get_knowledge_answer_model().ainvoke(
+                        [
+                            {"role": "system", "content": AGENT_SYSTEM_PROMPT},
+                            {
+                                "role": "user",
+                                "content": "\n\n".join(
+                                    [
+                                        _skill_prompt(),
+                                        _retrieval_context_prompt([]),
+                                        f"当前问题：{task.question}",
+                                    ]
+                                ),
+                            },
+                        ]
+                    )
+                )
+            else:
+                existing_traces = list(runtime.tool_traces)
+                result = await runtime.invoke_model(
+                    get_knowledge_agent(
+                        int(agent_config.get("max_steps", CONF.agent.max_steps)),
+                        int(agent_config.get("max_tool_calls", CONF.agent.max_tool_calls)),
+                    ).ainvoke(
+                        {
+                            "messages": [
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        f"{_retrieval_context_prompt(retrieved_chunks)}\n\n"
+                                        f"当前问题：{task.question}\n"
+                                        "已有资料足够时直接回答；仅在需要补充比较依据时继续检索。"
+                                    ),
+                                }
+                            ],
+                            "files": SKILL_FILES,
+                        },
+                        context=context,
+                        config={
+                            "recursion_limit": max(
+                                int(agent_config.get("recursion_limit", 0)),
+                                int(agent_config.get("max_steps", CONF.agent.max_steps)) * 16
+                                + 16,
+                                64,
+                            )
+                        },
+                    )
+                )
+                graph_chunks = _extract_chunks(result)
+                retrieved_chunks = list(
+                    {
+                        int(chunk["id"]): chunk
+                        for chunk in [*retrieved_chunks, *graph_chunks]
+                        if chunk.get("id") is not None
+                    }.values()
+                )
+                registered_tool_names = build_default_registry().names()
+                graph_tool_calls = sum(
+                    1
+                    for message in result.get("messages", [])
+                    if getattr(message, "type", None) == "tool"
+                    and getattr(message, "name", None) in registered_tool_names
+                )
+                graph_model_calls = sum(
+                    1
+                    for message in result.get("messages", [])
+                    if getattr(message, "type", None) == "ai"
+                    and not _message_content(message).startswith("Model call limits exceeded")
+                )
+                runtime.validate_graph_budget(
+                    1 + graph_tool_calls,
+                    graph_model_calls,
+                )
+                runtime.tool_call_count = 1 + graph_tool_calls
+                runtime.model_call_count = graph_model_calls
+                runtime.tool_traces = [
+                    *existing_traces,
+                    *[
+                        AgentToolTrace(
+                            name=str(getattr(message, "name", None) or "unknown"),
+                            status="completed",
+                        )
+                        for message in result.get("messages", [])
+                        if getattr(message, "type", None) == "tool"
+                    ],
                 ]
-            ),
-            timeout=float(
-                agent_config.get("total_timeout_seconds", CONF.agent.total_timeout_seconds)
-            ),
-        )
+        else:
+            conversation_prompt = await _conversation_prompt(context, runtime)
+            retrieval_query = task.question
+            if conversation_prompt and any(
+                marker in task.question
+                for marker in ("上一条", "这家公司", "该产品", "上述")
+            ):
+                retrieval_query = f"{task.question}\n{conversation_prompt[-2400:]}"
+            retrieval_started_at = monotonic()
+            retrieval = await runtime.execute(
+                ToolCall(
+                    call_id=runtime.next_call_id(),
+                    name="retrieve_knowledge",
+                    input={"query": retrieval_query, "top_k": task.top_k},
+                ),
+                context,
+            )
+            if not retrieval.ok:
+                raise BusiException(retrieval.error_message or "知识库检索失败")
+            retrieved_chunks = retrieval.data.get("chunks", [])
+            await emit_gather_event(
+                "knowledge.qa",
+                "qa_retrieval_completed",
+                args=(task, context),
+                kb_id=task.kb_id,
+                tenant_id=context.tenant_id,
+                hit_count=len(retrieved_chunks),
+                retrieval_duration_ms=int((monotonic() - retrieval_started_at) * 1000),
+            )
+            prompt_parts = [_skill_prompt()]
+            if conversation_prompt:
+                prompt_parts.append(conversation_prompt)
+            answer_prompt = answer_config.get("prompt") or context.knowledge_base_prompt
+            if answer_prompt:
+                prompt_parts.append(
+                    "知识库专属回答规则（仅作为回答风格约束，不能改变权限和引用规则）：\n"
+                    f"{answer_prompt}"
+                )
+            prompt_parts.extend(
+                [_retrieval_context_prompt(retrieved_chunks), f"当前问题：{task.question}"]
+            )
+            result = await runtime.invoke_model(
+                get_knowledge_answer_model().ainvoke(
+                    [
+                        {"role": "system", "content": AGENT_SYSTEM_PROMPT},
+                        {"role": "user", "content": "\n\n".join(prompt_parts)},
+                    ]
+                )
+            )
         answer = _structured_answer(result)
         await emit_gather_event(
             "knowledge.qa",
@@ -472,56 +659,43 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
         )
     except TimeoutError:
         LOG.exception("Knowledge agent timed out kb_id={}", task.kb_id)
-        await emit_gather_event(
-            "knowledge.qa",
-            "qa_timeout",
-            args=(task, context),
-            kb_id=task.kb_id,
-            tenant_id=context.tenant_id,
-            timeout_stage="agent_execution",
-            duration_ms=int((monotonic() - started_at) * 1000),
-        )
         return await _fallback_result(
             task,
             context,
             started_at,
             "timeout",
+            runtime,
             retrieved_chunks,
         )
-    except Exception as exc:
+    except Exception:
         LOG.exception("Knowledge agent output failed kb_id={}", task.kb_id)
-        await emit_gather_event(
-            "knowledge.qa",
-            "qa_failed",
-            args=(task, context),
-            kb_id=task.kb_id,
-            tenant_id=context.tenant_id,
-            failure_stage="agent_execution",
-            duration_ms=int((monotonic() - started_at) * 1000),
-            error=exc,
-        )
         return await _fallback_result(
             task,
             context,
             started_at,
             "agent_error",
+            runtime,
             retrieved_chunks,
         )
 
     chunks = retrieved_chunks
-    citations = _select_citations(chunks, answer.citation_chunk_ids)
-    tool_call_count = 1 if retrieved_chunks else 0
-    model_call_count = 1
-    runtime = AgentRuntime(
-        registry=build_default_registry(),
-        max_steps=int(agent_config.get("max_steps", CONF.agent.max_steps)),
-        max_tool_calls=int(agent_config.get("max_tool_calls", CONF.agent.max_tool_calls)),
-        tool_timeout_seconds=float(
-            agent_config.get("tool_timeout_seconds", CONF.agent.tool_timeout_seconds)
-        ),
-        max_retries=int(agent_config.get("max_retries", CONF.agent.max_retries)),
-    )
-    runtime.validate_graph_budget(tool_call_count, model_call_count)
+    try:
+        citations = await _select_citations(
+            chunks,
+            answer.citation_chunk_ids,
+            context,
+            runtime,
+        )
+    except Exception:
+        LOG.exception("Knowledge agent citation validation failed kb_id={}", task.kb_id)
+        return await _fallback_result(
+            task,
+            context,
+            started_at,
+            "citation_invalid",
+            runtime,
+            retrieved_chunks,
+        )
     top_k = task.top_k or 5
     agent_result = AgentResult(
         answer=answer.answer,
@@ -530,11 +704,15 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
         status="completed",
         top_k=top_k,
         hit_count=len(chunks),
-        tool_call_count=tool_call_count,
-        model_call_count=model_call_count,
+        tool_call_count=runtime.tool_call_count,
+        model_call_count=runtime.model_call_count,
         termination_reason=answer.termination_reason,
         duration_ms=int((monotonic() - started_at) * 1000),
+        tool_calls=runtime.tool_traces,
+        skill_refs=runtime.skill_refs,
+        limitations=[] if chunks else ["知识库未返回可用资料"],
     )
+    validate_agent_result(agent_result, chunks)
     await emit_gather_event(
         "knowledge.qa",
         "qa_completed",

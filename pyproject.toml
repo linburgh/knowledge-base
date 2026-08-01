@@ -37,6 +37,7 @@ dependencies = [
     "python-dotenv>=1.2,<2.0",
     "deepagents>=0.6,<0.7",
     "apscheduler>=3.10,<4.0",
+    "langgraph>=1.0,<2.0",
 ]
 
 [dependency-groups]

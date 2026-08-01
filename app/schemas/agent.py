@@ -6,6 +6,17 @@ from pydantic import BaseModel, Field, field_validator
 
 AgentMode = Literal["single_retrieval", "tool_loop"]
 AgentStatus = Literal["created", "running", "completed", "failed", "stopped"]
+AgentTerminationReason = Literal[
+    "completed",
+    "evidence_insufficient",
+    "fallback",
+    "timeout",
+    "budget_exceeded",
+    "permission_denied",
+    "output_invalid",
+    "cancelled",
+    "tool_failed",
+]
 ToolName = Literal[
     "retrieve_knowledge",
     "load_conversation_history",
@@ -38,6 +49,22 @@ class AgentContext(BaseModel):
     knowledge_base_prompt: str | None = None
     qa_config: dict[str, Any] = Field(default_factory=dict)
     purpose: Literal["business", "monitor_probe"] = "business"
+    access_level: Literal["platform_admin", "tenant_member", "evaluation", "monitor_probe"] = (
+        "platform_admin"
+    )
+
+
+class AgentSkillRef(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    version: str = Field(..., min_length=8, max_length=64)
+
+
+class AgentToolTrace(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    status: Literal["completed", "failed", "timeout", "denied"]
+    duration_ms: int = Field(default=0, ge=0)
+    result_count: int = Field(default=0, ge=0)
+    error_code: str | None = Field(default=None, max_length=128)
 
 
 class ToolCall(BaseModel):
@@ -120,6 +147,9 @@ class AgentResult(BaseModel):
     model_call_count: int = 0
     termination_reason: str
     duration_ms: int
+    tool_calls: list[AgentToolTrace] = Field(default_factory=list)
+    skill_refs: list[AgentSkillRef] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
 
 
 __all__ = (
@@ -127,8 +157,11 @@ __all__ = (
     "AgentContext",
     "AgentMode",
     "AgentResult",
+    "AgentSkillRef",
     "AgentStatus",
     "AgentTask",
+    "AgentTerminationReason",
+    "AgentToolTrace",
     "CitationCandidate",
     "CitationToolInput",
     "CitationToolOutput",

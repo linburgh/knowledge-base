@@ -87,6 +87,22 @@
       .citation-panel { min-height:685px; } .citation-list { padding:0 20px 20px; } .citation { padding:15px 0; border-top:1px solid var(--line); } .citation:first-child { border-top:0; }
       .citation-title { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; } .citation-number { display:grid; width:22px; height:22px; place-items:center; border-radius:6px; color:var(--blue); background:var(--blue-soft); font-size:10px; }
       .citation p { margin:9px 0; color:var(--muted); font-size:11px; line-height:1.8; } .citation-meta { color:#a2abc0; font-size:10px; }
+      .session-heading strong,.panel-heading h2 { font-size:16px; }
+      .session-new,.session-item,.session-menu button { font-size:13px; line-height:20px; }
+      .session-item { min-height:48px; border-color:transparent; }
+      .session-item:hover,.session-item.active { border-color:#d8ddff; background:#f3f5ff; }
+      .chat-panel,.session-panel,.citation-panel { border-color:#e3e8f2; border-radius:14px; box-shadow:0 12px 32px rgba(35,48,82,.07); }
+      .chat-header { background:linear-gradient(180deg,#fff,#fcfdff); }
+      .chat-header h2 { font-size:18px; } .chat-header p,.scope { font-size:13px; line-height:20px; }
+      .messages { background:#fbfcff; }
+      .welcome p { font-size:13px; }
+      .question,.answer { font-size:14px; line-height:1.75; }
+      .answer { background:#fff; box-shadow:0 7px 20px rgba(35,48,82,.05); }
+      .question { background:linear-gradient(135deg,#6677ee,#5264dc); box-shadow:0 8px 18px rgba(82,100,220,.18); }
+      .composer textarea { min-height:88px; background:#fff; font-size:14px; }
+      .composer-footer,.send { font-size:13px; }
+      .citation-title,.citation p,.citation-meta { font-size:13px; }
+      .citation { margin-top:10px; padding:14px; border:1px solid #e5eaf3; border-radius:11px; background:#fbfcff; }
       @media (max-width:1250px) { .content { padding:28px; } .layout { grid-template-columns:220px minmax(500px,1fr); } .citation-panel { display:none; } }
     </style>
   </head>

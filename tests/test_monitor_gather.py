@@ -17,7 +17,6 @@ from app.core.monitoring.gather import (
     flush_gather_failures,
     monitor_gather,
 )
-from app.workers.evaluation import _run_agent_with_budget
 
 DML_PATH = Path("scripts/db/data_table_dml.sql")
 EXPECTED_TARGETS = {
@@ -195,12 +194,9 @@ def test_evaluation_run_budget_enforces_hard_timeout() -> None:
     )
     with pytest.raises(TimeoutError):
         asyncio.run(
-            _run_agent_with_budget(
-                SlowAgent(),
-                config,
-                [],
-                {},
-                config.run_timeout_seconds,
+            asyncio.wait_for(
+                SlowAgent().run(config, [], monitoring_fields={}),
+                timeout=config.run_timeout_seconds,
             )
         )
 

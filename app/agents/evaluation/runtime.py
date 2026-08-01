@@ -2,12 +2,30 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from time import monotonic
+from typing import Any
 
 from app.core.common.log import LOG
 from app.core.monitoring import emit_gather_event
+from app.schemas.agent import AgentSkillRef, AgentToolTrace
+from app.schemas.evaluation import EvaluationAgentContext
 
 from .models import CaseResult, EvaluationQuestion
+from .policies import authorize_evaluation_tool
+from .tools.registry import EvaluationToolRegistry
+
+
+class EvaluationAgentError(Exception):
+    code = "EVALUATION_AGENT_ERROR"
+
+
+class EvaluationCancelled(EvaluationAgentError):
+    code = "EVALUATION_CANCELLED"
+
+
+class EvaluationBudgetExceeded(EvaluationAgentError):
+    code = "EVALUATION_BUDGET_EXCEEDED"
 
 
 @dataclass(slots=True)
@@ -15,6 +33,81 @@ class EvaluationRuntime:
     concurrency: int
     timeout_seconds: float
     retry_count: int = 0
+    total_timeout_seconds: float = 3600
+    max_tool_calls: int = 1000
+    cancel_check: Callable[[], Awaitable[bool]] | None = None
+    tool_call_count: int = 0
+    model_call_count: int = 0
+    stop_reason: str = ""
+    tool_traces: list[AgentToolTrace] = field(default_factory=list)
+    skill_refs: list[AgentSkillRef] = field(default_factory=list)
+    partial_results: list[CaseResult] = field(default_factory=list)
+
+    def register_skill(self, skill: AgentSkillRef) -> None:
+        if all(item.name != skill.name for item in self.skill_refs):
+            self.skill_refs.append(skill)
+            LOG.info("自主评测Agent skill loaded name={} version={}", skill.name, skill.version)
+
+    async def check_cancelled(self) -> None:
+        if self.cancel_check is not None and await self.cancel_check():
+            self.stop_reason = "cancelled"
+            raise EvaluationCancelled("自主评测任务已取消")
+
+    async def invoke_tool(
+        self,
+        *,
+        registry: EvaluationToolRegistry,
+        name: str,
+        payload: dict[str, Any],
+        context: EvaluationAgentContext,
+    ):
+        await self.check_cancelled()
+        if self.tool_call_count >= self.max_tool_calls:
+            self.stop_reason = "budget_exceeded"
+            raise EvaluationBudgetExceeded("自主评测工具调用超过预算")
+        authorize_evaluation_tool(
+            name=name,
+            payload=payload,
+            context=context,
+            registered_tools=registry.names(),
+        )
+        self.tool_call_count += 1
+        started = monotonic()
+        try:
+            result = await asyncio.wait_for(
+                registry.invoke(name, payload, context),
+                timeout=self.timeout_seconds,
+            )
+            agent_result = getattr(result, "result", None)
+            self.tool_traces.append(
+                AgentToolTrace(
+                    name=name,
+                    status="completed",
+                    duration_ms=int((monotonic() - started) * 1000),
+                    result_count=getattr(agent_result, "hit_count", 0),
+                )
+            )
+            return result
+        except TimeoutError:
+            self.tool_traces.append(
+                AgentToolTrace(
+                    name=name,
+                    status="timeout",
+                    duration_ms=int((monotonic() - started) * 1000),
+                    error_code="REQUEST_TIMEOUT",
+                )
+            )
+            raise
+        except Exception as exc:
+            self.tool_traces.append(
+                AgentToolTrace(
+                    name=name,
+                    status="failed",
+                    duration_ms=int((monotonic() - started) * 1000),
+                    error_code=type(exc).__name__,
+                )
+            )
+            raise
 
     async def run(
         self,
@@ -28,6 +121,7 @@ class EvaluationRuntime:
 
         async def one(case_no: int, question: EvaluationQuestion) -> CaseResult:
             async with semaphore:
+                await self.check_cancelled()
                 LOG.info(
                     "自主评测Agent case start case_no={} source={} question_length={}",
                     case_no,
@@ -35,6 +129,7 @@ class EvaluationRuntime:
                     len(question.question),
                 )
                 for attempt in range(self.retry_count + 1):
+                    await self.check_cancelled()
                     await emit_gather_event(
                         "evaluation.run",
                         "evaluation_case_started",
@@ -107,6 +202,10 @@ class EvaluationRuntime:
                             error_category="timeout",
                             **event_fields,
                         )
+                    except EvaluationCancelled:
+                        raise
+                    except EvaluationBudgetExceeded:
+                        raise
                     except Exception as exc:
                         LOG.opt(exception=exc).warning(
                             "自主评测Agent case error case_no={} attempt={}",
@@ -155,11 +254,24 @@ class EvaluationRuntime:
             self.concurrency,
             self.timeout_seconds,
         )
-        results = list(
-            await asyncio.gather(
-                *(one(index, question) for index, question in enumerate(questions, 1))
-            )
+        gathered = await asyncio.gather(
+            *(one(index, question) for index, question in enumerate(questions, 1)),
+            return_exceptions=True,
         )
+        results = [item for item in gathered if isinstance(item, CaseResult)]
+        self.partial_results = results
+        cancellation = next(
+            (item for item in gathered if isinstance(item, EvaluationCancelled)),
+            None,
+        )
+        if cancellation is not None:
+            raise cancellation
+        budget_error = next(
+            (item for item in gathered if isinstance(item, EvaluationBudgetExceeded)),
+            None,
+        )
+        if budget_error is not None:
+            raise budget_error
         LOG.info(
             "自主评测Agent runtime completed question_count={} result_count={}",
             len(questions),

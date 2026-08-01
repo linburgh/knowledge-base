@@ -168,7 +168,6 @@ async def upload(
         created_by=created_by,
     )
     document = await add(dto)
-    await ingestion_service.create_task(document["id"])
     return document
 
 

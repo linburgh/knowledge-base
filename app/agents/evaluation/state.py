@@ -4,13 +4,20 @@ from typing import Any, TypedDict
 
 
 class EvaluationState(TypedDict, total=False):
-    evaluation_id: int
-    task_id: int
-    config_snapshot: dict[str, Any]
-    questions: list[dict[str, Any]]
-    question_index: int
-    case_results: list[dict[str, Any]]
-    metrics: dict[str, Any]
+    config: Any
+    context: Any
+    questions: list[Any]
+    prepared_questions: list[Any]
+    case_results: list[Any]
+    metrics: Any
+    report: dict[str, Any]
     conclusion: str
+    current_node: str
+    completed_count: int
+    failed_count: int
     status: str
-    error: dict[str, str]
+    termination_reason: str
+    limitations: list[str]
+
+
+__all__ = ("EvaluationState",)

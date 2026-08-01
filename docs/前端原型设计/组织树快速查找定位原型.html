@@ -148,11 +148,11 @@
 
     <script>
       const roots = [
-        { id: "root-1", name: "国泰资产服务总部", code: "headquarters", parent: "—", children: [
-          { id: "org-1", name: "技术中心", code: "technology", parent: "国泰资产服务总部", children: [
+        { id: "root-1", name: "示例租户服务总部", code: "headquarters", parent: "—", children: [
+          { id: "org-1", name: "技术中心", code: "technology", parent: "示例租户服务总部", children: [
             { id: "org-1-1", name: "平台组", code: "platform", parent: "技术中心", children: [] },
           ] },
-          { id: "org-2", name: "财务部", code: "finance", parent: "国泰资产服务总部", children: [] },
+          { id: "org-2", name: "财务部", code: "finance", parent: "示例租户服务总部", children: [] },
         ] },
         { id: "root-2", name: "南方云启科技总部", code: "nanyun-hq", parent: "—", children: [
           { id: "org-3", name: "技术中心", code: "nanyun-technology", parent: "南方云启科技总部", children: [] },
@@ -178,7 +178,7 @@
       let omittedAncestorLayers = 8;
       let existingExpandedDepth = 0;
       const matches = [
-        { id: "org-1", name: "技术中心", code: "technology", tenant: "组织树分页性能测试租户", path: "国泰资产服务总部 / 技术中心", status: "正常" },
+        { id: "org-1", name: "技术中心", code: "technology", tenant: "组织树分页性能测试租户", path: "示例租户服务总部 / 技术中心", status: "正常" },
         { id: "org-3", name: "技术中心", code: "nanyun-technology", tenant: "组织树分页性能测试租户", path: "南方云启科技总部 / 技术中心", status: "正常" },
         { id: "org-4", name: "技术中心", code: "beichen-technology", tenant: "组织树分页性能测试租户", path: "北辰信息技术总部 / 技术中心", status: "正常" },
       ];
@@ -315,7 +315,7 @@
         window.setTimeout(() => {
           button.disabled = false;
           button.textContent = "查找";
-          if (keyword === "平台组" || keyword === "platform") { locateResult({ id: "org-1-1", name: "平台组", path: "国泰资产服务总部 / 技术中心 / 平台组" }); return; }
+          if (keyword === "平台组" || keyword === "platform") { locateResult({ id: "org-1-1", name: "平台组", path: "示例租户服务总部 / 技术中心 / 平台组" }); return; }
           if (keyword === "节点A" || keyword === "node-a") {
             locateResult({
               id: "node-a",

@@ -307,17 +307,25 @@ cross join (values
 where parent.code = 'monitoring'
   and not exists (select 1 from t_system_menu existing where existing.code = item.code);
 
+-- 审计管理暂不对业务角色开放；事件中心恢复平台超级管理员和租户管理员授权。
+delete from t_role_menu relation
+using t_system_menu menu
+where relation.menu_id = menu.id
+  and menu.code = 'monitoring_audits'
+  and (
+      (relation.role_scope = 'platform' and relation.role_code = 'p_super_admin')
+      or (relation.role_scope = 'tenant' and relation.role_code = 'tenant_admin')
+  );
+
 insert into t_role_menu (role_scope, role_code, menu_id, status)
 select role_item.role_scope, role_item.role_code, menu.id, 'active'
 from (values ('platform', 'p_super_admin'), ('tenant', 'tenant_admin')) as role_item(role_scope, role_code)
 cross join t_system_menu menu
 where (menu.code = 'monitoring' or menu.code like 'monitoring_%')
-  and not exists (
-      select 1 from t_role_menu relation
-      where relation.role_scope = role_item.role_scope
-        and relation.role_code = role_item.role_code
-        and relation.menu_id = menu.id
-  );
+  and menu.code <> 'monitoring_audits'
+on conflict (role_scope, role_code, menu_id) do update
+set status = excluded.status,
+    updated_at = now();
 
 insert into t_system_menu_action (menu_id, code, name, action_type, sort_order, status)
 select menu.id, action.code, action.name, 'button', action.sort_order, 'active'
@@ -687,4 +695,52 @@ set metric_name = excluded.metric_name,
     dimensions = excluded.dimensions,
     minimum_sample_count = excluded.minimum_sample_count,
     status = excluded.status,
+    updated_at = now();
+
+-- 指标判定规则由系统发布；比例指标统一使用 0 至 1，耗时统一使用毫秒。
+-- trigger_type=lower_than 表示低于阈值异常，higher_than 表示高于阈值异常，informational 仅确认数据可用性。
+insert into t_monitor_metric_rule (
+    metric_code,
+    scope_type,
+    warning_threshold,
+    critical_threshold,
+    recovery_threshold,
+    minimum_sample_count,
+    consecutive_periods,
+    window_seconds,
+    trigger_type,
+    recovery_periods,
+    enabled,
+    version,
+    effective_at,
+    created_by
+)
+values
+    ('qa_request_count', 'all', null, null, null, 1, 1, 300, 'informational', 1, true, 1, now(), 'system-release'),
+    ('qa_success_rate', 'all', 0.98, 0.95, 0.99, 1, 1, 300, 'lower_than', 1, true, 1, now(), 'system-release'),
+    ('qa_error_rate', 'all', 0.01, 0.05, 0.005, 1, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('qa_timeout_rate', 'all', 0.01, 0.03, 0.005, 1, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('qa_reference_rate', 'all', 0.90, 0.80, 0.95, 1, 1, 300, 'lower_than', 1, true, 1, now(), 'system-release'),
+    ('qa_p95', 'all', 3000, 8000, 2000, 20, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('database_connection_usage', 'all', 0.70, 0.85, 0.65, 1, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('task_queue_usage', 'all', 0.70, 0.90, 0.60, 1, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('file_storage_usage', 'all', 0.70, 0.85, 0.65, 1, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('vector_storage_usage', 'all', 0.70, 0.85, 0.65, 1, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('vector_service_availability', 'all', 0.99, 0.95, 0.999, 3, 1, 300, 'lower_than', 1, true, 1, now(), 'system-release'),
+    ('task_backlog_count', 'all', 10, 50, 5, 1, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('task_wait_p95', 'all', 60000, 300000, 30000, 20, 1, 300, 'higher_than', 1, true, 1, now(), 'system-release'),
+    ('task_success_rate', 'all', 0.95, 0.90, 0.98, 1, 1, 300, 'lower_than', 1, true, 1, now(), 'system-release'),
+    ('evaluation_completion_rate', 'all', 0.95, 0.85, 0.98, 1, 1, 300, 'lower_than', 1, true, 1, now(), 'system-release'),
+    ('evaluation_evidence_completeness', 'all', 0.99, 0.95, 1.00, 1, 1, 300, 'lower_than', 1, true, 1, now(), 'system-release')
+on conflict (metric_code, scope_type, version) do update
+set warning_threshold = excluded.warning_threshold,
+    critical_threshold = excluded.critical_threshold,
+    recovery_threshold = excluded.recovery_threshold,
+    minimum_sample_count = excluded.minimum_sample_count,
+    consecutive_periods = excluded.consecutive_periods,
+    window_seconds = excluded.window_seconds,
+    trigger_type = excluded.trigger_type,
+    recovery_periods = excluded.recovery_periods,
+    enabled = excluded.enabled,
+    effective_at = excluded.effective_at,
     updated_at = now();

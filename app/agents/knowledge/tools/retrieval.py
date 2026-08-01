@@ -34,6 +34,22 @@ async def retrieve_knowledge_result(call: ToolCall, context: AgentContext) -> To
         knowledge_base = await knowledge_base_db.get(DB.get(), id=context.kb_id)
         if knowledge_base is None or knowledge_base.get("status") == "deleted":
             raise BusiException("知识库不存在", status_code=404)
+        if context.tenant_id is not None and knowledge_base.get("tenant_id") != context.tenant_id:
+            raise BusiException("无权访问该知识库", status_code=403)
+        if context.access_level == "tenant_member":
+            try:
+                user_id = int(context.user_id)
+            except ValueError:
+                raise BusiException("用户上下文无效", status_code=403) from None
+            authorized = await knowledge_base_db.guest_get(
+                DB.get(),
+                int(context.tenant_id),
+                user_id,
+                context.organization_ids,
+                context.kb_id,
+            )
+            if authorized is None:
+                raise BusiException("无权访问该知识库", status_code=403)
         retrieval = await retrieval_service.search(
             context.kb_id,
             payload.query,

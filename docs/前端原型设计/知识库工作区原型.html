@@ -52,7 +52,7 @@
     #workspace-docs .row > span:last-child button:disabled { color:#b5bdcc; cursor:not-allowed; }
     .kb-list-card .table-head, .kb-list-card .row { grid-template-columns:1.8fr 1.1fr 1.8fr 1.2fr 2.2fr; }
     .docs-select-card .table-head, .docs-select-card .row { grid-template-columns:2fr 1fr 1.5fr; }
-    .table-head { color:#9aa4b5; background:#fbfcfe; font-size:12px; }
+    .table-head { color:#9aa4b5; background:#fbfcfe; font-size:13px; }
     .row { border-top:1px solid #eef1f5; }
     .row:hover { background:#fafbff; }
     .muted { color:var(--muted); font-size:12px; }
@@ -95,6 +95,20 @@
     .citation-head h2 { margin:0; font-size:16px; }
     .citation-empty { padding-top:58px; color:#9aa8c3; font-size:13px; text-align:center; }
     .citation { padding:13px 0; border-bottom:1px solid var(--line); }
+    .chat { gap:18px; padding:0; border:0; background:transparent; box-shadow:none; }
+    .sessions,.messages,.citations { border:1px solid #e3e8f2; border-radius:14px; background:#fff; box-shadow:0 12px 32px rgba(35,48,82,.07); }
+    .sessions { padding:20px 18px; border-right:1px solid #e3e8f2; }
+    .session-head { font-size:16px; }
+    .session-search input,.session-new,.session-empty,.session-group,.session-item { font-size:13px; line-height:20px; }
+    .session-item { min-height:48px; border:1px solid transparent; }
+    .session-item:hover,.session-item.active { border-color:#d8ddff; background:#f3f5ff; }
+    .messages { padding:28px 30px; background:#fbfcff; }
+    .bubble { border:1px solid #e4e9f2; background:#fff; box-shadow:0 7px 20px rgba(35,48,82,.05); font-size:14px; line-height:1.75; }
+    .bubble.user { border-color:transparent; background:linear-gradient(135deg,#6677ee,#5264dc); }
+    .composer textarea { min-height:88px; background:#fff; font-size:14px; line-height:1.7; }
+    .composer .row,.citation-empty { font-size:13px; }
+    .citations { border-left:1px solid #e3e8f2; }
+    .citation { margin-top:10px; padding:14px; border:1px solid #e5eaf3; border-radius:11px; background:#fbfcff; font-size:13px; }
     .link-button, .link-danger { margin-right:14px; padding:0; background:transparent; font-size:13px; }
     .refresh-button { margin-left:8px; }
     .line-chart { width:100%; height:190px; overflow:visible; }
@@ -127,6 +141,7 @@
     #platform-form input, #platform-form select { display:block; width:100%; height:40px; margin:8px 0 16px; padding:0 11px; border:1px solid #dce2ed; border-radius:8px; color:var(--ink); background:#fff; font:inherit; }
     #platform-form select { appearance:auto; }
     #kb-permission, #kb-user-permission { color:var(--ink); } #kb-permission h3, #kb-user-permission h3 { margin:0 0 8px; font-size:16px; } .permission-summary { padding:16px; border:1px solid var(--line); border-radius:10px; background:#f8f9fd; } .permission-summary .eyebrow { margin:0 0 6px; } .permission-summary p { margin:6px 0 0; line-height:1.6; } .permission-section { margin-top:22px; } .permission-add { display:flex; justify-content:flex-end; } .permission-add > button { height:40px; padding:0 16px; border-radius:8px; color:#fff; background:var(--blue); white-space:nowrap; } .permission-list { overflow:hidden; border:1px solid var(--line); border-radius:10px; } .permission-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 14px; border-bottom:1px solid #eef1f5; } .permission-row:last-child { border-bottom:0; } .permission-row strong,.permission-row span { display:block; } .permission-row .muted { margin-top:4px; font-size:12px; } .organization-picker, .user-picker { position:absolute; z-index:5; top:0; right:0; display:flex; width:440px; height:100%; flex-direction:column; padding:27px; background:#fff; box-shadow:-12px 0 30px rgba(23,32,51,.16); transform:translateX(100%); transition:transform .2s ease; } .organization-picker.open, .user-picker.open { transform:translateX(0); } .organization-picker .toolbar, .user-picker .toolbar { flex:none; } .organization-picker .picker-description, .user-picker .picker-description { margin:0 0 18px; line-height:1.6; } .organization-picker .picker-search, .user-picker .picker-search { display:flex; align-items:center; gap:8px; margin-bottom:12px; } .organization-picker .picker-search input, .user-picker .picker-search input { flex:1; width:auto; height:40px; margin:0; } .organization-picker .picker-search button, .user-picker .picker-search button { height:40px; padding:0 14px; } .organization-table, .user-table { flex:1; min-height:0; overflow:auto; border:1px solid var(--line); border-radius:9px; } .organization-table-head, .organization-table-row, .user-table-head, .user-table-row { display:grid; align-items:center; gap:8px; padding:11px 12px; } .organization-table-head, .organization-table-row { grid-template-columns:44px 1.3fr 1fr; } .user-table-head, .user-table-row { grid-template-columns:44px 1.3fr 1fr; } .organization-table-head, .user-table-head { color:#9aa4b5; background:#fbfcfe; font-size:12px; } .organization-table-row, .user-table-row { border-top:1px solid #eef1f5; color:var(--ink); font-size:12px; } .organization-table-row:hover, .user-table-row:hover { background:var(--blue-soft); } .organization-table-row input, .user-table-row input { width:14px; height:14px; margin:0; accent-color:var(--blue); } .picker-empty { padding:20px 8px; color:var(--muted); font-size:12px; text-align:center; } .organization-pagination, .user-pagination { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-top:12px; color:var(--muted); font-size:12px; } .organization-pagination button, .user-pagination button { padding:6px 8px; color:#53617b; background:transparent; font-size:12px; } .organization-pagination button:disabled, .user-pagination button:disabled { color:#c4cad6; cursor:not-allowed; } .permission-options-footer { display:flex; justify-content:flex-end; gap:9px; padding-top:16px; } .permission-options-footer button { min-width:76px; } .permission-options-footer .ghost { color:#53617b; background:#eef1f7; }
+    .organization-table-head, .user-table-head { font-size:13px; }
     .drawer-footer { position:absolute; right:27px; bottom:25px; left:27px; display:flex; justify-content:flex-end; gap:9px; }
     #index-progress-form .drawer-footer { position:static; margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }
     .drawer.detail-mode:has(#index-progress-form:not(.hidden)) > .drawer-panel > .drawer-footer { display:none; }

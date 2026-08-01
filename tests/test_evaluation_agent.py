@@ -13,7 +13,9 @@ from app.agents.evaluation.models import (
     Gate,
 )
 from app.agents.evaluation.runtime import EvaluationRuntime
+from app.agents.evaluation.tools.registry import EvaluationToolRegistry
 from app.schemas.agent import AgentResult
+from app.schemas.evaluation import EvaluationAgentContext, KnowledgeAgentCallResult
 from app.workers.evaluation import _load_generation_context
 
 
@@ -115,7 +117,8 @@ class EvaluationAgentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[0].status, "completed")
 
     async def test_executor_maps_fallback_result(self) -> None:
-        async def runner(task, context):
+        async def runner(payload, context):
+            del payload, context
             return AgentResult(
                 answer="资料不足",
                 mode="single_retrieval",
@@ -126,10 +129,23 @@ class EvaluationAgentTest(unittest.IsolatedAsyncioTestCase):
                 duration_ms=3,
             )
 
-        result = await KnowledgeAgentExecutor(runner).execute(
+        async def handler(payload, context):
+            return KnowledgeAgentCallResult(result=await runner(payload, context))
+
+        registry = EvaluationToolRegistry()
+        registry.register("call_knowledge_agent", handler)
+        result = await KnowledgeAgentExecutor(registry).execute(
             1,
             EvaluationQuestion(question="问题"),
             config=config(),
+            context=EvaluationAgentContext(
+                run_id=1,
+                task_id=1,
+                user_id="2",
+                kb_id=1,
+                is_super_admin=True,
+            ),
+            runtime=EvaluationRuntime(1, 1),
         )
         self.assertEqual(result.status, "fallback")
         self.assertEqual(result.termination_reason, "fallback")

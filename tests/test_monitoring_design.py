@@ -1,5 +1,12 @@
+import pytest
+from pydantic import ValidationError
+
 from app.db.models import metadata
-from app.schemas.monitoring import AnalysisConversationRequest, MetricRuleRequest
+from app.schemas.monitoring import (
+    AnalysisConversationModifyRequest,
+    AnalysisConversationRequest,
+    MetricRuleRequest,
+)
 
 
 def test_monitoring_ddl_contains_all_tables_without_business_constraints():
@@ -23,3 +30,11 @@ def test_analysis_conversation_uses_monitoring_scope_without_kb_id():
     payload = AnalysisConversationRequest(title="趋势分析", scope_key="platform")
     assert payload.context == {}
     assert MetricRuleRequest(metric_code="p95").window_seconds == 300
+
+
+def test_analysis_conversation_modify_title_length_boundary():
+    assert AnalysisConversationModifyRequest(title="会话名称").title == "会话名称"
+    with pytest.raises(ValidationError):
+        AnalysisConversationModifyRequest(title="")
+    with pytest.raises(ValidationError):
+        AnalysisConversationModifyRequest(title="会" * 256)

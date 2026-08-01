@@ -99,6 +99,9 @@ async def chat(
         user_id=current_user.user_id,
         conversation_id=conversation_id,
         top_k=top_k,
+        tenant_id=tenant_id,
+        organization_ids=organization_ids,
+        access_level="tenant_member",
     )
 
 

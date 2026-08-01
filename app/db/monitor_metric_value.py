@@ -10,10 +10,14 @@ async def insert_(db, **kwargs: Any) -> Any:
     return await db_api.insert_(db, MonitorMetricValue, **kwargs)
 
 
+async def update_(db, values: dict[str, Any], **kwargs: Any) -> Any:
+    return await db_api.update_(db, MonitorMetricValue, values, **kwargs)
+
+
 async def list(db, **kwargs: Any) -> list[dict[str, Any]]:
     return await db_api.list(
         db, MonitorMetricValue, order_by=[MonitorMetricValue.c.window_start.asc()], **kwargs
     )
 
 
-__all__ = ("insert_", "list")
+__all__ = ("insert_", "update_", "list")
