@@ -4,11 +4,20 @@ import json
 from typing import Any
 
 from .config import config_snapshot
-from .models import CaseResult, EvaluationConfig, EvaluationMetrics
+from .models import (
+    CaseResult,
+    EvaluationAgentOutput,
+    EvaluationConfig,
+    EvaluationMetrics,
+)
 
 
 def build_report(
-    config: EvaluationConfig, results: list[CaseResult], metrics: EvaluationMetrics
+    config: EvaluationConfig,
+    results: list[CaseResult],
+    metrics: EvaluationMetrics,
+    *,
+    analysis: EvaluationAgentOutput | None = None,
 ) -> dict[str, Any]:
     failures = [item for item in results if item.status != "completed"]
     citation_anomalies = [
@@ -32,11 +41,12 @@ def build_report(
         "failures": [item.model_dump(mode="json") for item in failures],
         "citation_anomalies": [item.model_dump(mode="json") for item in citation_anomalies],
         "summary": (
-            "本次评测整体通过。"
-            if metrics.conclusion == "passed"
-            else "本次评测未通过全部门禁。"
+            "本次评测整体通过。" if metrics.conclusion == "passed" else "本次评测未通过全部门禁。"
         ),
         "findings": findings,
+        "agent_analysis": {
+            **(analysis.model_dump(mode="json") if analysis else {}),
+        },
         "conclusion": metrics.conclusion,
     }
 

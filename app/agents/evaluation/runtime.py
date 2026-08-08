@@ -30,6 +30,12 @@ class EvaluationBudgetExceeded(EvaluationAgentError):
 
 @dataclass(slots=True)
 class EvaluationRuntime:
+    """单次评测运行的可变执行边界。
+
+    Runtime 实例不得跨任务复用：计数器、工具轨迹、Skill 版本和部分结果都属于单次
+    run。并发控制发生在题目层，工具调用仍统一经过 invoke_tool 进行授权和记账。
+    """
+
     concurrency: int
     timeout_seconds: float
     retry_count: int = 0
@@ -61,6 +67,8 @@ class EvaluationRuntime:
         payload: dict[str, Any],
         context: EvaluationAgentContext,
     ):
+        # 授权必须发生在 Registry 调用之前；Registry 只证明工具已注册，并不代表
+        # 当前用户、租户和知识库上下文有权调用它。
         await self.check_cancelled()
         if self.tool_call_count >= self.max_tool_calls:
             self.stop_reason = "budget_exceeded"
@@ -71,6 +79,7 @@ class EvaluationRuntime:
             context=context,
             registered_tools=registry.names(),
         )
+        # 在真正调用前占用预算，失败和超时也计数，防止通过反复失败绕过调用上限。
         self.tool_call_count += 1
         started = monotonic()
         try:
@@ -115,7 +124,10 @@ class EvaluationRuntime:
         execute: Callable[[int, EvaluationQuestion], Awaitable[CaseResult]],
         *,
         monitoring_fields: dict | None = None,
+        case_numbers: list[int] | None = None,
     ) -> list[CaseResult]:
+        # 信号量限制的是同时执行的题目数，而不是预先分批；这样既保留吞吐量，
+        # 又能让取消检查在每题获取执行槽后及时生效。
         semaphore = asyncio.Semaphore(self.concurrency)
         event_fields = monitoring_fields or {}
 
@@ -254,12 +266,27 @@ class EvaluationRuntime:
             self.concurrency,
             self.timeout_seconds,
         )
+        # return_exceptions=True 用于等待同批题目收敛并保留已完成结果。若改成默认
+        # fail-fast，首个异常会取消其他协程，部分结果和取消状态将无法可靠持久化。
+        numbered_questions = (
+            list(zip(case_numbers, questions, strict=True))
+            if case_numbers is not None
+            else list(enumerate(questions, 1))
+        )
         gathered = await asyncio.gather(
-            *(one(index, question) for index, question in enumerate(questions, 1)),
+            *(one(case_no, question) for case_no, question in numbered_questions),
             return_exceptions=True,
         )
         results = [item for item in gathered if isinstance(item, CaseResult)]
-        self.partial_results = results
+        if case_numbers is None:
+            self.partial_results = results
+        else:
+            # 复核只返回被选择的题目，但取消/预算终止时必须保留此前整批结果。
+            merged = {item.case_no: item for item in self.partial_results}
+            merged.update({item.case_no: item for item in results})
+            self.partial_results = [merged[case_no] for case_no in sorted(merged)]
+        # 结构化终止信号优先于普通题目错误向上抛出；普通错误已在 one() 中转换为
+        # CaseResult，只有取消和预算耗尽需要终止整次评测。
         cancellation = next(
             (item for item in gathered if isinstance(item, EvaluationCancelled)),
             None,

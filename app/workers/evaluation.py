@@ -11,14 +11,14 @@ from app.config import CONF
 from app.core.common.log import LOG
 from app.core.monitoring import emit_gather_event, monitor_gather
 from app.core.services.knowledge_base import qa_config as qa_config_service
+from app.db.api import check_db_connected
+from app.db.base import DB
 from app.db.knowledge_base import document_chunk as document_chunk_db
+from app.db.knowledge_base import mgr as knowledge_base_db
 from app.db.platform import evaluation_case_result as case_db
 from app.db.platform import evaluation_optimization as optimization_db
 from app.db.platform import evaluation_run as run_db
 from app.db.platform import evaluation_task as task_db
-from app.db.knowledge_base import mgr as knowledge_base_db
-from app.db.api import check_db_connected
-from app.db.base import DB
 from app.schemas.evaluation import EvaluationAgentContext, EvaluationAgentTask
 
 
@@ -44,6 +44,13 @@ async def _load_generation_context(db, config, fallback: str | None) -> str | No
 @check_db_connected
 @monitor_gather("evaluation.run")
 async def run_evaluation(run_id: int) -> int:
+    """装配并持久化一次评测运行，Agent 本身不直接管理数据库事务。
+
+    Worker 负责读取任务、生成/载入题集、构造可信上下文和保存结果；Agent 只负责
+    受控执行。维护时不要把 DB 写入下沉到 Agent，否则会破坏 Harness 的可测试性，
+    也会让取消、部分结果和事务回滚分散到多个层次。
+    """
+
     LOG.info("自主评测Worker run start run_id={}", run_id)
     run_started_at = monotonic()
     db = DB.get()
@@ -138,10 +145,13 @@ async def run_evaluation(run_id: int) -> int:
             id=run_id,
         )
         LOG.info("自主评测Worker Agent execution started run_id={}", run_id)
+
         async def is_cancelled() -> bool:
             latest_run = await run_db.get(db, id=run_id)
             return latest_run is None or latest_run.get("status") == "cancelled"
 
+        # 每次运行创建独立 Agent/Runtime 状态，禁止跨 run_id 复用实例中的预算、
+        # 工具轨迹或取消结果。
         evaluation_agent = EvaluationAgent(cancel_check=is_cancelled)
         remaining_seconds = max(
             0.001,
@@ -156,6 +166,8 @@ async def run_evaluation(run_id: int) -> int:
                 config.kb_id,
                 knowledge_base.get("system_prompt") or "",
             )
+            # Worker 超时包含前置准备耗时，Agent 内部超时只覆盖自身执行；这里使用
+            # 剩余总预算，确保整次 run 不超过任务配置的 run_timeout_seconds。
             agent_result = await asyncio.wait_for(
                 evaluation_agent.run(
                     EvaluationAgentTask(
@@ -167,9 +179,7 @@ async def run_evaluation(run_id: int) -> int:
                         task_id=int(run["task_id"]),
                         user_id=str(config.user_id),
                         tenant_id=task.get("tenant_id") or knowledge_base.get("tenant_id"),
-                        organization_ids=list(
-                            task["config"].get("organization_ids") or []
-                        ),
+                        organization_ids=list(task["config"].get("organization_ids") or []),
                         kb_id=config.kb_id,
                         index_version_id=knowledge_base.get("active_index_version_id"),
                         knowledge_base_prompt=knowledge_base.get("system_prompt"),

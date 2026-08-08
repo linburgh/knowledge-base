@@ -4,7 +4,12 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.agents.evaluation.agent import EvaluationAgent
-from app.agents.evaluation.models import EvaluationConfig, EvaluationQuestion
+from app.agents.evaluation.models import (
+    CaseResult,
+    EvaluationAgentOutput,
+    EvaluationConfig,
+    EvaluationQuestion,
+)
 from app.agents.evaluation.tools.registry import EvaluationToolRegistry
 from app.db.base import LoggingDatabase
 from app.schemas.evaluation import (
@@ -62,8 +67,30 @@ class EvaluationAgentLoggingTest(unittest.IsolatedAsyncioTestCase):
         )
         registry = EvaluationToolRegistry()
         registry.register("call_knowledge_agent", runner)
+
+        class FakeAgent:
+            async def ainvoke(self, inputs, *, context, config):
+                del inputs, config
+                context.session.results[1] = CaseResult(
+                    case_no=1,
+                    question="测试问题",
+                    question_source="generated",
+                    answer="答案",
+                    status="completed",
+                )
+                return {
+                    "messages": [],
+                    "structured_response": EvaluationAgentOutput(
+                        goal="日志测试",
+                        rationale="验证 Agent 生命周期日志",
+                    ),
+                }
+
         with patch("app.agents.evaluation.agent.LOG") as agent_log:
-            await EvaluationAgent(registry=registry).run(
+            await EvaluationAgent(
+                registry=registry,
+                agent_factory=lambda agent_config: FakeAgent(),
+            ).run(
                 EvaluationAgentTask(
                     config=config.model_dump(mode="json"),
                     questions=[EvaluationQuestion(question="测试问题").model_dump(mode="json")],

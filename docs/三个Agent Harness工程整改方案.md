@@ -59,7 +59,7 @@
 
 ### 评测现状
 
-自主评测 Agent 已具备配置、数据集、生成、执行器、指标、报告、状态、Graph 和 Runtime 等领域模块。Worker 会实例化 `EvaluationAgent`，Runtime 能控制逐题并发、超时和重试，结构化日志也较完整。
+以下为整改前基线：自主评测 Agent 已具备配置、数据集、生成、执行器、指标、报告、状态、Graph 和 Runtime 等领域模块。Worker 会实例化 `EvaluationAgent`，Runtime 能控制逐题并发、超时和重试，结构化日志也较完整。该基线问题现已由受限版 `create_deep_agent` Harness 改造取代。
 
 具体差距：
 
@@ -338,9 +338,10 @@ Evaluation Worker
   → EvaluationTask + EvaluationContext
   → EvaluationAgent.run
   → Policy 入口校验
-  → 加载 evaluation Skill
-  → 编译并执行 EvaluationGraph
-  → Runtime 控制总预算、并发、逐题超时、重试和取消
+  → create_deep_agent 创建受限评测 Harness
+  → 官方 Skills Middleware 加载 analysis Skill
+  → 官方 Middleware 控制模型/Agent 工具预算与重试
+  → Evaluation Runtime 控制逐题并发、超时和取消
   → EvaluationToolRegistry.call_knowledge_agent
   → 知识 Agent 公开结构化协议
   → 指标节点
@@ -351,19 +352,16 @@ Evaluation Worker
 
 Worker 继续负责领取任务、数据库状态、事务、结果持久化和终态处理；评测 Agent 负责配置校验、问题准备后的执行图、逐题调度、指标和报告结构结果。Agent 不直接写数据库。
 
-### 图形改造
+### Harness 改造
 
-`EvaluationGraph` 改为真实 LangGraph，至少包含以下节点：
+评测 Agent 使用受限 `create_deep_agent`，形成以下动态工具循环：
 
 ```text
-validate_config
-  → load_skill
-  → prepare_questions
-  → dispatch_cases
-  → execute_case
-  → calculate_metrics
-  → build_report
-  → finalize
+读取 analysis Skill
+  → execute_evaluation_cases
+  → inspect_evaluation_results
+  → 自主选择有限复核或返回结构化结果
+  → 确定性指标与报告
 ```
 
 逐题失败进入单题失败结果后继续汇总；配置非法、权限拒绝、问题集无法解析和运行预算耗尽进入任务失败；取消状态进入 `cancelled`，不生成伪造成功报告。Graph 的状态使用 `evaluation/state.py`，跨 Worker 的任务与结果使用 `app/schemas/evaluation.py`。
@@ -376,15 +374,15 @@ validate_config
 
 | 文件 | 整改内容 |
 | --- | --- |
-| `evaluation/agent.py` | 接收结构化任务和上下文，执行 Policy、Skill 和 Graph，返回结构化结果 |
-| `evaluation/graph.py` | 使用真实 LangGraph 节点和条件边，不再反向导入 `EvaluationAgent` |
-| `evaluation/state.py` | 定义运行状态、节点状态、完成数量、失败数量、停止原因和取消标记 |
+| `evaluation/agent.py` | 使用 `create_deep_agent` 创建受限 Harness，接收结构化任务和可信 Context |
+| `evaluation/model.py` | 构建评测 Agent 独立模型实例 |
+| `evaluation/state.py` | 定义 ToolRuntime Session、逐题结果和可信依赖上下文 |
 | `evaluation/runtime.py` | 同时控制运行总预算和逐题预算，工具调用统一经过 Registry，周期检查取消状态 |
 | `evaluation/policies.py` | 入口校验用户、租户、知识库、任务授权和配置边界；工具调用时再次校验范围 |
 | `evaluation/tools/registry.py` | 增加 `get()`、`invoke()`、工具 Schema、只读属性和权限要求 |
 | `evaluation/tools/knowledge.py` | 新增知识 Agent 公开协议适配器，禁止导入知识 Agent 私有实现 |
 | `evaluation/executor.py` | 改为逐题领域执行器，不直接持有裸函数，不自行构造缺字段的 AgentContext |
-| `evaluation/skills/evaluation/SKILL.md` | 补充执行阶段、失败收敛、证据采集、指标边界和禁止直接生成客户答案 |
+| `evaluation/skills/analysis/SKILL.md` | 补充自主规划、复核决策、失败收敛、指标边界和禁止直接生成客户答案 |
 | `app/schemas/evaluation.py` | 增加评测 Agent Task、Context、Result、运行摘要和知识 Agent 调用上下文 |
 | `app/workers/evaluation.py` | 只调用评测 Agent 公开入口，传入完整可信上下文，按结构化结果持久化 |
 

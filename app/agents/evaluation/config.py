@@ -53,6 +53,8 @@ def load_config(
             "request_timeout_seconds", execution.get("request_timeout_seconds", 120)
         ),
         "retry_count": raw.get("retry_count", execution.get("retry_count", 0)),
+        "max_review_rounds": raw.get("max_review_rounds", execution.get("max_review_rounds", 1)),
+        "max_model_calls": raw.get("max_model_calls", execution.get("max_model_calls", 5)),
         "keep_conversation": raw.get(
             "keep_conversation", execution.get("keep_conversation", False)
         ),

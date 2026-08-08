@@ -90,6 +90,20 @@ Agent 可以根据自身业务在独立目录内增加 `graph.py`、`state.py`�
 
 自主评测 Agent 必须遵守该约束，目录固定为 `app/agents/evaluation/`，并与 `app/agents/knowledge/` 使用两个完整、独立的 Harness 结构。评测 Agent 的 LangGraph、状态、数据集、指标、报告和优化模块只能作为其 Harness 内的领域模块存在。
 
+### 官方能力优先
+
+新增或重构 Agent、Harness、模型循环、工具循环、状态图、记忆、人工确认、重试、预算、结构化输出和上下文管理前，必须先完成当前锁定依赖版本的官方能力评估，不得直接进入自研实现。
+
+- 先检查 `pyproject.toml`、`uv.lock`、当前虚拟环境的实际版本和仓库现有用法，再查对应版本的官方文档、API Reference 和迁移说明；不得只凭记忆、旧示例或单一 API 名称选型。
+- LangChain 至少评估 `create_agent`、工具定义、`context_schema`、`ToolRuntime`、结构化输出、Middleware、Checkpointer 和 Store；Middleware 至少评估模型/工具调用上限、模型/工具重试、动态 Prompt、工具筛选、上下文压缩、PII 处理和人工确认。
+- LangGraph 至少评估 `StateGraph`、条件边、`Command`、`Send`、`interrupt`、Checkpointer、Store、流式输出和故障恢复，明确哪些属于 Agent 内部动态循环，哪些属于外围确定性 Workflow。
+- 项目安装 Deep Agents 时，还必须评估 `create_deep_agent`、Skills、Memory、Subagents、Backend、Permissions 和 Human-in-the-loop；只有任务确实需要通用规划、文件系统、子 Agent 或长期记忆时才采用，不得因名称更像 Agent 而默认选用。
+- 选型顺序统一为：官方高层 Harness/API → 官方扩展点或 Middleware → 官方 LangGraph 原语组合 → 项目自研。低一层方案只有在高一层无法满足明确需求时才能采用。
+- 官方能力已经满足的模型循环、工具循环、调用计数、重试、状态持久化、上下文注入和人工中断不得重复实现。因业务差异确需自研时，设计文档必须记录候选 API、版本、缺口证据、选择理由、替代成本和退出方案，并经评审后编码。
+- Agent 方案文档必须包含“能力选型”章节和选型矩阵，至少比较适用需求、安全边界、扩展机制、持久化、测试方式和不采用原因；未完成该章节和评审前不得开始 Agent 编码。
+- 验收时必须提供实际 Agent 创建入口、注册工具、运行时上下文、Middleware、结构化输出和调用轨迹的代码证据。只有固定节点或直接 `model.ainvoke()` 的实现只能称为 Workflow 或模型编排，不得标记为 Agent 完成。
+- 官方 API 仍不能替代项目的确定性权限和业务校验。租户、组织、知识库范围、只读约束、事务和最终门禁继续由 `policies.py`、Service、DB 与确定性代码保证。
+
 ## 开发约定
 
 - 遵守调用方向：`API -> Service -> DB / RAG / 外部服务`。

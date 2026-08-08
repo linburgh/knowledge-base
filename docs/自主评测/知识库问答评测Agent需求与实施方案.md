@@ -399,40 +399,38 @@ flowchart TD
     execute_case_n -. 单题异常 .-> case_result_n
 ```
 
-对应的 LangGraph 编排关系为：
+对应的 Deep Agent 工具循环为：
 
 ```text
-START
-  -> load_task
-  -> validate_task
-  -> prepare_questions
-  -> freeze_run
-  -> dispatch_cases
-       ├─ Send(execute_case, case_1) -> collect_case_result
-       ├─ Send(execute_case, case_2) -> collect_case_result
-       └─ Send(execute_case, case_N) -> collect_case_result
-  -> calculate_metrics
-  -> evaluate_gates
-  -> persist_report
-  -> END
+create_deep_agent
+  -> 读取 analysis Skill
+  -> execute_evaluation_cases(全部题号)
+  -> inspect_evaluation_results
+  -> 模型观察并自主选择
+       ├─ retry_evaluation_cases(复核题号)
+       │    -> inspect_evaluation_results
+       │    -> 在预算内继续决策
+       └─ structured EvaluationAgentOutput
+  -> 系统计算确定性门禁并生成报告
 ```
 
 关键实现约束：
 
-- `dispatch_cases` 只负责分发，不执行问答；并发数量由 `execution.concurrency` 控制。
-- `execute_case` 只能调用知识库问答 Agent 的公开结构化入口，不能在评测图中创建新的 RAG Chain。
-- `collect_case_result` 负责把成功、降级、超时和异常统一转换为 `CaseEvaluationResult`。
+- 计划、工具选择、观察和结束由 `create_deep_agent` 官方模型—工具循环执行，Skill 通过官方 Skills Middleware 读取。
+- `execute_evaluation_cases` 首次调用必须覆盖全部问题；`retry_evaluation_cases` 只允许复核已完成题号，两者内部并发数量由 `execution.concurrency` 控制。
+- `execute_evaluation_cases` 只能通过评测 Registry 调用知识库问答 Agent 的公开结构化入口，不能创建新的 RAG Chain。
+- 模型选择的复核题号必须经过策略校验，不能覆盖可信上下文或突破轮次、模型和工具预算。
 - 汇总节点只有在所有已分发问题都产生结果后才能继续，避免提前计算总体指标。
-- `calculate_metrics` 和 `evaluate_gates` 是独立节点，指标计算与合格判断不能混在问答节点中。
+- `calculate_metrics` 负责确定性指标和门禁，模型分析不能覆盖其结论。
 - 任务级异常进入 `fail_task`；单题异常进入逐题结果，不直接终止整张图。
 
-### 5.3 LangGraph 状态设计
+### 5.3 Harness 状态设计
 
-评测图的状态只保存评测编排所需的数据，不保存无关的模型内部消息：
+评测 Harness 的 `ToolRuntime` Context 只保存本次工具执行所需的可信依赖；Deep Agent 消息状态由官方 Runtime 管理，不把无关模型消息写入业务表：
 
 | 状态字段          | 说明                                  |
 | ----------------- | ------------------------------------- |
-| `evaluation_id`   | 评测运行 ID                           |
+| `evaluation_id`   | 评测运行 ID，通过可信 Context 注入    |
 | `task_id`         | 评测任务 ID                           |
 | `config_snapshot` | 本次运行冻结的配置                    |
 | `questions`       | 已导入或生成并校验后的问题列表        |
@@ -466,9 +464,9 @@ START
 
 1. Service 校验当前用户是 `p_super_admin` 或 `tenant_admin`，并校验任务所属租户、任务状态和是否已有运行中的批次。
 2. Service 在事务中创建 `t_evaluation_run`，初始状态为 `pending`，返回 `run_id`。
-3. Worker 或受控后台任务启动 LangGraph，更新运行状态为 `running`。
+3. Worker 或受控后台任务启动受限 Deep Agent Harness，更新运行状态为 `running`。
 4. 前端按 `run_id` 查询运行详情和逐题进度，展示状态和已完成数量。
-5. LangGraph 完成后写入指标、门禁结果和总体结论，运行状态更新为 `completed` 或 `failed`。
+5. Deep Agent 返回结构化分析后，由确定性代码写入指标、门禁结果和总体结论，运行状态更新为 `completed` 或 `failed`。
 
 这样可以避免 HTTP 请求超时，也可以让平台管理员离开详情页后继续执行。Worker 只负责调度评测图，不承载新的业务问答链路。
 
@@ -490,8 +488,8 @@ app/agents/
     ├── policies.py                  # 评测权限、并发、超时和数据脱敏策略
     ├── tools/                       # 评测 Agent 专属工具和 registry.py
     ├── skills/                      # 评测 Agent 专属技能指导
-    ├── graph.py                     # LangGraph 图定义和节点编排
-    ├── state.py                     # 评测图状态协议
+    ├── model.py                     # 评测模型构建
+    ├── state.py                     # ToolRuntime Session 与可信 Context
     ├── config.py                    # 加载并校验 etc/evaluation.yaml
     ├── models.py                    # 评测任务、问题、门禁和报告模型
     ├── dataset.py                   # 问题文件加载和校验
@@ -503,11 +501,36 @@ workers/
 └── evaluation.py                    # 评测图后台调度入口
 ```
 
-`app/agents/` 下的每个 Agent 都必须是独立的 Harness 子工程。除 `agent.py`、`runtime.py`、`policies.py`、`tools/registry.py` 和 `skills/` 外，可以在 Agent 自身目录增加业务领域模块，但不得把 Agent 主入口、运行时、工具或技能文件放在 `app/agents/` 根目录，也不得复用其他 Agent 的私有入口、Prompt、Runtime 或工具注册表。自主评测 Agent 的 LangGraph、状态、配置、数据集、指标、报告和优化逻辑均属于 `app/agents/evaluation/` Harness。
+`app/agents/` 下的每个 Agent 都必须是独立的 Harness 子工程。除 `agent.py`、`runtime.py`、`policies.py`、`tools/registry.py` 和 `skills/` 外，可以在 Agent 自身目录增加业务领域模块，但不得把 Agent 主入口、运行时、工具或技能文件放在 `app/agents/` 根目录，也不得复用其他 Agent 的私有入口、Prompt、Runtime 或工具注册表。自主评测 Agent 的模型、状态、配置、数据集、指标、报告和优化逻辑均属于 `app/agents/evaluation/` Harness。
 
 ### 6.1 与知识库问答 Agent 的边界
 
-`app/agents/__init__.py` 只保留顶层包声明，不放置任何 Agent 主入口。知识库问答 Agent 的入口固定为 `app/agents/knowledge/agent.py`，评测 Agent 的入口固定为 `app/agents/evaluation/agent.py`。评测 Agent 只能通过知识库问答 Agent 的公开结构化调用协议执行问答，不得导入其内部 Prompt、私有方法或直接调用聊天模型。
+`app/agents/__init__.py` 只保留顶层包声明，不放置任何 Agent 主入口。知识库问答 Agent 的入口固定为 `app/agents/knowledge/agent.py`，评测 Agent 的入口固定为 `app/agents/evaluation/agent.py`。评测 Agent 只能通过知识库问答 Agent 的公开结构化调用协议执行业务问答，不得导入其内部 Prompt、私有方法或直接生成客户答案。评测 Agent 必须使用自己的评测模型完成目标理解、计划生成、结果复核和下一步决策；评测模型不得绕过知识库问答 Agent 回答测试问题。
+
+### 6.2 自主决策
+
+评测 Agent 不能退化为固定 LangGraph 流程。实际行动由受限 `create_deep_agent` 依据 Skill、任务目标、工具结果、指标和剩余预算动态选择；外围 Workflow 只承载任务和持久化生命周期。
+
+评测 Agent 至少具备以下自主能力：
+
+- 在执行前形成评测目标、关注维度、复核规则和最大复核轮次。
+- 在初次执行后观察失败、超时、降级、无引用和门禁结果。
+- 在授权工具范围内自主选择结束或对指定题目进行有限复核。
+- 每轮决策必须输出行动、目标题号、证据、理由、置信度和优化建议。
+- 模型建议不能直接改变确定性指标和门禁结论，最终结论仍由 `metrics.py` 计算。
+- 模型、工具、步骤、复核轮次和总耗时均由 `runtime.py` 设置硬上限。
+- Skill 内容必须真实进入评测模型上下文，不能只计算版本后丢弃。
+
+生产实现统一使用受限 `create_deep_agent` Harness。通过独立 Harness Profile 禁用 Todo List、文件写入、Shell、通用文件检索、子 Agent 和长期记忆，只开放 `analysis` Skill、评测专属只读工具、结构化输出和调用限制 Middleware。不得使用直接 `model.ainvoke()` 与自定义条件图替代官方 Agent 工具循环。
+
+受控循环如下：
+
+```text
+校验上下文 -> 加载 Skill -> 模型制定计划 -> 执行初始评测
+    -> 计算指标 -> 模型观察并决策
+       -> retry_cases：选择题目复核 -> 更新结果 -> 重新计算指标 -> 再次决策
+       -> finalize：输出分析证据和建议 -> 确定性门禁 -> 生成报告
+```
 
 | 维度             | 知识库问答 Agent | 知识库问答评测 Agent           |
 | ---------------- | ---------------- | ------------------------------ |

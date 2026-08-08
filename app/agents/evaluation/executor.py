@@ -11,7 +11,11 @@ from .tools.registry import EvaluationToolRegistry
 
 
 class KnowledgeAgentExecutor:
-    """逐题执行器；生产路径只通过评测 Registry 调用知识 Agent。"""
+    """把知识库 Agent 的公开结果转换为统一的逐题评测结果。
+
+    本类是协议适配器，不负责重试、超时或权限判断；这些职责集中在 Runtime，避免
+    未来增加其他执行器时出现不同的安全和失败语义。
+    """
 
     def __init__(self, registry: EvaluationToolRegistry) -> None:
         self.registry = registry
@@ -41,6 +45,8 @@ class KnowledgeAgentExecutor:
             context=context,
         )
         result = call_result.result
+        # fallback 必须保留为独立状态，不能伪装成 completed；指标层据此判断回答是否
+        # 真正经过正常问答链路，后续优化也能区分“低质量答案”和“降级答案”。
         status = "fallback" if result.termination_reason == "fallback" else "completed"
         LOG.info(
             "自主评测Agent knowledge agent finished "
@@ -64,9 +70,7 @@ class KnowledgeAgentExecutor:
             duration_ms=max(result.duration_ms, int((monotonic() - started) * 1000)),
             metadata={
                 "citations": [citation.model_dump(mode="json") for citation in result.citations],
-                "knowledge_agent_skill_refs": [
-                    item.model_dump() for item in result.skill_refs
-                ],
+                "knowledge_agent_skill_refs": [item.model_dump() for item in result.skill_refs],
             },
         )
 

@@ -18,6 +18,8 @@ def validate_config(config: EvaluationConfig) -> None:
         raise BusiException("CONFIG_INVALID: 组合模式必须提供业务描述")
     if config.questions_source == "imported" and not config.questions_file:
         raise BusiException("CONFIG_INVALID: imported 模式必须提供问题文件")
+    if config.max_model_calls < config.max_review_rounds + 2:
+        raise BusiException("CONFIG_INVALID: 模型调用预算必须覆盖规划、复核决策和最终决策")
 
 
 def authorize_evaluation(*, is_super_admin: bool) -> None:
@@ -29,6 +31,8 @@ def validate_evaluation_context(
     config: EvaluationConfig,
     context: EvaluationAgentContext,
 ) -> None:
+    # config 来自持久化任务，context 来自当前 Worker 的可信查询结果。即使任务配置
+    # 被篡改，也不能借此切换知识库或执行用户。
     authorize_evaluation(is_super_admin=context.is_super_admin)
     if config.kb_id != context.kb_id or str(config.user_id) != context.user_id:
         raise BusiException("评测任务与可信执行上下文不一致", status_code=403)
@@ -41,6 +45,8 @@ def authorize_evaluation_tool(
     context: EvaluationAgentContext,
     registered_tools: frozenset[str],
 ) -> None:
+    # 这些字段只能由可信 context 注入工具，禁止模型或题目 payload 自行覆盖，
+    # 否则会形成跨租户、跨组织或跨知识库读取通道。
     validate_context_fields = {
         "tenant_id",
         "organization_ids",

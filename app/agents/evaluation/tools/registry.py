@@ -18,7 +18,11 @@ class EvaluationToolDefinition:
 
 
 class EvaluationToolRegistry:
-    """评测 Agent 的显式只读工具注册表。"""
+    """评测 Agent 的显式只读工具注册表。
+
+    注册表是能力清单，不承担用户授权；每次调用仍须由 Runtime 调用 Policies 校验。
+    新增工具时默认只允许只读能力，并同步更新白名单、预算与 Harness 测试。
+    """
 
     def __init__(self) -> None:
         self._tools: dict[str, EvaluationToolDefinition] = {}
@@ -48,6 +52,7 @@ class EvaluationToolRegistry:
 def build_default_registry() -> EvaluationToolRegistry:
     from .knowledge import call_knowledge_agent
 
+    # 显式逐项注册，避免通过模块扫描把未审核函数意外暴露给 Agent。
     registry = EvaluationToolRegistry()
     registry.register("call_knowledge_agent", call_knowledge_agent)
     return registry

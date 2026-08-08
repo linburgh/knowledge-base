@@ -47,6 +47,8 @@ class EvaluationConfig(BaseModel):
     request_timeout_seconds: float = Field(default=120, gt=0, le=3600)
     run_timeout_seconds: float = Field(default=3600, gt=0, le=86400)
     retry_count: int = Field(default=0, ge=0, le=5)
+    max_review_rounds: int = Field(default=1, ge=0, le=3)
+    max_model_calls: int = Field(default=5, ge=2, le=10)
     keep_conversation: bool = False
     gates: dict[str, Gate] = Field(default_factory=dict)
 
@@ -65,6 +67,16 @@ class CaseResult(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvaluationAgentOutput(BaseModel):
+    goal: str = Field(min_length=1, max_length=1000)
+    rationale: str = Field(min_length=1, max_length=2000)
+    findings: list[str] = Field(default_factory=list, max_length=50)
+    recommendations: list[str] = Field(default_factory=list, max_length=50)
+    reviewed_case_numbers: list[int] = Field(default_factory=list, max_length=1000)
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    termination_reason: Literal["completed", "evidence_insufficient"] = "completed"
 
 
 class MetricValue(BaseModel):

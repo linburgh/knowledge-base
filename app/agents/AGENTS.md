@@ -36,6 +36,16 @@ app/agents/knowledge/    # 知识库问答 Agent
 app/agents/evaluation/   # 知识库问答评测 Agent
 ```
 
+## 官方能力选型
+
+修改本目录下任何 Agent 前，必须先按仓库根目录 `AGENTS.md` 的“官方能力优先”完成框架能力盘点，并在对应设计文档记录结论。
+
+- 优先使用当前依赖版本提供的 Agent 工厂、工具协议、Runtime、Middleware、结构化输出、持久化和人工中断能力，不得先手写同类循环再补做 API 调研。
+- 使用 LangChain 时必须说明为何选择 `create_agent`、Deep Agents 或自定义 LangGraph；不能只检查 `create_agent`，也不能只因已有 `StateGraph` 就认定实现是 Agent。
+- `create_agent` 适合工具集合和安全边界明确、需要自行配置 Harness 的 Agent；Deep Agents 只用于确实需要其规划、Skills、文件系统、Subagents 或 Memory 的复杂任务；固定批处理和确定性门禁继续使用普通 Service、Worker 或外围 LangGraph Workflow。
+- 自定义 `runtime.py` 和 `policies.py` 应封装项目特有的权限、数据范围和业务预算，不重复实现官方 Middleware 已完整覆盖的通用模型/工具调用上限与重试；确需补充时必须说明官方能力缺口。
+- Code Review 必须检查 Agent 创建 API 是否真实进入生产调用链、工具是否由该 Agent 注册并调用、Skill 是否由官方机制或明确的动态 Prompt 注入、可信上下文是否通过 Runtime 传递，以及调用轨迹是否可审计。
+
 两个 Agent 只能通过公开结构化协议互相协作，不得导入对方私有 Prompt、私有函数、模型实例或内部状态。`app/agents/__init__.py` 只保留顶层包声明，不放置任何 Agent 主入口。
 
 ## 文件边界
