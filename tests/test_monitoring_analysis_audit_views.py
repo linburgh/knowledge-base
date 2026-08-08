@@ -446,8 +446,9 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
         return overview
 
     async def insert_conversation(_, **values):
-        conversations.append({"id": 1, **values, "updated_at": utils.utc_now()})
-        return 1
+        conversation_id = len(conversations) + 1
+        conversations.append({"id": conversation_id, **values, "updated_at": utils.utc_now()})
+        return conversation_id
 
     async def get_conversation(_, **filters):
         return next(
@@ -530,6 +531,10 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     filtered = await monitoring_analysis.list_conversations(user, "心跳")
     deleted = await monitoring_analysis.remove_conversation(conversation["id"], user)
     remaining = await monitoring_analysis.list_conversations(user, "心跳")
+    default_conversation = await monitoring_analysis.create_conversation(
+        AnalysisConversationRequest(scope_key="platform", context={"time_range": "1h"}),
+        user,
+    )
 
     assert conversation["metadata"]["incident_id"] == "INC-7"
     assert conversation["metadata"]["evidence"][0]["id"] == "alert-7"
@@ -541,6 +546,7 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     assert [item["id"] for item in filtered] == [conversation["id"]]
     assert deleted["status"] == "deleted"
     assert remaining == []
+    assert default_conversation["title"] == "新建分析会话"
     assert messages[-1]["metadata"]["evidence"][0]["id"] == "alert-7"
     assert messages[-1]["metadata"]["intent"] == "evidence_review"
     assert messages[-1]["metadata"]["time_range"]["source"] == "conversation"

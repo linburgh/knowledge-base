@@ -14,11 +14,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
 from time import monotonic
-from typing import Any
+from typing import Any, TypeVar
 
 import sqlalchemy as sa
 from databases import Database, DatabaseURL
@@ -28,6 +30,7 @@ from app.core.common.log import LOG
 
 DATABASE = None
 DB: ContextVar = ContextVar("app_db")
+T = TypeVar("T")
 
 
 def _sql_text(query: Any) -> str:
@@ -53,6 +56,41 @@ def _query_summary(operation: str, query: Any) -> str:
 
 class LoggingDatabase(Database):
     """Database client that records every SQL operation without logging values."""
+
+    def connection(self):
+        if self._discard_released_task_connection():
+            LOG.warning("DB discarded released task connection before acquire")
+        return super().connection()
+
+    def _discard_released_task_connection(self) -> bool:
+        """清理由取消打断 release 后遗留在当前任务中的失效连接。"""
+        connection = self._connection
+        if connection is None or getattr(connection, "_connection_counter", 0) != 0:
+            return False
+        backend_connection = getattr(connection, "_connection", None)
+        if backend_connection is None or getattr(backend_connection, "_connection", None) is None:
+            return False
+        self._connection = None
+        return True
+
+    async def _run_with_connection_recovery(
+        self,
+        operation: str,
+        call: Callable[[], Awaitable[T]],
+    ) -> T:
+        try:
+            return await call()
+        except asyncio.CancelledError:
+            if self._discard_released_task_connection():
+                LOG.warning("DB discarded released task connection operation={}", operation)
+            raise
+        except AssertionError as exc:
+            if str(exc) != "Connection is already acquired":
+                raise
+            if not self._discard_released_task_connection():
+                raise
+            LOG.warning("DB recovered released task connection operation={}", operation)
+            return await call()
 
     def _log_start(self, operation: str, query: Any, values: Any) -> None:
         LOG.info(
@@ -131,7 +169,10 @@ class LoggingDatabase(Database):
         self._log_start(operation, query, values)
         started = monotonic()
         try:
-            result = await super().fetch_all(query, values)
+            result = await self._run_with_connection_recovery(
+                operation,
+                lambda: super(LoggingDatabase, self).fetch_all(query, values),
+            )
         except Exception as exc:
             LOG.opt(exception=exc).error(
                 "DB SQL failed operation={} elapsed_ms={}",
@@ -159,7 +200,10 @@ class LoggingDatabase(Database):
         self._log_start(operation, query, values)
         started = monotonic()
         try:
-            result = await super().fetch_one(query, values)
+            result = await self._run_with_connection_recovery(
+                operation,
+                lambda: super(LoggingDatabase, self).fetch_one(query, values),
+            )
         except Exception as exc:
             LOG.opt(exception=exc).error(
                 "DB SQL failed operation={} elapsed_ms={}",
@@ -187,7 +231,10 @@ class LoggingDatabase(Database):
         self._log_start(operation, query, values)
         started = monotonic()
         try:
-            result = await super().fetch_val(query, values, column)
+            result = await self._run_with_connection_recovery(
+                operation,
+                lambda: super(LoggingDatabase, self).fetch_val(query, values, column),
+            )
         except Exception as exc:
             LOG.opt(exception=exc).error(
                 "DB SQL failed operation={} elapsed_ms={}",
@@ -210,7 +257,10 @@ class LoggingDatabase(Database):
         self._log_start(operation, query, values)
         started = monotonic()
         try:
-            result = await super().execute(query, values)
+            result = await self._run_with_connection_recovery(
+                operation,
+                lambda: super(LoggingDatabase, self).execute(query, values),
+            )
         except Exception as exc:
             LOG.opt(exception=exc).error(
                 "DB SQL failed operation={} elapsed_ms={}",
@@ -233,7 +283,10 @@ class LoggingDatabase(Database):
         self._log_start(operation, query, {"batch_size": len(values)})
         started = monotonic()
         try:
-            result = await super().execute_many(query, values)
+            result = await self._run_with_connection_recovery(
+                operation,
+                lambda: super(LoggingDatabase, self).execute_many(query, values),
+            )
         except Exception as exc:
             LOG.opt(exception=exc).error(
                 "DB SQL failed operation={} elapsed_ms={}",

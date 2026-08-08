@@ -14,9 +14,8 @@ from app.core.monitoring.resources import (
     runtime_resource_sort_key,
 )
 from app.core.services.platform import audit as audit_service
-from app.db.platform import audit_log as audit_log_db
-from app.db.platform import evaluation_run as evaluation_run_db
-from app.db.platform import evaluation_task as evaluation_task_db
+from app.db.api import check_db_connected
+from app.db.base import DB
 from app.db.knowledge_base import indexing_task as indexing_task_db
 from app.db.knowledge_base import mgr as knowledge_base_db
 from app.db.monitoring import (
@@ -50,9 +49,10 @@ from app.db.monitoring import (
 from app.db.monitoring import (
     state_snapshot as snapshot_db,
 )
+from app.db.platform import audit_log as audit_log_db
+from app.db.platform import evaluation_run as evaluation_run_db
+from app.db.platform import evaluation_task as evaluation_task_db
 from app.db.platform import user as user_db
-from app.db.api import check_db_connected
-from app.db.base import DB
 from app.schemas.monitoring import (
     MetricRuleRequest,
     MonitorEventRequest,
@@ -120,6 +120,67 @@ def _overview_window(time_range: str) -> tuple[datetime, datetime]:
         raise BusiException("time_range 必须是 15m、1h、6h、24h 或 7d")
     end_at = utils.utc_now()
     return end_at - duration, end_at
+
+
+def _alert_in_window(alert: dict[str, Any], start_at: datetime) -> bool:
+    """未恢复告警始终可见，历史告警才受查询时间窗口限制。"""
+    if alert.get("status") not in {"resolved", "closed"}:
+        return True
+    return any(
+        isinstance(alert.get(field), datetime) and alert[field] >= start_at
+        for field in ("last_fired_at", "resolved_at", "closed_at")
+    )
+
+
+def _propagation_domain(source_type: Any) -> str | None:
+    normalized = str(source_type or "").lower()
+    if normalized in {"knowledge_agent", "qa", "question", "answer"}:
+        return "qa"
+    if normalized in {"evaluation_agent", "evaluation"}:
+        return "evaluation"
+    if normalized == "alert":
+        return "alert"
+    if normalized in {"document_index", "task", "worker"}:
+        return "index"
+    return None
+
+
+def _snapshot_propagation_nodes(snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把当前窗口内的真实运行快照投影为平台运行节点。"""
+    latest_by_resource: dict[str, dict[str, Any]] = {}
+    for snapshot in snapshots:
+        if snapshot.get("resource_type") == "capacity":
+            continue
+        resource_code = str(snapshot.get("resource_code") or "")
+        occurred_at = snapshot.get("checked_at") or snapshot.get("updated_at")
+        if not resource_code or not isinstance(occurred_at, datetime):
+            continue
+        previous = latest_by_resource.get(resource_code)
+        previous_time = (
+            previous.get("checked_at") or previous.get("updated_at") if previous else None
+        )
+        if not isinstance(previous_time, datetime) or occurred_at > previous_time:
+            latest_by_resource[resource_code] = snapshot
+
+    nodes: list[dict[str, Any]] = []
+    for resource_code, snapshot in latest_by_resource.items():
+        status = str(snapshot.get("status") or "unknown")
+        if (
+            isinstance(snapshot.get("expires_at"), datetime)
+            and snapshot["expires_at"] < utils.utc_now()
+        ):
+            status = "stale"
+        nodes.append(
+            {
+                "id": f"snapshot-{snapshot.get('id') or resource_code}",
+                "domain": "platform",
+                "title": f"{runtime_resource_name(resource_code)}探测",
+                "status": status,
+                "occurred_at": snapshot.get("checked_at") or snapshot.get("updated_at"),
+                "trace_id": None,
+            }
+        )
+    return nodes
 
 
 _EVENT_SOURCE_NAMES = {
@@ -502,6 +563,48 @@ def _alert_trend(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if status in current:
             current[status] += 1
     return [{"window_end": bucket, **values} for bucket, values in sorted(buckets.items())]
+
+
+def _alert_status_summary(alerts: list[dict[str, Any]]) -> dict[str, int]:
+    statuses = ("firing", "acknowledged", "resolved", "closed")
+    return {
+        status: sum(1 for alert in alerts if alert.get("status") == status)
+        for status in statuses
+    }
+
+
+def _recent_alert_changes(alerts: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
+    status_changes = {
+        "firing": ("last_fired_at", "持续触发"),
+        "acknowledged": ("acknowledged_at", "人工确认"),
+        "resolved": ("resolved_at", "告警恢复"),
+        "closed": ("closed_at", "告警关闭"),
+    }
+    changes: list[dict[str, Any]] = []
+    for alert in alerts:
+        status = str(alert.get("status") or "")
+        timestamp_field, change_name = status_changes.get(
+            status,
+            ("last_fired_at", "状态变化"),
+        )
+        changed_at = (
+            alert.get(timestamp_field)
+            or alert.get("last_fired_at")
+            or alert.get("first_fired_at")
+        )
+        changes.append(
+            {
+                **alert,
+                "latest_change_name": change_name,
+                "latest_change_at": changed_at,
+            }
+        )
+    return sorted(
+        changes,
+        key=lambda row: row.get("latest_change_at")
+        or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )[:limit]
 
 
 def _alert_overview_trend(
@@ -1241,11 +1344,7 @@ async def overview(
         "occurred_at__gte": start_at,
         "occurred_at__lte": end_at,
     }
-    alert_filters = {
-        **_scope_filter(scope),
-        "last_fired_at__gte": start_at,
-        "last_fired_at__lte": end_at,
-    }
+    alert_filters = _scope_filter(scope)
     snapshot_filters = {
         **_scope_filter(scope),
         "updated_at__gte": start_at,
@@ -1265,6 +1364,7 @@ async def overview(
         db,
         alert_filters,
     )
+    alerts = [alert for alert in alerts if _alert_in_window(alert, start_at)]
     snapshots, snapshot_status, snapshot_error = await _overview_source(
         "snapshots",
         "运行快照查询失败",
@@ -1321,9 +1421,9 @@ async def overview(
     ]
     for item in business_status:
         source_types = {
-            "qa": {"qa", "question", "answer"},
+            "qa": {"knowledge_agent", "qa", "question", "answer"},
             "tasks": {"task", "worker"},
-            "evaluation": {"evaluation"},
+            "evaluation": {"evaluation_agent", "evaluation"},
         }[item["code"]]
         matched = [event for event in events if event.get("source_type") in source_types]
         if matched:
@@ -1385,15 +1485,18 @@ async def overview(
                 item["metric_label"] = f"P95 {p95 / 1000:.1f}s"
             item["value"] = len(matched)
 
+    propagation_events = [
+        event for event in events if _propagation_domain(event.get("source_type")) is not None
+    ]
     recent_propagation_events = sorted(
-        events,
+        propagation_events,
         key=lambda row: row.get("occurred_at") or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )[:100]
-    propagation = [
+    event_propagation = [
         {
             "id": event.get("event_id"),
-            "domain": event.get("source_type"),
+            "domain": _propagation_domain(event.get("source_type")),
             "title": event.get("event_type"),
             "status": event.get("status"),
             "occurred_at": event.get("occurred_at"),
@@ -1404,10 +1507,16 @@ async def overview(
             key=lambda row: row.get("occurred_at") or datetime.min.replace(tzinfo=UTC),
         )
     ]
+    propagation = sorted(
+        [*_snapshot_propagation_nodes(snapshots), *event_propagation],
+        key=lambda row: row.get("occurred_at") or datetime.min.replace(tzinfo=UTC),
+    )[-100:]
     unresolved_alerts = [
         alert for alert in alerts if alert.get("status") in {"firing", "acknowledged"}
     ][:100]
     alert_status_trend = _alert_trend(alerts)
+    alert_status_summary = _alert_status_summary(alerts)
+    recent_alert_changes = _recent_alert_changes(alerts)
     resource_capacity = _resource_capacity(snapshots)
     business_has_data = any(item["value"] is not None for item in business_status)
 
@@ -1476,6 +1585,8 @@ async def overview(
         "runtime_status": runtime_status,
         "business_status": business_status,
         "alert_status_trend": alert_status_trend,
+        "alert_status_summary": alert_status_summary,
+        "recent_alert_changes": recent_alert_changes,
         "event_trend": _event_trend(events),
         "resource_capacity": resource_capacity,
         "propagation": propagation,
@@ -2601,7 +2712,7 @@ async def analysis_overview(
             {
                 "id": f"alert-{alert['id']}",
                 "evidence_type": "alert",
-                "evidence_type_name": "告警",
+                "evidence_type_name": "告警信息",
                 "title": alert.get("alert_title"),
                 "summary": (
                     f"{alert.get('resource_name')} · {alert.get('status_name')} · "
@@ -2620,7 +2731,7 @@ async def analysis_overview(
                 {
                     "id": f"metric-{metric['id']}",
                     "evidence_type": "metric",
-                    "evidence_type_name": "指标",
+                    "evidence_type_name": "指标数据",
                     "title": definition.get("metric_name") or alert.get("metric_code"),
                     "summary": (
                         f"当前值 {metric.get('metric_value')} · 样本 {metric.get('sample_count')}"
@@ -2641,7 +2752,7 @@ async def analysis_overview(
             {
                 "id": f"metric-{metric['id']}",
                 "evidence_type": "metric",
-                "evidence_type_name": "指标",
+                "evidence_type_name": "指标数据",
                 "title": definition.get("metric_name") or metric_code,
                 "summary": (
                     f"当前值 {metric.get('metric_value')} · 样本 {metric.get('sample_count')} · "
@@ -2654,13 +2765,13 @@ async def analysis_overview(
             }
         )
     evidence_type_names = {
-        "event": "事件",
-        "task": "任务",
+        "event": "运行事件",
+        "task": "任务事实",
         "evaluation": "评测运行",
-        "version": "版本",
+        "version": "版本信息",
         "trace": "Trace",
-        "metric": "指标",
-        "alert": "告警",
+        "metric": "指标数据",
+        "alert": "告警信息",
     }
     for row in evidence_rows:
         evidence_type = str(row.get("evidence_type") or "event")
@@ -2669,11 +2780,11 @@ async def analysis_overview(
             {
                 "id": f"{evidence_type}-{row.get('evidence_id')}",
                 "evidence_type": evidence_type,
-                "evidence_type_name": evidence_type_names.get(evidence_type, "事件"),
+                "evidence_type_name": evidence_type_names.get(evidence_type, "运行事件"),
                 "title": row.get("evidence_id"),
                 "summary": row.get("summary") or "已关联结构化监控事实",
                 "evidence_level": level,
-                "evidence_level_name": "上下文证据" if level == "context" else "关联证据",
+                "evidence_level_name": "背景证据" if level == "context" else "关联证据",
                 "occurred_at": row.get("occurred_at") or row.get("created_at"),
                 "target_id": str(row.get("evidence_id") or ""),
             }
@@ -2690,7 +2801,7 @@ async def analysis_overview(
                 "title": event.get("resource_name") or event.get("event_type_name"),
                 "summary": event.get("event_content") or event.get("status_name"),
                 "evidence_level": "associated" if is_abnormal else "context",
-                "evidence_level_name": "关联证据" if is_abnormal else "上下文证据",
+                "evidence_level_name": "关联证据" if is_abnormal else "背景证据",
                 "occurred_at": row.get("occurred_at"),
                 "target_id": event_id,
             }
@@ -3136,8 +3247,7 @@ async def events_overview(current_user: CurrentUser, time_range: str = "1h") -> 
             event
             for event in events
             if any(
-                focus_source.get(field) is not None
-                and event.get(field) == focus_source.get(field)
+                focus_source.get(field) is not None and event.get(field) == focus_source.get(field)
                 for field in association_fields
             )
         ]
@@ -3160,10 +3270,8 @@ async def events_overview(current_user: CurrentUser, time_range: str = "1h") -> 
             "status": focus_view.get("status"),
             "status_name": focus_view.get("status_name"),
             "occurred_at": focus_view.get("occurred_at"),
-            "related_alert_count": related_alert_count
-            or (1 if source_category == "alert" else 0),
-            "related_task_count": len(related_task_keys)
-            or (1 if source_category == "task" else 0),
+            "related_alert_count": related_alert_count or (1 if source_category == "alert" else 0),
+            "related_task_count": len(related_task_keys) or (1 if source_category == "task" else 0),
         }
     if not events:
         conclusion = "暂无事件"
@@ -3209,12 +3317,7 @@ async def alerts_overview(current_user: CurrentUser, time_range: str = "1h") -> 
     start_at, end_at = _overview_window(time_range)
     scope = await tenant_scope(current_user)
     alerts = await alert_db.list(DB.get(), **_scope_filter(scope))
-    window_alerts = [
-        alert
-        for alert in alerts
-        if (isinstance(alert.get("last_fired_at"), datetime) and alert["last_fired_at"] >= start_at)
-        or alert.get("status") not in {"resolved", "closed"}
-    ]
+    window_alerts = [alert for alert in alerts if _alert_in_window(alert, start_at)]
     unresolved = [alert for alert in alerts if alert.get("status") not in {"resolved", "closed"}]
     severity_distribution = {severity: 0 for severity in _ALERT_SEVERITY_NAMES}
     for alert in unresolved:
@@ -3368,14 +3471,11 @@ async def alert_page(
     await require_monitoring_access(current_user)
     start_at, _ = _overview_window(time_range)
     definitions = _metric_definition_map(await definition_db.list(DB.get()))
-    rows = [
-        _alert_view(row, definitions)
-        for row in await alert_db.list(
-            DB.get(),
-            **_scope_filter(await tenant_scope(current_user)),
-            last_fired_at__gte=start_at,
-        )
-    ]
+    alerts = await alert_db.list(
+        DB.get(),
+        **_scope_filter(await tenant_scope(current_user)),
+    )
+    rows = [_alert_view(row, definitions) for row in alerts if _alert_in_window(row, start_at)]
     if status:
         rows = [row for row in rows if row.get("status") == status]
     if severity:
@@ -3572,6 +3672,37 @@ async def rules_overview(current_user: CurrentUser) -> dict[str, Any]:
     }
 
 
+async def _record_alert_lifecycle_event(
+    db: Any,
+    alert: dict[str, Any],
+    event_type: str,
+    status: str,
+    occurred_at: datetime,
+) -> None:
+    """在告警状态变化的同一事务中写入可追溯的异常传播事件。"""
+    alert_id = int(alert["id"])
+    event_id = f"monitor-alert:{alert_id}:{event_type}:{occurred_at.isoformat()}"
+    if await event_db.get(db, event_id=event_id):
+        return
+    await event_db.insert_(
+        db,
+        event_id=event_id[:128],
+        event_type=event_type,
+        source_type="alert",
+        source_code=str(alert.get("alert_key") or f"alert:{alert_id}")[:128],
+        tenant_id=alert.get("tenant_id"),
+        kb_id=alert.get("kb_id"),
+        status=status,
+        occurred_at=occurred_at,
+        payload={
+            "alert_id": alert_id,
+            "metric_code": alert.get("metric_code"),
+            "severity": alert.get("severity"),
+        },
+        data_status="ready",
+    )
+
+
 @check_db_connected
 async def apply_rule(rule: dict[str, Any], metric: dict[str, Any]) -> dict[str, Any] | None:
     decision = evaluate_rule(rule, metric.get("metric_value"), int(metric.get("sample_count") or 0))
@@ -3590,6 +3721,13 @@ async def apply_rule(rule: dict[str, Any], metric: dict[str, Any]) -> dict[str, 
                     id=existing["id"],
                 )
                 recovered = await alert_db.get(db, id=existing["id"])
+                await _record_alert_lifecycle_event(
+                    db,
+                    recovered,
+                    "alert_recovered",
+                    "resolved",
+                    now,
+                )
                 await _enqueue_notifications(db, recovered, "recovery")
                 await audit_service.record(
                     db,
@@ -3626,10 +3764,24 @@ async def apply_rule(rule: dict[str, Any], metric: dict[str, Any]) -> dict[str, 
         if existing:
             await alert_db.update_(db, values, id=existing["id"])
             alert = await alert_db.get(db, id=existing["id"])
+            await _record_alert_lifecycle_event(
+                db,
+                alert,
+                "alert_fired",
+                "firing",
+                now,
+            )
             await _enqueue_notifications(db, alert, "firing")
             return alert
         alert_id = await alert_db.insert_(db, **values)
         alert = await alert_db.get(db, id=alert_id)
+        await _record_alert_lifecycle_event(
+            db,
+            alert,
+            "alert_fired",
+            "firing",
+            now,
+        )
         await _enqueue_notifications(db, alert, "firing")
         await audit_service.record(
             db,
@@ -3735,6 +3887,21 @@ async def alert_action(
         if action not in {"suppress", "note"}:
             await alert_db.update_(DB.get(), values, id=alert_id)
         updated = await alert_db.get(DB.get(), id=alert_id)
+        lifecycle_status = str(updated.get("status") or alert.get("status") or "unknown")
+        lifecycle_event_types = {
+            "acknowledge": "alert_acknowledged",
+            "resolve": "alert_resolved",
+            "close": "alert_closed",
+            "suppress": "alert_suppressed",
+            "note": "alert_noted",
+        }
+        await _record_alert_lifecycle_event(
+            DB.get(),
+            updated,
+            lifecycle_event_types[action],
+            lifecycle_status,
+            now,
+        )
         await audit_service.record(
             DB.get(),
             action=f"monitor_alert_{action}",

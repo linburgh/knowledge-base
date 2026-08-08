@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>监控总览运行视图命名对比</title>
+    <style>
+      :root {
+        --app-font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC",
+          "Source Han Sans SC", "Segoe UI", Arial, sans-serif;
+        --page: #f3f6fa;
+        --card: #ffffff;
+        --text: #1f2d42;
+        --muted: #738198;
+        --line: #e4e9f0;
+        --blue: #3478f6;
+        --blue-soft: #edf4ff;
+        --amber: #d89614;
+        --red: #dc4b58;
+        --green: #2e9d69;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background: var(--page);
+        font-family: var(--app-font-family);
+        font-size: 13px;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .page {
+        width: min(1640px, calc(100% - 48px));
+        margin: 0 auto;
+        padding: 34px 0 48px;
+      }
+
+      .page-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .page-head h1 {
+        margin: 0;
+        font-size: 25px;
+        font-weight: 700;
+      }
+
+      .page-head p {
+        margin: 9px 0 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .hint {
+        padding: 8px 12px;
+        border: 1px solid #dbe5f3;
+        border-radius: 5px;
+        color: #536985;
+        background: #f8fbff;
+        white-space: nowrap;
+      }
+
+      .comparison-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 22px;
+      }
+
+      .concept {
+        position: relative;
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid #dfe5ed;
+        border-radius: 8px;
+        background: var(--card);
+        box-shadow: 0 8px 24px rgba(36, 52, 77, 0.05);
+      }
+
+      .concept.recommended::before {
+        position: absolute;
+        z-index: 3;
+        top: 0;
+        right: 24px;
+        padding: 5px 12px;
+        border-radius: 0 0 5px 5px;
+        color: #fff;
+        background: var(--blue);
+        content: "推荐";
+        font-size: 12px;
+      }
+
+      .concept-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 22px 24px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .concept-head h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .concept-head p {
+        min-height: 40px;
+        margin: 7px 0 0;
+        color: var(--muted);
+        line-height: 20px;
+      }
+
+      .text-link {
+        flex: 0 0 auto;
+        padding: 0;
+        border: 0;
+        color: var(--blue);
+        background: transparent;
+        line-height: 28px;
+      }
+
+      .concept-body {
+        padding: 16px 24px 22px;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-bottom: 12px;
+        color: #718097;
+        font-size: 12px;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .legend i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--blue);
+      }
+
+      .legend .warning {
+        background: var(--amber);
+      }
+
+      .legend .danger {
+        background: var(--red);
+      }
+
+      .legend .relation {
+        width: 15px;
+        height: 2px;
+        border-radius: 0;
+        background: #93a7c1;
+      }
+
+      .axis {
+        display: grid;
+        grid-template-columns: 86px repeat(4, 1fr);
+        margin-bottom: 4px;
+        color: #9aa6b7;
+        font-size: 11px;
+        text-align: right;
+      }
+
+      .axis span:first-child {
+        text-align: left;
+      }
+
+      .lanes {
+        position: relative;
+      }
+
+      .lane {
+        display: grid;
+        min-height: 47px;
+        grid-template-columns: 86px minmax(0, 1fr);
+      }
+
+      .lane-name {
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid #edf1f5;
+        color: #4f5f76;
+        font-weight: 600;
+      }
+
+      .lane-track {
+        position: relative;
+        border-bottom: 1px solid #edf1f5;
+        background-image: linear-gradient(to right, transparent 24.8%, #f0f3f7 25%, transparent 25.2%),
+          linear-gradient(to right, transparent 49.8%, #f0f3f7 50%, transparent 50.2%),
+          linear-gradient(to right, transparent 74.8%, #f0f3f7 75%, transparent 75.2%);
+      }
+
+      .node {
+        position: absolute;
+        z-index: 2;
+        top: 50%;
+        width: 13px;
+        height: 13px;
+        border: 3px solid #fff;
+        border-radius: 50%;
+        background: var(--blue);
+        box-shadow: 0 0 0 2px var(--blue);
+        transform: translate(-50%, -50%);
+      }
+
+      .node.warning {
+        background: var(--amber);
+        box-shadow: 0 0 0 2px var(--amber);
+      }
+
+      .node.danger {
+        background: var(--red);
+        box-shadow: 0 0 0 2px var(--red);
+      }
+
+      .node::after {
+        position: absolute;
+        top: -7px;
+        left: 13px;
+        width: max-content;
+        max-width: 112px;
+        overflow: hidden;
+        color: #66758b;
+        content: attr(data-label);
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .segment {
+        position: absolute;
+        z-index: 1;
+        top: 50%;
+        height: 2px;
+        background: #a9bdd8;
+      }
+
+      .segment.dashed {
+        height: 0;
+        border-top: 2px dashed #9db0c9;
+        background: transparent;
+      }
+
+      .concept-note {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-left: 3px solid #9db8dc;
+        color: #687890;
+        background: #f7f9fc;
+        line-height: 20px;
+      }
+
+      .concept-note strong {
+        color: #3d526e;
+        white-space: nowrap;
+      }
+
+      .posture-summary {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .posture-summary div {
+        padding: 9px 10px;
+        border: 1px solid #e4eaf1;
+        border-radius: 5px;
+        background: #fafbfd;
+      }
+
+      .posture-summary span,
+      .posture-summary strong {
+        display: block;
+      }
+
+      .posture-summary span {
+        color: #8793a5;
+        font-size: 11px;
+      }
+
+      .posture-summary strong {
+        margin-top: 4px;
+        color: #3e5779;
+        font-size: 14px;
+      }
+
+      .narrative .lane-track::before {
+        position: absolute;
+        top: calc(50% - 1px);
+        right: 8%;
+        left: 8%;
+        height: 2px;
+        background: linear-gradient(90deg, #c7d7eb, #84a8d5);
+        content: "";
+      }
+
+      .correlation .node::before {
+        position: absolute;
+        top: -5px;
+        left: -5px;
+        width: 17px;
+        height: 17px;
+        border: 1px dashed #6e8fb8;
+        border-radius: 50%;
+        content: "";
+      }
+
+      .graph-area {
+        position: relative;
+        height: 235px;
+        overflow: hidden;
+        border: 1px solid #edf1f5;
+        border-radius: 5px;
+        background-image: radial-gradient(#e8eef6 1px, transparent 1px);
+        background-size: 16px 16px;
+      }
+
+      .graph-area svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .graph-node {
+        position: absolute;
+        z-index: 2;
+        min-width: 76px;
+        padding: 7px 9px;
+        border: 1px solid #bcd0e9;
+        border-radius: 5px;
+        color: #45617f;
+        background: #f7fbff;
+        font-size: 11px;
+        text-align: center;
+        transform: translate(-50%, -50%);
+      }
+
+      .graph-node.warning {
+        border-color: #e8c77f;
+        color: #8e6312;
+        background: #fffbf0;
+      }
+
+      .graph-node.danger {
+        border-color: #e7a6ad;
+        color: #a43642;
+        background: #fff7f8;
+      }
+
+      .status-rows {
+        display: grid;
+        gap: 8px;
+      }
+
+      .status-row {
+        display: grid;
+        grid-template-columns: 90px 78px minmax(0, 1fr) 68px;
+        align-items: center;
+        gap: 12px;
+        min-height: 42px;
+        padding: 0 12px;
+        border: 1px solid #e7ebf1;
+        border-radius: 5px;
+      }
+
+      .status-row > strong {
+        font-size: 12px;
+      }
+
+      .status-pill {
+        color: var(--green);
+        font-size: 12px;
+      }
+
+      .status-pill.warning {
+        color: var(--amber);
+      }
+
+      .status-pill.danger {
+        color: var(--red);
+      }
+
+      .status-row p {
+        margin: 0;
+        overflow: hidden;
+        color: #718097;
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .status-row time {
+        color: #9aa6b7;
+        font-size: 11px;
+        text-align: right;
+      }
+
+      @media (max-width: 1050px) {
+        .comparison-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .page {
+          width: min(100% - 24px, 1640px);
+          padding-top: 20px;
+        }
+
+        .page-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .hint {
+          white-space: normal;
+        }
+
+        .concept-head {
+          padding-right: 16px;
+          padding-left: 16px;
+        }
+
+        .concept-body {
+          padding-right: 16px;
+          padding-left: 16px;
+        }
+
+        .node::after {
+          display: none;
+        }
+
+        .status-row {
+          grid-template-columns: 76px 64px minmax(0, 1fr);
+        }
+
+        .status-row time {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-head">
+        <div>
+          <h1>监控总览运行视图命名对比</h1>
+          <p>六个方案使用相同业务范围与状态数据，重点比较名称带来的认知差异和适配的表达方式。</p>
+        </div>
+        <span class="hint">蓝色为正常，黄色为预警，红色为故障或告警</span>
+      </header>
+
+      <section class="comparison-grid">
+        <article class="concept recommended timeline">
+          <header class="concept-head">
+            <div>
+              <h2>运行轨迹</h2>
+              <p>展示平台、任务、问答、评测和告警在当前时间窗口内的运行变化。</p>
+            </div>
+            <button class="text-link">查看相关事件 →</button>
+          </header>
+          <div class="concept-body">
+            <div class="legend"><span><i></i>正常运行</span><span><i class="warning"></i>预警</span><span><i class="danger"></i>故障 / 告警</span><span><i class="relation"></i>关联路径</span></div>
+            <div class="axis"><span>监控域 / 时间</span><span>14:00</span><span>14:15</span><span>14:30</span><span>14:45</span></div>
+            <div class="lanes">
+              <div class="lane"><span class="lane-name">平台运行</span><div class="lane-track"><i class="segment" style="left:12%;width:26%"></i><i class="node" style="left:12%" data-label="服务探测"></i><i class="node" style="left:38%" data-label="依赖正常"></i></div></div>
+              <div class="lane"><span class="lane-name">任务链路</span><div class="lane-track"><i class="segment" style="left:28%;width:32%"></i><i class="node" style="left:28%" data-label="心跳正常"></i><i class="node warning" style="left:60%" data-label="短时等待"></i></div></div>
+              <div class="lane"><span class="lane-name">问答链路</span><div class="lane-track"><i class="segment" style="left:44%;width:25%"></i><i class="node" style="left:44%" data-label="问答完成"></i><i class="node" style="left:69%" data-label="引用正常"></i></div></div>
+              <div class="lane"><span class="lane-name">评测链路</span><div class="lane-track"><i class="node" style="left:76%" data-label="评测完成"></i></div></div>
+              <div class="lane"><span class="lane-name">告警链路</span><div class="lane-track"><i class="node danger" style="left:88%" data-label="告警恢复"></i></div></div>
+            </div>
+            <div class="concept-note"><strong>适用理解</strong><span>强调时间顺序，正常与异常都自然，和当前横向时间轴最匹配。</span></div>
+          </div>
+        </article>
+
+        <article class="concept posture">
+          <header class="concept-head">
+            <div>
+              <h2>链路态势</h2>
+              <p>展示当前窗口内各运行链路的整体态势与风险分布。</p>
+            </div>
+            <button class="text-link">查看相关事件 →</button>
+          </header>
+          <div class="concept-body">
+            <div class="posture-summary"><div><span>整体态势</span><strong>基本稳定</strong></div><div><span>正常链路</span><strong>4 条</strong></div><div><span>关注链路</span><strong style="color:var(--amber)">1 条</strong></div></div>
+            <div class="legend"><span><i></i>正常运行</span><span><i class="warning"></i>预警</span><span><i class="danger"></i>故障 / 告警</span></div>
+            <div class="lanes">
+              <div class="lane"><span class="lane-name">平台运行</span><div class="lane-track"><i class="segment" style="left:8%;width:72%"></i><i class="node" style="left:80%" data-label="稳定"></i></div></div>
+              <div class="lane"><span class="lane-name">任务链路</span><div class="lane-track"><i class="segment" style="left:8%;width:58%;background:#e3bc69"></i><i class="node warning" style="left:66%" data-label="需关注"></i></div></div>
+              <div class="lane"><span class="lane-name">问答链路</span><div class="lane-track"><i class="segment" style="left:8%;width:77%"></i><i class="node" style="left:85%" data-label="稳定"></i></div></div>
+              <div class="lane"><span class="lane-name">评测链路</span><div class="lane-track"><i class="segment" style="left:8%;width:64%"></i><i class="node" style="left:72%" data-label="运行中"></i></div></div>
+              <div class="lane"><span class="lane-name">告警链路</span><div class="lane-track"><i class="segment" style="left:8%;width:79%"></i><i class="node" style="left:87%" data-label="已恢复"></i></div></div>
+            </div>
+            <div class="concept-note"><strong>适用理解</strong><span>更像企业监控驾驶舱，突出当前整体情况，时间过程相对弱化。</span></div>
+          </div>
+        </article>
+
+        <article class="concept narrative">
+          <header class="concept-head">
+            <div>
+              <h2>运行脉络</h2>
+              <p>梳理平台、任务、问答、评测和告警之间的运行过程。</p>
+            </div>
+            <button class="text-link">查看相关事件 →</button>
+          </header>
+          <div class="concept-body">
+            <div class="legend"><span><i></i>正常运行</span><span><i class="warning"></i>预警</span><span><i class="danger"></i>故障 / 告警</span><span><i class="relation"></i>过程脉络</span></div>
+            <div class="axis"><span>运行过程</span><span>起点</span><span>处理</span><span>验证</span><span>结果</span></div>
+            <div class="lanes">
+              <div class="lane"><span class="lane-name">平台运行</span><div class="lane-track"><i class="node" style="left:12%" data-label="探测正常"></i></div></div>
+              <div class="lane"><span class="lane-name">任务链路</span><div class="lane-track"><i class="node" style="left:30%" data-label="任务完成"></i></div></div>
+              <div class="lane"><span class="lane-name">问答链路</span><div class="lane-track"><i class="node warning" style="left:50%" data-label="耗时波动"></i></div></div>
+              <div class="lane"><span class="lane-name">评测链路</span><div class="lane-track"><i class="node" style="left:70%" data-label="验证通过"></i></div></div>
+              <div class="lane"><span class="lane-name">告警链路</span><div class="lane-track"><i class="node" style="left:88%" data-label="无需告警"></i></div></div>
+            </div>
+            <div class="concept-note"><strong>适用理解</strong><span>故事性最好，适合向非技术客户解释跨模块过程，但术语偏柔和。</span></div>
+          </div>
+        </article>
+
+        <article class="concept correlation">
+          <header class="concept-head">
+            <div>
+              <h2>关联链路</h2>
+              <p>展示当前窗口内具备时间或链路标识关联的运行事件。</p>
+            </div>
+            <button class="text-link">查看相关事件 →</button>
+          </header>
+          <div class="concept-body">
+            <div class="legend"><span><i></i>普通事件</span><span><i class="warning"></i>预警</span><span><i class="danger"></i>告警</span><span><i class="relation"></i>证据关联</span></div>
+            <div class="axis"><span>监控域 / 时间</span><span>14:00</span><span>14:15</span><span>14:30</span><span>14:45</span></div>
+            <div class="lanes">
+              <div class="lane"><span class="lane-name">平台运行</span><div class="lane-track"><i class="node" style="left:13%" data-label="trace-7ac9"></i></div></div>
+              <div class="lane"><span class="lane-name">任务链路</span><div class="lane-track"><i class="segment dashed" style="left:27%;width:33%"></i><i class="node warning" style="left:27%" data-label="task-241"></i><i class="node" style="left:60%" data-label="已完成"></i></div></div>
+              <div class="lane"><span class="lane-name">问答链路</span><div class="lane-track"><i class="segment dashed" style="left:45%;width:24%"></i><i class="node" style="left:45%" data-label="qa-1082"></i><i class="node" style="left:69%" data-label="trace-7ac9"></i></div></div>
+              <div class="lane"><span class="lane-name">评测链路</span><div class="lane-track"><i class="node" style="left:76%" data-label="eval-09"></i></div></div>
+              <div class="lane"><span class="lane-name">告警链路</span><div class="lane-track"><i class="node danger" style="left:88%" data-label="alert-21"></i></div></div>
+            </div>
+            <div class="concept-note"><strong>适用理解</strong><span>表述最严谨，明确是关联而非因果；正常事件较多时需要控制信息密度。</span></div>
+          </div>
+        </article>
+
+        <article class="concept graph">
+          <header class="concept-head">
+            <div>
+              <h2>运行图谱</h2>
+              <p>以图谱方式展示跨模块运行节点及其关联关系。</p>
+            </div>
+            <button class="text-link">查看相关事件 →</button>
+          </header>
+          <div class="concept-body">
+            <div class="legend"><span><i></i>正常节点</span><span><i class="warning"></i>风险节点</span><span><i class="danger"></i>告警节点</span><span><i class="relation"></i>节点关系</span></div>
+            <div class="graph-area">
+              <svg viewBox="0 0 620 235" preserveAspectRatio="none" aria-hidden="true">
+                <g fill="none" stroke="#adc0d8" stroke-width="1.5">
+                  <path d="M85 50 C165 50 160 112 235 112" />
+                  <path d="M235 112 C315 112 315 55 390 55" />
+                  <path d="M235 112 C330 112 350 175 450 175" stroke-dasharray="5 4" />
+                  <path d="M390 55 C470 55 490 110 555 110" />
+                  <path d="M450 175 C505 175 520 110 555 110" stroke="#df9ca4" />
+                </g>
+              </svg>
+              <span class="graph-node" style="left:14%;top:21%">平台探测</span>
+              <span class="graph-node" style="left:38%;top:48%">任务完成</span>
+              <span class="graph-node" style="left:63%;top:23%">问答请求</span>
+              <span class="graph-node warning" style="left:73%;top:74%">评测波动</span>
+              <span class="graph-node danger" style="left:90%;top:47%">告警触发</span>
+            </div>
+            <div class="concept-note"><strong>适用理解</strong><span>视觉冲击力最强，但用户会期待拓扑分析、缩放和复杂关系探索能力。</span></div>
+          </div>
+        </article>
+
+        <article class="concept status">
+          <header class="concept-head">
+            <div>
+              <h2>链路状态</h2>
+              <p>汇总各运行链路的当前状态与最近变化。</p>
+            </div>
+            <button class="text-link">查看相关事件 →</button>
+          </header>
+          <div class="concept-body">
+            <div class="legend"><span><i></i>正常运行</span><span><i class="warning"></i>需要关注</span><span><i class="danger"></i>存在异常</span></div>
+            <div class="status-rows">
+              <div class="status-row"><strong>平台运行</strong><span class="status-pill">● 正常</span><p>接口、数据库和依赖服务探测正常</p><time>14:45</time></div>
+              <div class="status-row"><strong>任务链路</strong><span class="status-pill warning">● 预警</span><p>存在 2 个短时等待任务，Worker 心跳正常</p><time>14:43</time></div>
+              <div class="status-row"><strong>问答链路</strong><span class="status-pill">● 正常</span><p>问答成功率 99.2%，P95 处于正常范围</p><time>14:44</time></div>
+              <div class="status-row"><strong>评测链路</strong><span class="status-pill">● 正常</span><p>最近一次评测运行已完成</p><time>14:40</time></div>
+              <div class="status-row"><strong>告警链路</strong><span class="status-pill">● 正常</span><p>当前无未恢复告警</p><time>14:45</time></div>
+            </div>
+            <div class="concept-note"><strong>适用理解</strong><span>当前状态最清楚，但时间演进感较弱，更接近状态汇总而不是轨迹图。</span></div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

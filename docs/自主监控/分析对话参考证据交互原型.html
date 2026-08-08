@@ -384,7 +384,7 @@
         top: 0;
         right: 0;
         display: flex;
-        width: min(820px, 92vw);
+        width: min(920px, 94vw);
         height: 100%;
         flex-direction: column;
         background: #fff;
@@ -401,13 +401,15 @@
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        padding: 22px 24px 18px;
+        padding: 24px 28px 20px;
+        border-top: 3px solid #315f9b;
         border-bottom: 1px solid var(--line);
       }
 
       .drawer-head h2 {
-        margin: 0 0 6px;
-        font-size: 19px;
+        margin: 0 0 7px;
+        color: #17233d;
+        font-size: 20px;
       }
 
       .drawer-head p {
@@ -429,22 +431,29 @@
       .drawer-body {
         min-height: 0;
         flex: 1;
-        padding: 18px 24px 24px;
+        padding: 20px 28px 24px;
         overflow-y: auto;
       }
 
       .evidence-summary {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 10px;
-        margin-bottom: 16px;
+        gap: 0;
+        margin-bottom: 20px;
+        overflow: hidden;
+        border: 1px solid #dfe5ed;
+        border-radius: 5px;
+        background: #f8fafc;
       }
 
       .summary-card {
-        padding: 12px;
-        border: 1px solid var(--line);
-        border-radius: 9px;
-        background: #fafbfe;
+        padding: 14px 16px;
+        border-right: 1px solid #dfe5ed;
+        background: transparent;
+      }
+
+      .summary-card:last-child {
+        border-right: 0;
       }
 
       .summary-card span,
@@ -454,81 +463,85 @@
 
       .summary-card span {
         color: var(--muted);
-        font-size: 10px;
+        font-size: 12px;
       }
 
       .summary-card strong {
-        margin-top: 5px;
-        font-size: 20px;
+        margin-top: 6px;
+        color: #21314a;
+        font-size: 18px;
       }
 
       .filters {
         display: grid;
-        grid-template-columns: minmax(230px, 1.3fr) minmax(165px, 0.85fr) minmax(165px, 0.85fr) auto;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 15px;
-        padding: 14px;
+        gap: 14px;
+        margin-bottom: 22px;
+        padding: 16px 18px;
         border: 1px solid var(--line);
-        border-radius: 10px;
-        background: #fff;
+        border-radius: 8px;
+        background: #f8fafc;
       }
 
-      .filter-item {
+      .filters[hidden] {
+        display: none;
+      }
+
+      .filter-row {
         display: flex;
-        align-items: center;
-        gap: 8px;
+        align-items: flex-start;
+        gap: 14px;
         min-width: 0;
       }
 
-      .filter-item label {
-        flex: none;
+      .filter-row strong {
+        width: 68px;
+        flex: 0 0 68px;
+        padding-top: 6px;
         color: #53627c;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 600;
-        line-height: 20px;
         white-space: nowrap;
       }
 
-      .filter-item input,
-      .filter-item select {
-        width: 100%;
-        height: 38px;
-        padding: 0 10px;
-        border: 1px solid #d9e0eb;
-        border-radius: 7px;
-        background: #fff;
-      }
-
-      .filter-actions {
+      .filter-options {
         display: flex;
-        align-items: center;
+        min-width: 0;
+        flex: 1;
+        flex-wrap: wrap;
         gap: 8px;
       }
 
-      .filter-actions button {
-        height: 38px;
-        padding: 0 12px;
-        border: 0;
-        border-radius: 7px;
+      .filter-options button {
+        min-height: 30px;
+        padding: 4px 11px;
+        border: 1px solid transparent;
+        border-radius: 4px;
         color: #53627c;
-        background: #eef1f6;
+        background: transparent;
+        font-size: 12px;
       }
 
-      .filter-actions .query {
-        color: #fff;
-        background: var(--primary);
+      .filter-options button:hover {
+        color: #315f9b;
+      }
+
+      .filter-options button.active {
+        color: #315f9b;
+        font-weight: 600;
       }
 
       .result-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #dfe5ed;
       }
 
       .result-head strong {
-        font-size: 13px;
+        color: #24344d;
+        font-size: 15px;
       }
 
       .result-head span {
@@ -536,19 +549,25 @@
         font-size: 11px;
       }
 
+      .result-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
       .evidence-table {
         width: 100%;
         border-spacing: 0;
         border-collapse: separate;
         border: 1px solid var(--line);
-        border-radius: 10px;
+        border-radius: 4px;
         overflow: hidden;
         font-size: 12px;
       }
 
       .evidence-table th,
       .evidence-table td {
-        padding: 11px 10px;
+        padding: 12px 11px;
         border-bottom: 1px solid var(--line);
         text-align: left;
         vertical-align: top;
@@ -556,7 +575,7 @@
 
       .evidence-table th {
         color: #53627c;
-        background: #f3f5f9;
+        background: #f5f7fa;
         font-weight: 600;
       }
 
@@ -595,7 +614,9 @@
         align-items: center;
         justify-content: flex-end;
         gap: 4px;
-        margin-top: 14px;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid #e5eaf1;
       }
 
       .pagination button,
@@ -618,11 +639,12 @@
 
       .detail-row td {
         padding: 0;
-        background: #f8faff;
+        background: #f7f9fc;
       }
 
       .detail-box {
-        padding: 13px 16px;
+        padding: 14px 18px;
+        border-left: 3px solid #7190b7;
         color: #53627b;
         line-height: 1.7;
       }
@@ -756,28 +778,34 @@
             <div class="summary-card"><span>证据总数</span><strong id="totalSummary">50</strong></div>
             <div class="summary-card"><span>直接证据</span><strong id="directSummary">12</strong></div>
             <div class="summary-card"><span>关联证据</span><strong id="associatedSummary">26</strong></div>
-            <div class="summary-card"><span>上下文证据</span><strong id="contextSummary">12</strong></div>
+            <div class="summary-card"><span>背景证据</span><strong id="contextSummary">12</strong></div>
           </section>
-          <section class="filters">
-            <div class="filter-item">
-              <label for="keyword">证据内容</label>
-              <input id="keyword" placeholder="请输入编号、标题或摘要" />
+          <section class="filters" id="evidenceFilters" hidden>
+            <div class="filter-row">
+              <strong>证据类型</strong>
+              <div class="filter-options">
+                <button type="button" class="active" data-type="">全部</button>
+                <button type="button" data-type="健康状态">健康状态</button>
+                <button type="button" data-type="告警信息">告警信息</button>
+                <button type="button" data-type="指标数据">指标数据</button>
+                <button type="button" data-type="运行事件">运行事件</button>
+                <button type="button" data-type="任务事实">任务事实</button>
+                <button type="button" data-type="评测运行">评测运行</button>
+                <button type="button" data-type="版本信息">版本信息</button>
+                <button type="button" data-type="链路标识">链路标识</button>
+              </div>
             </div>
-            <div class="filter-item">
-              <label for="typeFilter">证据类型</label>
-              <select id="typeFilter">
-                <option value="">全部类型</option><option>指标</option><option>事件</option><option>告警</option><option>任务</option><option>健康状态</option>
-              </select>
+            <div class="filter-row">
+              <strong>证据等级</strong>
+              <div class="filter-options">
+                <button type="button" class="active" data-level="">全部</button>
+                <button type="button" data-level="直接证据">直接证据</button>
+                <button type="button" data-level="关联证据">关联证据</button>
+                <button type="button" data-level="背景证据">背景证据</button>
+              </div>
             </div>
-            <div class="filter-item">
-              <label for="levelFilter">证据等级</label>
-              <select id="levelFilter">
-                <option value="">全部等级</option><option>直接证据</option><option>关联证据</option><option>上下文证据</option>
-              </select>
-            </div>
-            <div class="filter-actions"><button class="query" id="queryButton">查询</button><button id="resetButton">重置</button></div>
           </section>
-          <div class="result-head"><strong>证据明细</strong><span id="resultCount">共 50 条</span></div>
+          <div class="result-head"><strong>证据明细</strong><div class="result-actions"><button class="text-button" id="filterToggle">筛选</button><button class="text-button" id="resetButton" hidden>重置</button><span id="resultCount">共 50 条</span></div></div>
           <div id="tableContainer"></div>
           <div class="pagination" id="pagination"></div>
         </div>
@@ -785,8 +813,8 @@
     </div>
 
     <script>
-      const types = ["指标", "事件", "告警", "任务", "健康状态"];
-      const levels = ["直接证据", "关联证据", "关联证据", "上下文证据"];
+      const types = ["健康状态", "告警信息", "指标数据", "运行事件", "任务事实", "评测运行", "版本信息", "链路标识"];
+      const levels = ["直接证据", "关联证据", "关联证据", "背景证据"];
       const titles = ["接口响应耗时", "任务调度完成", "数据采集成功", "核心服务可用", "错误率保持稳定"];
       const evidence = Array.from({ length: 50 }, (_, index) => ({
         id: `EV-${String(index + 1).padStart(3, "0")}`,
@@ -798,9 +826,6 @@
       }));
 
       const mask = document.getElementById("evidenceMask");
-      const keyword = document.getElementById("keyword");
-      const typeFilter = document.getElementById("typeFilter");
-      const levelFilter = document.getElementById("levelFilter");
       const tableContainer = document.getElementById("tableContainer");
       const pagination = document.getElementById("pagination");
       const resultCount = document.getElementById("resultCount");
@@ -808,15 +833,20 @@
       const directSummary = document.getElementById("directSummary");
       const associatedSummary = document.getElementById("associatedSummary");
       const contextSummary = document.getElementById("contextSummary");
+      const filterPanel = document.getElementById("evidenceFilters");
+      const filterToggle = document.getElementById("filterToggle");
+      const resetButton = document.getElementById("resetButton");
       let activeEvidence = evidence.slice();
       let filtered = activeEvidence.slice();
       let page = 1;
       let pageSize = 5;
       let expandedId = "";
+      let selectedType = "";
+      let selectedLevel = "";
 
       function levelClass(level) {
         if (level === "关联证据") return "associated";
-        if (level === "上下文证据") return "context";
+        if (level === "背景证据") return "context";
         return "";
       }
 
@@ -824,7 +854,7 @@
         totalSummary.textContent = String(activeEvidence.length);
         directSummary.textContent = String(activeEvidence.filter((item) => item.level === "直接证据").length);
         associatedSummary.textContent = String(activeEvidence.filter((item) => item.level === "关联证据").length);
-        contextSummary.textContent = String(activeEvidence.filter((item) => item.level === "上下文证据").length);
+        contextSummary.textContent = String(activeEvidence.filter((item) => item.level === "背景证据").length);
       }
 
       function render() {
@@ -835,9 +865,9 @@
         if (!rows.length) {
           tableContainer.innerHTML = '<div class="empty">没有符合条件的参考证据</div>';
         } else {
-          tableContainer.innerHTML = `<table class="evidence-table"><thead><tr><th>证据编号</th><th>证据类型</th><th>证据内容</th><th>证据等级</th><th>发生时间</th><th>操作</th></tr></thead><tbody>${rows
+          tableContainer.innerHTML = `<table class="evidence-table"><thead><tr><th>证据信息</th><th>证据内容</th><th>发生时间</th></tr></thead><tbody>${rows
             .map(
-              (item) => `<tr><td>${item.id}</td><td>${item.type}</td><td class="summary-cell" title="${item.summary}">${item.title}</td><td><span class="level ${levelClass(item.level)}">${item.level}</span></td><td>${item.time}</td><td><button class="text-button" data-detail="${item.id}">${expandedId === item.id ? "收起" : "详情"}</button></td></tr>${expandedId === item.id ? `<tr class="detail-row"><td colspan="6"><div class="detail-box"><strong>证据说明：</strong>${item.summary}<br /><strong>引用关系：</strong>用于支持当前回答中的数据覆盖与运行状态判断。</div></td></tr>` : ""}`,
+              (item) => `<tr><td><strong>${item.type}</strong><small>${item.id}</small><span class="level ${levelClass(item.level)}">${item.level}</span></td><td class="summary-cell" title="${item.summary}"><strong>${item.title}</strong><small>${item.summary}</small></td><td><span>${item.time}</span><button class="text-button" data-detail="${item.id}">${expandedId === item.id ? "收起" : "详情"}</button></td></tr>${expandedId === item.id ? `<tr class="detail-row"><td colspan="3"><div class="detail-box"><strong>证据说明：</strong>${item.summary}<br /><strong>引用关系：</strong>用于支持当前回答中的数据覆盖与运行状态判断。</div></td></tr>` : ""}`,
             )
             .join("")}</tbody></table>`;
         }
@@ -848,16 +878,23 @@
       }
 
       function query() {
-        const text = keyword.value.trim().toLowerCase();
         filtered = activeEvidence.filter(
           (item) =>
-            (!text || `${item.id}${item.title}${item.summary}`.toLowerCase().includes(text)) &&
-            (!typeFilter.value || item.type === typeFilter.value) &&
-            (!levelFilter.value || item.level === levelFilter.value),
+            (!selectedType || item.type === selectedType) &&
+            (!selectedLevel || item.level === selectedLevel),
         );
         page = 1;
         expandedId = "";
         render();
+      }
+
+      function updateFilterOptions() {
+        filterPanel.querySelectorAll("[data-type]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.type === selectedType);
+        });
+        filterPanel.querySelectorAll("[data-level]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.level === selectedLevel);
+        });
       }
 
       document.querySelectorAll("[data-open-evidence]").forEach((button) =>
@@ -865,15 +902,17 @@
           const evidenceCount = Number(button.dataset.evidenceCount);
           activeEvidence = evidence.slice(0, evidenceCount);
           filtered = activeEvidence.slice();
-          keyword.value = "";
-          typeFilter.value = "";
-          levelFilter.value = "";
+          selectedType = "";
+          selectedLevel = "";
           page = 1;
           expandedId = "";
+          updateFilterOptions();
           updateSummary();
           render();
+          filterPanel.hidden = true;
+          filterToggle.textContent = "筛选";
+          resetButton.hidden = true;
           mask.classList.add("open");
-          keyword.focus();
         }),
       );
       document.getElementById("closeDrawer").addEventListener("click", () => mask.classList.remove("open"));
@@ -883,14 +922,24 @@
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") mask.classList.remove("open");
       });
-      document.getElementById("queryButton").addEventListener("click", query);
-      keyword.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") query();
+      filterToggle.addEventListener("click", () => {
+        filterPanel.hidden = !filterPanel.hidden;
+        filterToggle.textContent = filterPanel.hidden ? "筛选" : "收起";
+        resetButton.hidden = filterPanel.hidden;
       });
-      document.getElementById("resetButton").addEventListener("click", () => {
-        keyword.value = "";
-        typeFilter.value = "";
-        levelFilter.value = "";
+      filterPanel.addEventListener("click", (event) => {
+        const typeButton = event.target.closest("[data-type]");
+        const levelButton = event.target.closest("[data-level]");
+        if (!typeButton && !levelButton) return;
+        if (typeButton) selectedType = typeButton.dataset.type;
+        if (levelButton) selectedLevel = levelButton.dataset.level;
+        updateFilterOptions();
+        query();
+      });
+      resetButton.addEventListener("click", () => {
+        selectedType = "";
+        selectedLevel = "";
+        updateFilterOptions();
         query();
       });
       tableContainer.addEventListener("click", (event) => {

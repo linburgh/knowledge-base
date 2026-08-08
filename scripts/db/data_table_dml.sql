@@ -307,6 +307,44 @@ cross join (values
 where parent.code = 'monitoring'
   and not exists (select 1 from t_system_menu existing where existing.code = item.code);
 
+-- 智能分析收敛为单一入口，兼容更新存量菜单，并清理历史“分析总览 / 分析对话”子菜单及授权。
+update t_system_menu menu
+set parent_id = parent.id,
+    name = '智能分析',
+    menu_type = 'item',
+    route_path = '/monitoring/analysis',
+    sort_order = 7,
+    visible = true,
+    status = 'active',
+    updated_at = now()
+from t_system_menu parent
+where menu.code = 'monitoring_analysis'
+  and parent.code = 'monitoring';
+
+delete from t_role_menu_action relation
+using t_system_menu_action action, t_system_menu child, t_system_menu parent
+where relation.action_id = action.id
+  and action.menu_id = child.id
+  and child.parent_id = parent.id
+  and parent.code = 'monitoring_analysis';
+
+delete from t_system_menu_action action
+using t_system_menu child, t_system_menu parent
+where action.menu_id = child.id
+  and child.parent_id = parent.id
+  and parent.code = 'monitoring_analysis';
+
+delete from t_role_menu relation
+using t_system_menu child, t_system_menu parent
+where relation.menu_id = child.id
+  and child.parent_id = parent.id
+  and parent.code = 'monitoring_analysis';
+
+delete from t_system_menu child
+using t_system_menu parent
+where child.parent_id = parent.id
+  and parent.code = 'monitoring_analysis';
+
 -- 审计管理暂不对业务角色开放；事件中心恢复平台超级管理员和租户管理员授权。
 delete from t_role_menu relation
 using t_system_menu menu
@@ -336,10 +374,15 @@ cross join (values
     ('monitoring_alerts', 'monitoring:alert-action', '处理告警', 2),
     ('monitoring_alerts', 'monitoring:rule-manage', '管理规则', 3),
     ('monitoring_alerts', 'monitoring:notification-manage', '管理通知', 4),
-    ('monitoring_analysis', 'monitoring:analysis', '使用分析', 1)
+    ('monitoring_analysis', 'monitoring:analysis', '使用智能分析', 1)
 ) as action(menu_code, code, name, sort_order)
 where menu.code = action.menu_code
   and not exists (select 1 from t_system_menu_action existing where existing.code = action.code);
+
+update t_system_menu_action
+set name = '使用智能分析',
+    updated_at = now()
+where code = 'monitoring:analysis';
 
 insert into t_role_menu_action (role_scope, role_code, action_id, status)
 select role_item.role_scope, role_item.role_code, action.id, 'active'

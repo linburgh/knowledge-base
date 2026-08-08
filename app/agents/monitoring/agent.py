@@ -57,7 +57,7 @@ def _legacy_facts(context: dict[str, Any]) -> dict[str, dict[str, Any]]:
             {
                 "id": f"alert-{item.get('id', len(alerts) + 1)}",
                 "evidence_type": "alert",
-                "evidence_type_name": "告警",
+                "evidence_type_name": "告警信息",
                 "title": item.get("alert_title") or "监控告警",
                 "summary": str(item.get("analysis_summary") or "已关联监控告警"),
                 "evidence_level": "direct",
@@ -242,7 +242,7 @@ def _build_answer(
             conclusion=f"当前共取得 {evidence_count} 条可追溯的授权证据。",
             basis=[f"时间范围：{time_text}", f"数据检查：{facts_text}"],
             limitations=limitations,
-            suggestions=["建议优先查看直接证据，再核对关联证据和上下文证据。"],
+            suggestions=["建议优先查看直接证据，再核对关联证据和背景证据。"],
         ).strip()
     if plan.intent == AnalysisIntent.NEXT_ACTION:
         action = (

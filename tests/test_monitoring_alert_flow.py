@@ -223,6 +223,10 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     await monitoring_aggregate.run_once()
     assert state["values"][0]["metric_value"] == 0.6
     assert state["alerts"][0]["status"] == "firing"
+    assert any(
+        event.get("source_type") == "alert" and event.get("event_type") == "alert_fired"
+        for event in state["events"]
+    )
     assert len(state["records"]) == 1
     assert {item["action"] for item in state["audits"]} >= {
         "monitor_event_ingested",
@@ -252,6 +256,7 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     state["values"] = []
     await monitoring_aggregate.run_once()
     assert state["alerts"][0]["status"] == "resolved"
+    assert any(event.get("event_type") == "alert_recovered" for event in state["events"])
     assert any(item["event_type"] == "recovery" for item in state["records"])
     assert "monitor_alert_recovered" in {item["action"] for item in state["audits"]}
     closed = await monitoring.alert_action(

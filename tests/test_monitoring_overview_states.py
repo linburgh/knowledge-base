@@ -194,6 +194,41 @@ def test_resource_capacity_keeps_failed_required_item():
     ]
 
 
+def test_alert_status_overview_uses_all_alerts_and_limits_recent_changes():
+    base_time = datetime(2026, 7, 31, 5, 0, tzinfo=UTC)
+    alerts = [
+        {
+            "id": index,
+            "status": status,
+            "last_fired_at": base_time + monitoring.timedelta(minutes=index),
+            "acknowledged_at": (
+                base_time + monitoring.timedelta(minutes=index) if status == "acknowledged" else None
+            ),
+            "resolved_at": (
+                base_time + monitoring.timedelta(minutes=index) if status == "resolved" else None
+            ),
+            "closed_at": (
+                base_time + monitoring.timedelta(minutes=index) if status == "closed" else None
+            ),
+        }
+        for index, status in enumerate(
+            ("firing", "acknowledged", "resolved", "closed", "closed"),
+            start=1,
+        )
+    ]
+
+    summary = monitoring._alert_status_summary(alerts)
+    recent = monitoring._recent_alert_changes(alerts)
+
+    assert summary == {"firing": 1, "acknowledged": 1, "resolved": 1, "closed": 2}
+    assert [item["id"] for item in recent] == [5, 4, 3]
+    assert [item["latest_change_name"] for item in recent] == [
+        "告警关闭",
+        "告警关闭",
+        "告警恢复",
+    ]
+
+
 @pytest.mark.parametrize(
     ("time_range", "duration", "expected_interval", "expected_count"),
     (
@@ -231,8 +266,7 @@ def test_runtime_timeline_uses_window_granularity_and_iso_time(
     assert len(timeline) == expected_count
     assert datetime.fromisoformat(timeline[0]["time"]).tzinfo is not None
     assert (
-        datetime.fromisoformat(timeline[1]["time"])
-        - datetime.fromisoformat(timeline[0]["time"])
+        datetime.fromisoformat(timeline[1]["time"]) - datetime.fromisoformat(timeline[0]["time"])
     ) == monitoring.timedelta(minutes=expected_interval)
     assert timeline[-2]["status"] == "unknown"
     assert timeline[-1]["status"] == "healthy"
@@ -344,7 +378,7 @@ async def test_overview_keeps_snapshot_modules_when_event_query_fails(
                     "threshold": 80,
                 },
                 "updated_at": now,
-            }
+            },
         ]
 
     monkeypatch.setattr(monitoring.event_db, "list", failed_events)
@@ -365,9 +399,7 @@ async def test_overview_keeps_snapshot_modules_when_event_query_fails(
         "resource_capacity": "ready",
         "propagation": "error",
     }
-    assert result["section_errors"]["runtime_status"] == (
-        "事件数据查询失败，当前仅展示运行快照"
-    )
+    assert result["section_errors"]["runtime_status"] == ("事件数据查询失败，当前仅展示运行快照")
     assert "database connection detail" not in str(result["section_errors"])
 
 
@@ -498,10 +530,161 @@ async def test_overview_applies_selected_time_window(
 
     assert captured["events"]["occurred_at__gte"] == now - monitoring.timedelta(minutes=15)
     assert captured["events"]["occurred_at__lte"] == now
-    assert captured["alerts"]["last_fired_at__gte"] == now - monitoring.timedelta(minutes=15)
+    assert "last_fired_at__gte" not in captured["alerts"]
     assert captured["snapshots"]["updated_at__gte"] == now - monitoring.timedelta(minutes=15)
     assert result["time_range"] == "15m"
     assert result["window_end"] == now
+
+
+@pytest.mark.asyncio
+async def test_overview_recognizes_real_agent_source_types_and_normalizes_propagation_domains(
+    overview_context,
+    monkeypatch,
+):
+    now = datetime(2026, 7, 31, 5, 0, tzinfo=UTC)
+
+    async def events(*_, **__):
+        return [
+            {
+                "event_id": "qa-1",
+                "event_type": "qa_completed",
+                "source_type": "knowledge_agent",
+                "status": "completed",
+                "occurred_at": now,
+                "duration_ms": 200,
+            },
+            {
+                "event_id": "evaluation-1",
+                "event_type": "evaluation_run_started",
+                "source_type": "evaluation_agent",
+                "status": "running",
+                "occurred_at": now,
+            },
+            {
+                "event_id": "alert-1",
+                "event_type": "alert_fired",
+                "source_type": "alert",
+                "status": "firing",
+                "occurred_at": now,
+            },
+        ]
+
+    async def empty_list(*_, **__):
+        return []
+
+    monkeypatch.setattr(monitoring.utils, "utc_now", lambda: now)
+    monkeypatch.setattr(monitoring.event_db, "list", events)
+    monkeypatch.setattr(monitoring.alert_db, "list", empty_list)
+    monkeypatch.setattr(monitoring.snapshot_db, "list", empty_list)
+
+    result = await monitoring.overview(overview_context)
+
+    business = {item["code"]: item for item in result["business_status"]}
+    assert business["qa"]["value"] == 1
+    assert business["evaluation"]["value"] == 1
+    assert {item["domain"] for item in result["propagation"]} == {
+        "qa",
+        "evaluation",
+        "alert",
+    }
+
+
+@pytest.mark.asyncio
+async def test_overview_keeps_worker_heartbeat_but_ignores_database_and_probe_noise(
+    overview_context,
+    monkeypatch,
+):
+    now = datetime(2026, 7, 31, 5, 0, tzinfo=UTC)
+
+    async def events(*_, **__):
+        return [
+            {
+                "event_id": "db-1",
+                "event_type": "db_operation_completed",
+                "source_type": "database",
+                "status": "completed",
+                "occurred_at": now,
+            },
+            {
+                "event_id": "probe-1",
+                "event_type": "rerank_probe_failed",
+                "source_type": "probe",
+                "status": "failed",
+                "occurred_at": now,
+            },
+            {
+                "event_id": "worker-1",
+                "event_type": "worker_heartbeat",
+                "source_type": "worker",
+                "status": "healthy",
+                "occurred_at": now,
+            },
+        ]
+
+    async def empty_list(*_, **__):
+        return []
+
+    monkeypatch.setattr(monitoring.utils, "utc_now", lambda: now)
+    monkeypatch.setattr(monitoring.event_db, "list", events)
+    monkeypatch.setattr(monitoring.alert_db, "list", empty_list)
+    monkeypatch.setattr(monitoring.snapshot_db, "list", empty_list)
+
+    result = await monitoring.overview(overview_context)
+
+    assert len(result["propagation"]) == 1
+    assert result["propagation"][0]["id"] == "worker-1"
+    assert result["propagation"][0]["domain"] == "index"
+    assert result["propagation"][0]["status"] == "healthy"
+    assert result["section_statuses"]["propagation"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_overview_projects_normal_snapshots_into_runtime_chain(
+    overview_context,
+    monkeypatch,
+):
+    now = datetime(2026, 7, 31, 5, 0, tzinfo=UTC)
+
+    async def empty_list(*_, **__):
+        return []
+
+    async def snapshots(*_, **__):
+        return [
+            {
+                "id": 1,
+                "resource_type": "service",
+                "resource_code": "api-service",
+                "status": "healthy",
+                "checked_at": now,
+                "updated_at": now,
+            },
+            {
+                "id": 2,
+                "resource_type": "capacity",
+                "resource_code": "database-capacity",
+                "status": "healthy",
+                "updated_at": now,
+            },
+        ]
+
+    monkeypatch.setattr(monitoring.utils, "utc_now", lambda: now)
+    monkeypatch.setattr(monitoring.event_db, "list", empty_list)
+    monkeypatch.setattr(monitoring.alert_db, "list", empty_list)
+    monkeypatch.setattr(monitoring.snapshot_db, "list", snapshots)
+
+    result = await monitoring.overview(overview_context)
+
+    assert result["propagation"] == [
+        {
+            "id": "snapshot-1",
+            "domain": "platform",
+            "title": "接口服务探测",
+            "status": "healthy",
+            "occurred_at": now,
+            "trace_id": None,
+        }
+    ]
+    assert result["section_statuses"]["propagation"] == "ready"
 
 
 @pytest.mark.asyncio

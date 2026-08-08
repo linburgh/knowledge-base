@@ -459,6 +459,17 @@
     .incident-legend-dot.bad { color: var(--red); }
     .incident-legend-line { width: 22px; height: 2px; border-radius: 2px; background: #9aa6b9; }
     .incident-legend-note { margin-left: auto; color: #a1adbc; }
+    .chain-status-table { min-height: 280px; }
+    .chain-status-table th { color: #4d5c72; background: #f5f7fa; font-size: 12px; font-weight: 700; }
+    .chain-status-table td { padding-top: 11px; padding-bottom: 11px; color: #3a4960; font-size: 12px; }
+    .chain-status-info strong, .chain-status-info span, .chain-status-detail strong, .chain-status-detail span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chain-status-info strong, .chain-status-detail strong { color: #2c3b52; font-size: 12px; }
+    .chain-status-value { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 12px; white-space: nowrap; }
+    .chain-status-value::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+    .chain-status-value.warn { color: var(--yellow); }
+    .chain-status-value.bad { color: var(--red); }
+    .chain-status-info span, .chain-status-detail span { margin-top: 4px; color: #8290a3; font-size: 11px; }
+    .chain-status-time { color: #526178; white-space: nowrap; }
     .worker-board { display: grid; gap: 12px; }
     .worker-row { display: grid; grid-template-columns: 150px 1fr 130px; gap: 12px; align-items: center; }
     .worker-name { color: #43526b; font-size: 12px; font-weight: 600; }
@@ -478,6 +489,14 @@
     .alert-state-bar.resolved { height: 38px; background: var(--green); }
     .alert-state-bar.closed { height: 92px; background: #8b98ab; }
     .alert-state-label { margin-top: 8px; color: #4d5d75; font-size: 11px; text-align: center; }
+    .alert-status-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    .alert-status-metric { padding: 10px 8px; border: 1px solid #e4e9f0; border-radius: 4px; background: #fafbfd; text-align: center; }
+    .alert-status-metric strong { display: block; color: #2c3b52; font-size: 19px; }
+    .alert-status-metric span { display: block; margin-top: 3px; color: #78869a; font-size: 11px; }
+    .alert-status-table th, .alert-status-table td { padding: 9px 10px; font-size: 11px; }
+    .alert-status-info strong, .alert-status-info span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .alert-status-info strong { color: #2c3b52; }
+    .alert-status-info span { margin-top: 3px; color: #8290a3; }
     .alert-state-count { color: var(--muted); font-size: 10px; }
     .timeline { display: grid; gap: 0; }
     .timeline-row { display: grid; grid-template-columns: 110px 16px 1fr auto; gap: 10px; min-height: 42px; align-items: start; }
@@ -563,7 +582,7 @@
       ['tasks', '任务监控'], ['alerts', '告警中心'], ['events', '事件中心'],
       ['analysis', '智能分析'], ['audit', '审计管理']
     ];
-    const state = { module: 'overview', scope: '全平台', window: '最近1小时', alertStatus: '全部', alertView: 'instances', analysisView: 'overview', page: 1 };
+    const state = { module: 'overview', scope: '全平台', window: '最近1小时', alertStatus: '全部', alertView: 'instances', page: 1 };
     let overviewCharts = [];
     let autoRefreshTimer = null;
     let autoRefreshEnabled = true;
@@ -652,6 +671,8 @@
     function alertLifecycleSvg() { return `<svg viewBox="0 0 500 150"><g fill="#df6370"><rect x="40" y="65" width="70" height="65" rx="4"/><rect x="190" y="82" width="70" height="48" rx="4"/><rect x="340" y="95" width="70" height="35" rx="4"/></g><g fill="#5fba8c"><rect x="115" y="101" width="45" height="29" rx="4"/><rect x="265" y="110" width="45" height="20" rx="4"/><rect x="415" y="114" width="45" height="16" rx="4"/></g></svg>`; }
     function incidentLegend() { return '<div class="incident-legend"><span class="incident-legend-item"><i class="incident-legend-dot blue"></i>正常 / 影响节点</span><span class="incident-legend-item"><i class="incident-legend-dot warn"></i>预警</span><span class="incident-legend-item"><i class="incident-legend-dot bad"></i>故障 / 告警</span><span class="incident-legend-item"><i class="incident-legend-line"></i>影响传播</span><span class="incident-legend-note">悬停节点查看证据</span></div>'; }
     function incidentSwimlane(offset = 0) { const rows = [['索引任务', [['bad', 1, '索引失败'], ['warn', 3, '任务积压']]], ['问答链路', [['warn', 4, '引用率下降'], ['bad', 5, 'P95 上升']]], ['评测链路', [['blue', 5, '门禁不通过']]], ['告警链路', [['bad', 6, '告警触发']]]]; return `<div class="incident-board"><div class="incident-axis"><span>监控域 / 时间</span><span>09:00</span><span>09:10</span><span>09:20</span><span>09:25</span><span>09:30</span><span>09:40</span></div>${rows.map(row => `<div class="incident-row"><span class="incident-domain">${row[0]}</span>${[1,2,3,4,5,6].map(column => { const event = row[1].find(item => ((item[1] + offset - 1) % 6) + 1 === column); return event ? `<span class="incident-node ${event[0]} ${column === 6 ? 'end' : ''}"><span class="incident-tooltip">${event[2]}<br />证据：event-883${column}</span></span>` : '<span></span>'; }).join('')}</div>`).join('')}</div>`; }
+    function chainStatusRows() { const rows = [['平台运行', '正常', '接口、数据库和依赖服务探测正常', '服务探测', '10:00', ''], ['任务链路', '预警', '存在 2 个短时等待任务，Worker 心跳正常', '窗口内 3 条记录', '09:58', 'warn'], ['问答链路', '正常', '问答成功率 99.2%，P95 处于正常范围', '窗口内 8 条记录', '09:59', ''], ['评测链路', '已完成', '最近一次评测运行已完成', '评测运行 09', '09:55', ''], ['告警链路', '已恢复', '当前无未恢复告警', '告警已恢复', '10:00', '']]; return `<div class="table-wrap chain-status-table"><table><thead><tr><th style="width:190px">链路信息</th><th>最近变化</th><th style="width:180px">更新时间</th></tr></thead><tbody>${rows.map(row => `<tr><td><div class="chain-status-info"><strong>${row[0]}</strong><span class="chain-status-value ${row[5]}">${row[1]}</span></div></td><td><div class="chain-status-detail"><strong>${row[2]}</strong><span>${row[3]}</span></div></td><td class="chain-status-time">2026年07月30日 ${row[4]}</td></tr>`).join('')}</tbody></table></div>`; }
+    function alertStatusOverview() { const metrics = [['1', '触发中'], ['1', '已确认'], ['1', '已恢复'], ['3', '已关闭']]; const rows = [['Worker 心跳过期', '评测 Worker', '严重 · 触发中', '09:58 持续触发'], ['问答 P95 超过阈值', '知识库问答', '警告 · 已确认', '09:52 人工确认'], ['向量采集恢复', '向量服务', '警告 · 已恢复', '09:46 自动恢复']]; return `<div class="alert-status-summary">${metrics.map(item => `<div class="alert-status-metric"><strong>${item[0]}</strong><span>${item[1]}</span></div>`).join('')}</div><div class="table-wrap alert-status-table"><table><thead><tr><th>告警信息</th><th style="width:100px">当前状态</th><th style="width:110px">最近变化</th></tr></thead><tbody>${rows.map(row => `<tr><td><div class="alert-status-info"><strong>${row[0]}</strong><span>${row[1]}</span></div></td><td>${row[2]}</td><td>${row[3]}</td></tr>`).join('')}</tbody></table></div>`; }
     function workerSwimlane() { const rows = [['document-worker-01', [['parse','文档解析',28], ['index','索引切分',36], ['idle','空闲',36]], '正常 · 心跳 20 秒前'], ['index-worker-01', [['wait','等待消费',58], ['stale','心跳过期',22]], '异常 · 心跳 12 分钟前'], ['evaluation-worker-02', [['agent','问题执行',54], ['parse','指标计算',22], ['idle','待下一阶段',24]], '忙碌 · 2 分钟'], ['evaluation-worker-01', [['stale','进程无心跳',100]], '故障 · 需处理']]; return `<div class="worker-board">${rows.map(row => `<div class="worker-row"><span class="worker-name">${row[0]}</span><div class="worker-track">${row[1].map(stage => `<span class="worker-stage ${stage[0]}" style="width:${stage[2]}%">${stage[1]}</span>`).join('')}</div><span class="worker-meta">${row[2]}</span></div>`).join('')}</div>`; }
     function lineSvg(a, b) { return `<svg viewBox="0 0 500 150" preserveAspectRatio="none"><polyline points="0,116 55,104 110,110 165,66 220,82 275,50 330,68 385,39 440,54 500,30" fill="none" stroke="${a}" stroke-width="3"/><polyline points="0,128 55,124 110,126 165,117 220,119 275,109 330,115 385,96 440,101 500,92" fill="none" stroke="${b}" stroke-width="2" stroke-dasharray="6 4"/></svg>`; }
     function barsSvg() { return `<svg viewBox="0 0 500 150"><g fill="#4f9cff"><rect x="60" y="55" width="55" height="75" rx="4"/><rect x="220" y="77" width="55" height="53" rx="4"/><rect x="380" y="92" width="55" height="38" rx="4"/></g><g fill="#df6171"><rect x="125" y="110" width="55" height="20" rx="4"/><rect x="285" y="72" width="55" height="58" rx="4"/><rect x="445" y="99" width="40" height="31" rx="4"/></g></svg>`; }
@@ -896,11 +917,10 @@
       return page.replace('</section><div class="analysis-overview-grid">', `</section>${analysisChatPanel()}<div class="analysis-overview-grid">`);
     }
     function analysisPage() {
-      // 无活动告警但存在指标或运行事实时展示正常分析结论、证据链和时间线；
-      // 只有全部授权事实为空时才展示整页空数据状态。
-      const page = analysisPageBase().replace('<div class="content analysis-page">', `<div class="content analysis-page analysis-view-${state.analysisView}">`);
-      const tabs = `<div class="analysis-tabs"><button class="${state.analysisView === 'overview' ? 'active' : ''}" data-analysis-view="overview">分析总览</button><button class="${state.analysisView === 'chat' ? 'active' : ''}" data-analysis-view="chat">分析对话</button></div>`;
-      return page.replace('<section class="panel"><div class="panel-head"><div><h2>分析结论</h2>', `${tabs}<section class="panel"><div class="panel-head"><div><h2>分析结论</h2>`);
+      return analysisPageBase().replace(
+        '<div class="content analysis-page">',
+        '<div class="content analysis-page analysis-view-chat">'
+      );
     }
     function healthSummary() {
       const items = [
@@ -912,12 +932,12 @@
     }
     function overview() {
       return `<div><div class="content overview-page">
-        ${pageHead('监控总览', '只保留告警、资源和异常传播三类核心视图；业务详情进入对应监控模块。', `<select class="control" id="scope"><option>全平台</option><option>当前租户：演示租户</option></select><select class="control" id="timeWindow"><option>最近1小时</option><option>最近15分钟</option><option>最近6小时</option><option>最近24小时</option><option>最近7天</option></select><button class="btn" id="refresh">↻ 刷新</button><button class="btn" id="autoRefresh">自动刷新：${autoRefreshEnabled ? '开' : '关'}</button><button class="btn" id="dataInfo">数据说明</button>`)}
+        ${pageHead('监控总览', '只保留告警、资源和链路状态三类核心视图；业务详情进入对应监控模块。', `<select class="control" id="scope"><option>全平台</option><option>当前租户：演示租户</option></select><select class="control" id="timeWindow"><option>最近1小时</option><option>最近15分钟</option><option>最近6小时</option><option>最近24小时</option><option>最近7天</option></select><button class="btn" id="refresh">↻ 刷新</button><button class="btn" id="autoRefresh">自动刷新：${autoRefreshEnabled ? '开' : '关'}</button><button class="btn" id="dataInfo">数据说明</button>`)}
         <div class="notice"><span class="level">未恢复告警</span><strong>共 ${unresolvedAlertSummary().total} 条：${unresolvedAlertSummary().detail}</strong><span>当前范围：${state.scope} · 详情按告警列表查看</span><button class="btn" data-module="alerts">查看告警</button></div>
         <section class="panel"><div class="panel-head"><div><h2>运行状态</h2><span class="caption">服务状态时间热力图：横轴按查询窗口自动切换粒度并显示本地时间，纵轴为后端返回的 TOP5 四字服务名称</span></div><span id="overviewUpdatedAt" class="caption">最近探测：2026年07月30日 09:30:20</span></div><div id="runtimeGraph" class="runtime-graph"></div></section>
         <section class="panel"><div class="panel-head"><div><h2>业务状态</h2><span class="caption">仅展示当前是否需要关注，趋势和明细进入对应模块</span></div><span class="caption">最近更新：2026年07月30日 10:00:00</span></div><div class="business-summary"><div class="business-summary-item"><div><strong>知识库问答<span class="tip" data-tip="表示当前授权范围内的问答链路是否正常。成功率反映请求完成情况，P95 表示较慢请求的响应耗时。">i</span></strong><span>当前状态：正常 · 成功率 99.2%</span></div><span class="business-summary-value">P95 1.8s</span></div><div class="business-summary-item warn"><div><strong>异步任务<span class="tip" data-tip="表示文档处理、索引构建和评测任务是否能够持续消费。最老等待时间用于判断任务是否长期积压。">i</span></strong><span>当前状态：积压 · 索引构建 8 个</span></div><span class="business-summary-value">最老 18分</span></div><div class="business-summary-item"><div><strong>自主评测<span class="tip" data-tip="表示自主评测 Agent 当前是否运行，以及是否存在可追踪的评测运行。详细阶段和执行证据进入任务监控。">i</span></strong><span>当前状态：运行中 · Agent 证据完整</span></div><span class="business-summary-value">运行 09</span></div></div></section>
         <div class="chart-grid" style="margin-top:18px">
-          <section class="panel"><div class="panel-head"><div><h2>告警状态</h2><span class="caption">四类状态随时间变化；当前未恢复 2</span></div><button class="btn text" data-module="alerts">查看告警详情 →</button></div><div id="alertChart" class="echart compact"></div></section>
+          <section class="panel"><div class="panel-head"><div><h2>告警状态</h2><span class="caption">汇总当前状态并展示最近 3 条真实告警变化</span></div><button class="btn text" data-module="alerts">查看告警详情 →</button></div>${alertStatusOverview()}</section>
           <section class="panel"><div class="panel-head"><div><h2>资源容量</h2><span class="caption">分别展示当前用量、容量上限与预警阈值</span></div><div style="display:flex;align-items:center;gap:14px"><span class="caption">最近采集：2026年07月30日 10:00:00</span><button class="btn text" data-module="collection">查看采集详情 →</button></div></div><div class="capacity-grid">
             <div class="capacity-card"><div class="capacity-card-head"><strong>数据库连接</strong><span class="capacity-state">正常</span></div><div class="capacity-card-main"><strong class="capacity-rate">10%</strong><span class="capacity-amount">10 / 100 个连接</span></div><div class="capacity-track"><i class="capacity-track-fill visible" style="width:10%"></i><i class="capacity-threshold"></i></div><div class="capacity-card-foot"><span>PostgreSQL 实例</span><span>预警 80%</span></div></div>
             <div class="capacity-card"><div class="capacity-card-head"><strong>队列容量</strong><span class="capacity-state">正常</span></div><div class="capacity-card-main"><strong class="capacity-rate">0%</strong><span class="capacity-amount">0 / 100 个任务</span></div><div class="capacity-track"><i class="capacity-track-fill" style="width:0"></i><i class="capacity-threshold"></i></div><div class="capacity-card-foot"><span>当前无任务积压</span><span>预警 80%</span></div></div>
@@ -925,7 +945,7 @@
             <div class="capacity-card"><div class="capacity-card-head"><strong>向量存储</strong><span class="capacity-state">正常</span></div><div class="capacity-card-main"><strong class="capacity-rate">1.69%</strong><span class="capacity-amount">17.28 MB / 1 GB</span></div><div class="capacity-track"><i class="capacity-track-fill visible" style="width:1.69%"></i><i class="capacity-threshold"></i></div><div class="capacity-card-foot"><span>pgvector 数据</span><span>预警 80%</span></div></div>
           </div></section>
         </div>
-        <section class="panel"><div class="panel-head"><div><h2>异常传播</h2><span class="caption">只保留一条主链路，避免与任务和告警图表重复</span></div><button class="btn text" data-module="events">查看事件详情 →</button></div>${incidentLegend()}${incidentSwimlane()}</section>
+        <section class="panel"><div class="panel-head"><div><h2>链路状态</h2><span class="caption">汇总各运行链路的当前状态与最近变化</span></div><button class="btn text" data-module="events">查看相关事件 →</button></div>${chainStatusRows()}</section>
       </div></div>`;
     }
     function initOverviewChartsLegacy() {
@@ -990,14 +1010,10 @@
       let runtimeCursor = new Date(2026, 6, 30, 10, 0);
       let runtimeTimes = ['09:00', '09:05', '09:10', '09:15', '09:20', '09:25', '09:30', '09:35', '09:40', '09:45', '09:50', '09:55', '10:00'];
       let incidentOffset = 0;
-      const times = ['09:00', '09:10', '09:20', '09:30', '09:40', '09:50', '10:00'];
       const serviceStates = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1], [0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2]];
-      const alertSeriesData = [[0, 0, 1, 2, 1, 1, 1], [0, 0, 0, 1, 1, 1, 1], [0, 0, 0, 0, 1, 1, 1], [2, 2, 2, 2, 3, 3, 3]];
       const heatmapData = [];
       serviceStates.forEach((states, serviceIndex) => states.forEach((status, timeIndex) => heatmapData.push([timeIndex, serviceIndex, status])));
       runtime.setOption({ ...base, tooltip: { position: 'top', formatter: params => { const status = ['正常', '预警', '故障', '无数据'][params.value[2]]; return `${services[params.value[1]]}<br />${runtimeTimes[params.value[0]]}<br />状态：${status}`; } }, grid: { left: 92, right: 26, top: 42, bottom: 34 }, xAxis: { type: 'category', data: runtimeTimes, splitArea: { show: true }, axisLabel: { color: '#52617a', fontSize: 12 }, axisLine: { lineStyle: { color: '#aebbd0' } }, axisTick: { lineStyle: { color: '#aebbd0' } } }, yAxis: { type: 'category', data: services, inverse: true, splitArea: { show: true }, axisLabel: { color: '#52617a', fontSize: 12, fontWeight: 600 }, axisLine: { lineStyle: { color: '#aebbd0' } }, axisTick: { lineStyle: { color: '#aebbd0' } } }, visualMap: { type: 'piecewise', orient: 'horizontal', top: 4, right: 0, itemWidth: 12, itemHeight: 10, textStyle: { color: '#52617a', fontSize: 12, fontWeight: 600 }, pieces: [{ value: 0, label: '正常', color: '#72c99b' }, { value: 1, label: '预警', color: '#e5b347' }, { value: 2, label: '故障', color: '#dd6673' }, { value: 3, label: '无数据', color: '#aeb9c8' }] }, series: [{ type: 'heatmap', data: heatmapData, label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 3 } }] });
-      const alert = echarts.init(document.getElementById('alertChart'));
-      alert.setOption({ ...base, grid: { left: 42, right: 18, top: 30, bottom: 28 }, legend: { top: 0, itemWidth: 12, textStyle: { color: '#68758b', fontSize: 10 } }, xAxis: { type: 'category', data: times }, yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#edf1f6' } } }, series: [{ name: '触发中', type: 'line', smooth: true, data: alertSeriesData[0], lineStyle: { color: palette.red, width: 2.5 }, itemStyle: { color: palette.red } }, { name: '已确认', type: 'line', smooth: true, data: alertSeriesData[1], lineStyle: { color: palette.yellow, width: 2.5 }, itemStyle: { color: palette.yellow } }, { name: '已恢复', type: 'line', smooth: true, data: alertSeriesData[2], lineStyle: { color: palette.green, width: 2.5 }, itemStyle: { color: palette.green } }, { name: '已关闭', type: 'line', smooth: true, data: alertSeriesData[3], lineStyle: { color: palette.gray, width: 2.5 }, itemStyle: { color: palette.gray } }] });
       const formatRuntimeTime = date => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
       const refreshAllCharts = () => {
         runtimeCursor.setMinutes(runtimeCursor.getMinutes() + 5);
@@ -1010,13 +1026,6 @@
         heatmapData.length = 0;
         serviceStates.forEach((states, serviceIndex) => states.forEach((status, timeIndex) => heatmapData.push([timeIndex, serviceIndex, status])));
         runtime.setOption({ xAxis: { data: runtimeTimes }, series: [{ data: heatmapData }] });
-        times.push(formatRuntimeTime(runtimeCursor));
-        times.shift();
-        alertSeriesData.forEach((series, index) => {
-          series.push(Math.max(0, series[series.length - 1] + (index === 0 && runtimeCursor.getMinutes() % 20 === 0 ? 1 : 0)));
-          series.shift();
-        });
-        alert.setOption({ xAxis: { data: times }, series: alertSeriesData.map(data => ({ data })) });
         incidentOffset = (incidentOffset + 1) % 6;
         const incidentBoard = document.querySelector('.incident-board');
         if (incidentBoard) {
@@ -1027,7 +1036,7 @@
         if (updatedAt) updatedAt.textContent = `最近探测：2026年07月30日 ${formatRuntimeTime(runtimeCursor)}:00`;
       };
       window.refreshOverviewCharts = refreshAllCharts;
-      overviewCharts = [runtime, alert];
+      overviewCharts = [runtime];
       overviewCharts.forEach(chart => chart.on('click', params => toast(`已选择：${params.name || params.seriesName || '运行状态'}`)));
       if (autoRefreshEnabled) autoRefreshTimer = window.setInterval(refreshAllCharts, 2500);
       window.setTimeout(() => overviewCharts.forEach(chart => chart.resize()), 0);
@@ -1160,9 +1169,8 @@
       bindAnalysisChat();
       document.querySelectorAll('[data-alert]').forEach(el => el.addEventListener('click', () => showAlert(Number(el.dataset.alert))));
       document.querySelectorAll('[data-alert-view]').forEach(el => el.addEventListener('click', () => { state.alertView = el.dataset.alertView; render(); }));
-      document.querySelectorAll('[data-analysis-view]').forEach(el => el.addEventListener('click', () => { state.analysisView = el.dataset.analysisView; render(); }));
       document.querySelectorAll('[data-analysis-session]').forEach(el => el.addEventListener('click', () => { document.querySelectorAll('[data-analysis-session]').forEach(item => item.classList.remove('active')); el.classList.add('active'); toast('已切换分析会话：' + el.textContent.replace(/\s+/g, ' ').trim()); }));
-      const analysisNewChat = document.getElementById('analysisNewChat'); if (analysisNewChat) analysisNewChat.addEventListener('click', () => toast('原型演示：已创建新的分析会话，等待选择异常上下文'));
+      const analysisNewChat = document.getElementById('analysisNewChat'); if (analysisNewChat) analysisNewChat.addEventListener('click', () => toast('原型演示：已创建“新建分析会话”，运行结论不作为会话名称'));
       document.querySelectorAll('[data-rule]').forEach(el => el.addEventListener('click', () => showRule(Number(el.dataset.rule))));
       const addRule = document.getElementById('addRule'); if (addRule) addRule.addEventListener('click', () => showRule(-1));
       document.querySelectorAll('[data-task]').forEach(el => el.addEventListener('click', () => showTask(Number(el.dataset.task))));

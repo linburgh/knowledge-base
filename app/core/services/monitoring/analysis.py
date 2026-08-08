@@ -64,7 +64,7 @@ async def create_conversation(
             conversation_type="monitoring",
             scope_key=scope_key,
             metadata=bound_context,
-            title=payload.title or "监控分析对话",
+            title=payload.title or "新建分析会话",
             status="active",
         )
         await audit_service.record(

@@ -458,9 +458,7 @@ async def test_overviews_use_real_full_range_data(list_context, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_events_overview_excludes_recovered_worker_stop_from_focus(
-    list_context, monkeypatch
-):
+async def test_events_overview_excludes_recovered_worker_stop_from_focus(list_context, monkeypatch):
     now = utils.utc_now()
 
     async def events(*_, **__):
@@ -581,6 +579,45 @@ async def test_alert_overview_returns_lifecycle_trend_and_priority(list_context,
         "警告",
         "提示",
     ]
+
+
+@pytest.mark.asyncio
+async def test_alert_page_keeps_old_unresolved_alerts_visible(list_context, monkeypatch):
+    now = utils.utc_now()
+
+    async def alerts(*_, **__):
+        return [
+            {
+                "id": 1,
+                "metric_code": "task_success_rate",
+                "alert_title": "历史未恢复告警",
+                "severity": "critical",
+                "status": "firing",
+                "first_fired_at": now - timedelta(days=7),
+                "last_fired_at": now - timedelta(days=6),
+            },
+            {
+                "id": 2,
+                "metric_code": "task_success_rate",
+                "alert_title": "历史已恢复告警",
+                "severity": "warning",
+                "status": "resolved",
+                "first_fired_at": now - timedelta(days=7),
+                "last_fired_at": now - timedelta(days=6),
+                "resolved_at": now - timedelta(days=6),
+            },
+        ]
+
+    async def definitions(*_, **__):
+        return []
+
+    monkeypatch.setattr(monitoring.alert_db, "list", alerts)
+    monkeypatch.setattr(monitoring.definition_db, "list", definitions)
+
+    result = await monitoring.alert_page(list_context, 1, 20, time_range="1h")
+
+    assert result["total"] == 1
+    assert result["items"][0]["status"] == "firing"
 
 
 @pytest.mark.asyncio

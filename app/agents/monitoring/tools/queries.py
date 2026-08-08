@@ -116,7 +116,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                 {
                     "id": f"alert-{row['id']}",
                     "evidence_type": "alert",
-                    "evidence_type_name": "告警",
+                    "evidence_type_name": "告警信息",
                     "title": row.get("alert_title"),
                     "summary": (
                         f"{severity} · {_STATUS_NAMES.get(status, status)} · "
@@ -160,7 +160,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                 {
                     "id": f"metric-{row['id']}",
                     "evidence_type": "metric",
-                    "evidence_type_name": "指标",
+                    "evidence_type_name": "指标数据",
                     "title": definition.get("metric_name") or code,
                     "summary": (
                         f"值 {_number(row.get('metric_value'))}{row.get('unit') or ''} · "
@@ -196,7 +196,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                 {
                     "id": f"event-{row['id']}",
                     "evidence_type": "event",
-                    "evidence_type_name": "事件",
+                    "evidence_type_name": "运行事件",
                     "title": row.get("event_type"),
                     "summary": (
                         f"{row.get('source_type')} · {_STATUS_NAMES.get(status, status)}"
@@ -234,7 +234,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                 {
                     "id": f"task-event-{row['id']}",
                     "evidence_type": "task",
-                    "evidence_type_name": "任务",
+                    "evidence_type_name": "任务事实",
                     "title": row.get("event_type"),
                     "summary": (
                         f"任务 {target_id} · {_STATUS_NAMES.get(status, status)}"
