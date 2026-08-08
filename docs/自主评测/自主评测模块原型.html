@@ -887,6 +887,21 @@
       .result-table td {
         padding: 12px 13px;
       }
+
+      .compact-table-cell strong,
+      .compact-table-cell span,
+      .compact-table-cell small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .compact-table-cell span,
+      .compact-table-cell small {
+        margin-top: 4px;
+        color: var(--muted);
+      }
       .report-summary {
         display: grid;
         grid-template-columns: 1fr auto;
@@ -1244,16 +1259,10 @@
             <table>
               <thead>
                 <tr>
-                  <th>评测名称</th>
-                  <th>知识库名称</th>
-                  <th>问题来源</th>
-                  <th>问题数量</th>
-                  <th>执行状态</th>
-                  <th>最新结论</th>
-                  <th>最近执行时间</th>
-                  <th>创建人</th>
-                  <th>创建时间</th>
-                  <th>操作</th>
+                  <th>评测信息</th>
+                  <th>执行结果</th>
+                  <th>时间人员</th>
+                  <th>操作入口</th>
                 </tr>
               </thead>
               <tbody id="taskRows"></tbody>
@@ -1541,47 +1550,35 @@
             <table class="result-table">
               <thead>
                 <tr>
-                  <th>指标名称</th>
-                  <th>实际值</th>
-                  <th>门禁条件</th>
-                  <th>样本数</th>
-                  <th>结果</th>
+                  <th>指标信息</th>
+                  <th>实际门禁</th>
+                  <th>考核状态</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>成功率</td>
-                  <td>100%</td>
-                  <td>&gt;= 95%</td>
-                  <td>20</td>
+                  <td><div class="compact-table-cell"><strong>成功率</strong><span>样本 20</span></div></td>
+                  <td><div class="compact-table-cell"><strong>100%</strong><span>&gt;= 95%</span></div></td>
                   <td><span class="tag success">合格</span></td>
                 </tr>
                 <tr>
-                  <td>错误率</td>
-                  <td>0%</td>
-                  <td>&lt;= 1%</td>
-                  <td>20</td>
+                  <td><div class="compact-table-cell"><strong>错误率</strong><span>样本 20</span></div></td>
+                  <td><div class="compact-table-cell"><strong>0%</strong><span>&lt;= 1%</span></div></td>
                   <td><span class="tag success">合格</span></td>
                 </tr>
                 <tr>
-                  <td>降级率</td>
-                  <td>0%</td>
-                  <td>&lt;= 5%</td>
-                  <td>20</td>
+                  <td><div class="compact-table-cell"><strong>降级率</strong><span>样本 20</span></div></td>
+                  <td><div class="compact-table-cell"><strong>0%</strong><span>&lt;= 5%</span></div></td>
                   <td><span class="tag success">合格</span></td>
                 </tr>
                 <tr>
-                  <td>引用率</td>
-                  <td>100%</td>
-                  <td>&gt;= 95%</td>
-                  <td>20</td>
+                  <td><div class="compact-table-cell"><strong>引用率</strong><span>样本 20</span></div></td>
+                  <td><div class="compact-table-cell"><strong>100%</strong><span>&gt;= 95%</span></div></td>
                   <td><span class="tag success">合格</span></td>
                 </tr>
                 <tr>
-                  <td>P95 响应时间</td>
-                  <td>3517ms</td>
-                  <td>&lt;= 8000ms</td>
-                  <td>20</td>
+                  <td><div class="compact-table-cell"><strong>P95 响应时间</strong><span>样本 20</span></div></td>
+                  <td><div class="compact-table-cell"><strong>3517ms</strong><span>&lt;= 8000ms</span></div></td>
                   <td><span class="tag success">合格</span></td>
                 </tr>
               </tbody>
@@ -1622,21 +1619,15 @@
             <table class="result-table">
               <thead>
                 <tr>
-                  <th>题号</th>
-                  <th>问题</th>
-                  <th>状态</th>
-                  <th>引用数</th>
-                  <th>耗时</th>
-                  <th>操作</th>
+                  <th>题目信息</th>
+                  <th>执行结果</th>
+                  <th>操作入口</th>
                 </tr>
               </thead>
               <tbody>
                 <tr data-case-status="completed">
-                  <td>1</td>
-                  <td>请简单介绍一下医签通</td>
-                  <td><span class="status-text success">已完成</span></td>
-                  <td>3</td>
-                  <td>1200ms</td>
+                  <td><div class="compact-table-cell"><strong>第 1 题 · 请简单介绍一下医签通</strong></div></td>
+                  <td><div class="compact-table-cell"><strong><span class="status-text success">已完成</span></strong><span>引用 3 · 耗时 1200ms</span></div></td>
                   <td>
                     <button class="text-button" onclick="openCaseDetail(1)">
                       查看
@@ -1644,11 +1635,8 @@
                   </td>
                 </tr>
                 <tr data-case-status="fallback">
-                  <td>2</td>
-                  <td>扫码签名具体怎么操作？</td>
-                  <td><span class="status-text warning">降级</span></td>
-                  <td>3</td>
-                  <td>2600ms</td>
+                  <td><div class="compact-table-cell"><strong>第 2 题 · 扫码签名具体怎么操作？</strong></div></td>
+                  <td><div class="compact-table-cell"><strong><span class="status-text warning">降级</span></strong><span>引用 3 · 耗时 2600ms</span></div></td>
                   <td>
                     <button class="text-button" onclick="openCaseDetail(2)">
                       查看
@@ -1940,10 +1928,10 @@
             .map((task) => {
               const st = statusText[task.status];
               const co = conclusionText[task.conclusion];
-              return `<tr><td>${task.name}</td><td>${task.kb}</td><td>${task.source}</td><td>${task.count}</td><td><span class="status-text ${st[1]}">${st[0]}</span></td><td>${co ? `<span class="status-text ${co[1]}">${co[0]}</span>` : '<span class="muted">未执行</span>'}</td><td>${task.time}</td><td>${task.creator}</td><td>${task.createdAt}</td><td>${actionHtml(task)}</td></tr>`;
+              return `<tr><td><div class="compact-table-cell"><strong>${task.name}</strong><span>${task.kb}</span><small>${task.source} · ${task.count} 题</small></div></td><td><div class="compact-table-cell"><strong><span class="status-text ${st[1]}">${st[0]}</span></strong><span>${co ? `<span class="status-text ${co[1]}">${co[0]}</span>` : '未执行'}</span></div></td><td><div class="compact-table-cell"><strong>${task.time}</strong><span>${task.creator}</span><small>创建于 ${task.createdAt}</small></div></td><td>${actionHtml(task)}</td></tr>`;
             })
             .join("") ||
-          '<tr><td colspan="10" style="padding:50px;text-align:center;color:var(--muted)">暂无评测任务</td></tr>';
+          '<tr><td colspan="4" style="padding:50px;text-align:center;color:var(--muted)">暂无评测任务</td></tr>';
       }
       function openResult(id) {
         const task = tasks.find((item) => item.id === id);
