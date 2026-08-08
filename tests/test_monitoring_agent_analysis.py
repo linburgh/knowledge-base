@@ -1,21 +1,59 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
+from langchain_core.messages import AIMessage
 
 from app.agents.monitoring import MonitoringAgent
-from app.agents.monitoring.models import StructuredAnalysisPlan
-from app.agents.monitoring.planner import (
-    ResilientMonitoringPlanner,
-    RuleBasedMonitoringPlanner,
-    StructuredOutputMonitoringPlanner,
-)
+from app.agents.monitoring.models import MonitoringAgentOutput
 from app.agents.monitoring.planning import build_plan, resolve_time_range
 from app.agents.monitoring.runtime import MonitoringRuntime
+from app.agents.monitoring.tools import MONITORING_ANALYSIS_TOOLS
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
 from app.core.common.exception import BusiException
 from app.core.services.monitoring import analysis_tools as monitoring_analysis_tools
+
+_TOOLS_BY_NAME = {tool.name: tool for tool in MONITORING_ANALYSIS_TOOLS}
+
+
+class _FakeMonitoringDeepAgent:
+    def __init__(
+        self,
+        *,
+        tool_names: tuple[str, ...],
+        intent: str = "platform_health",
+        goal: str = "分析授权范围内的监控事实",
+        label: str = "昨天",
+    ) -> None:
+        self.tool_names = tool_names
+        self.intent = intent
+        self.goal = goal
+        self.label = label
+        self.last_prompt = ""
+
+    async def ainvoke(self, inputs, *, context, config):
+        del config
+        self.last_prompt = inputs["messages"][0]["content"]
+        runtime = SimpleNamespace(context=context)
+        for name in self.tool_names:
+            await _TOOLS_BY_NAME[name].coroutine(runtime=runtime)
+        return {
+            "structured_response": MonitoringAgentOutput(
+                intent=self.intent,
+                goal=self.goal,
+                answer_markdown="短",
+                conclusion_ack="unknown",
+                time_expression=self.label,
+                entities=["平台服务"],
+                dimensions=["健康状态", "影响范围"],
+                layout_reason="将根据程序结论使用确定性降级回答",
+                confidence=0.9,
+            ),
+            "messages": [AIMessage(content="完成分析")],
+        }
 
 
 def test_yesterday_is_resolved_as_shanghai_natural_day():
@@ -56,131 +94,50 @@ def test_invalid_explicit_date_falls_back_to_conversation_range():
     assert plan.time_range.limitation == "问题中的日期无效，已使用会话默认时间范围"
 
 
-class _StructuredModel:
-    def __init__(self, output):
-        self.output = output
-
-    def with_structured_output(self, *_args, **_kwargs):
-        return self
-
-    async def ainvoke(self, _messages):
-        if isinstance(self.output, Exception):
-            raise self.output
-        return self.output
-
-
 @pytest.mark.asyncio
-async def test_llm_structured_planner_understands_non_keyword_health_expression():
-    planner = StructuredOutputMonitoringPlanner(
-        _StructuredModel(
-            StructuredAnalysisPlan.model_validate(
-                {
-                    "intent": "platform_health",
-                    "goal": "判断昨晚平台是否发生短暂性能波动",
-                    "time": {
-                        "expression": "昨晚",
-                        "label": "昨晚",
-                        "start": "2026-07-31T18:00:00+08:00",
-                        "end": "2026-08-01T06:00:00+08:00",
-                    },
-                    "entities": ["platform"],
-                    "dimensions": ["availability", "latency", "error_rate"],
-                    "required_tools": [
-                        "query_health_snapshots",
-                        "query_metrics",
-                        "query_alerts",
-                        "query_events",
-                    ],
-                    "uncertainties": [],
-                    "confidence": 0.91,
-                }
-            )
+async def test_today_uses_server_authorized_shanghai_day_across_utc_date_boundary():
+    fixed_now = datetime(2026, 8, 8, 23, 30, tzinfo=UTC)
+    observed_arguments = {}
+    registry = MonitoringToolRegistry()
+
+    async def query_alerts(**arguments):
+        observed_arguments.update(arguments)
+        return {"items": [], "data_status": "empty"}
+
+    registry.register("query_alerts", query_alerts)
+    deep_agent = _FakeMonitoringDeepAgent(tool_names=("query_alerts",))
+    prior_fact_set = {
+        "id": "old-august-8-facts",
+        "sources": [{"items": [{"id": "old-alert"}]}],
+    }
+
+    with patch("app.agents.monitoring.agent.utils.utc_now", return_value=fixed_now):
+        result = await MonitoringAgent(
+            tools=registry,
+            agent_factory=lambda runtime: deep_agent,
+        ).analyze(
+            question="今天系统有异常的情况吗",
+            context={
+                "user_id": "1",
+                "role": "platform_super_admin",
+                "scope_key": "platform",
+                "prior_fact_set": prior_fact_set,
+            },
         )
-    )
 
-    plan = await planner.plan(
-        "昨晚平台是不是抖了一下",
-        default_time_range="1h",
-        now=datetime(2026, 8, 1, 2, 0, tzinfo=UTC),
-    )
-
-    assert plan.planning_mode == "llm"
-    assert plan.intent.value == "platform_health"
-    assert plan.goal == "判断昨晚平台是否发生短暂性能波动"
-    assert plan.time_range.label == "昨晚"
-    assert plan.dimensions == ("availability", "latency", "error_rate")
-    assert "query_metrics" in plan.tools
-
-
-@pytest.mark.asyncio
-async def test_llm_plan_normalizes_open_intent_and_removes_write_tool():
-    planner = StructuredOutputMonitoringPlanner(
-        _StructuredModel(
-            {
-                "intent": "release_stability_review",
-                "goal": "判断发布后服务是否稳定",
-                "time": {"expression": None, "label": None, "start": None, "end": None},
-                "entities": ["service"],
-                "dimensions": ["release", "latency"],
-                "required_tools": ["restart_worker", "query_events", "query_metrics"],
-                "uncertainties": ["未提供具体发布时间"],
-                "confidence": 0.72,
-            }
-        )
-    )
-
-    plan = await planner.plan(
-        "发布之后服务稳不稳",
-        default_time_range="6h",
-        now=datetime(2026, 8, 1, 2, 0, tzinfo=UTC),
-    )
-
-    assert plan.intent.value == "general_analysis"
-    assert plan.tools == ("query_events", "query_metrics")
-    assert "检测到未授权工具，已从查询计划中移除" in plan.uncertainties
-    assert "检测到未登记的分析意图，已按通用分析处理" in plan.uncertainties
-
-
-@pytest.mark.asyncio
-async def test_llm_planner_failure_uses_limited_rule_fallback():
-    planner = ResilientMonitoringPlanner(
-        StructuredOutputMonitoringPlanner(_StructuredModel(RuntimeError("planner unavailable")))
-    )
-
-    plan = await planner.plan(
-        "昨晚平台是不是抖了一下",
-        default_time_range="1h",
-        now=datetime(2026, 8, 1, 2, 0, tzinfo=UTC),
-    )
-
-    assert plan.planning_mode == "fallback"
-    assert plan.planning_error == "RuntimeError"
-    assert any("有限规则降级规划" in item for item in plan.uncertainties)
+    assert result["time_range"]["label"] == "今天"
+    assert result["time_range"]["start"] == "2026-08-09T00:00:00+08:00"
+    assert result["time_range"]["end"] == "2026-08-09T07:30:00+08:00"
+    assert observed_arguments["window_start"].isoformat() == "2026-08-09T00:00:00+08:00"
+    assert observed_arguments["window_end"].isoformat() == "2026-08-09T07:30:00+08:00"
+    assert "当前时间（中国标准时间）：2026-08-09T07:30:00+08:00" in deep_agent.last_prompt
+    assert "old-august-8-facts" not in deep_agent.last_prompt
+    assert "上一轮事实：无" in deep_agent.last_prompt
 
 
 @pytest.mark.asyncio
 async def test_agent_executes_llm_semantic_plan_and_exposes_planning_metadata():
-    planner = StructuredOutputMonitoringPlanner(
-        _StructuredModel(
-            {
-                "intent": "platform_health",
-                "goal": "判断昨晚平台是否发生短暂性能波动",
-                "time": {
-                    "expression": "昨晚",
-                    "label": "昨晚",
-                    "start": "2026-07-31T18:00:00+08:00",
-                    "end": "2026-08-01T06:00:00+08:00",
-                },
-                "entities": ["platform"],
-                "dimensions": ["latency", "error_rate"],
-                "required_tools": ["query_health_snapshots", "query_metrics"],
-                "uncertainties": [],
-                "confidence": 0.9,
-            }
-        )
-    )
     agent = MonitoringAgent(
-        planner=planner,
         tools=_registry(
             {
                 "query_health_snapshots": [
@@ -194,6 +151,11 @@ async def test_agent_executes_llm_semantic_plan_and_exposes_planning_metadata():
                     }
                 ],
             }
+        ),
+        agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
+            tool_names=("query_health_snapshots", "query_metrics"),
+            goal="判断昨晚平台是否发生短暂性能波动",
+            label="昨晚",
         ),
     )
 
@@ -228,27 +190,7 @@ async def test_customer_answer_does_not_expose_unnecessary_english(
     intent: str,
     question: str,
 ):
-    planner = StructuredOutputMonitoringPlanner(
-        _StructuredModel(
-            {
-                "intent": intent,
-                "goal": "分析当前监控事实和影响范围",
-                "time": {
-                    "expression": "最近一小时",
-                    "label": "最近一小时",
-                    "start": "2026-08-01T09:00:00+08:00",
-                    "end": "2026-08-01T10:00:00+08:00",
-                },
-                "entities": ["平台服务"],
-                "dimensions": ["健康状态", "影响范围"],
-                "required_tools": ["query_alerts"],
-                "uncertainties": [],
-                "confidence": 0.9,
-            }
-        )
-    )
     result = await MonitoringAgent(
-        planner=planner,
         tools=_registry(
             {
                 "query_alerts": [
@@ -261,6 +203,12 @@ async def test_customer_answer_does_not_expose_unnecessary_english(
                     }
                 ]
             }
+        ),
+        agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
+            tool_names=("query_alerts",),
+            intent=intent,
+            goal="分析当前监控事实和影响范围",
+            label="最近一小时",
         ),
     ).analyze(
         question=question,
@@ -294,7 +242,6 @@ def _registry(results: dict[str, list[dict]]) -> MonitoringToolRegistry:
 @pytest.mark.asyncio
 async def test_platform_health_uses_all_read_only_tools_and_returns_normal():
     agent = MonitoringAgent(
-        planner=RuleBasedMonitoringPlanner(),
         tools=_registry(
             {
                 "query_health_snapshots": [
@@ -309,6 +256,9 @@ async def test_platform_health_uses_all_read_only_tools_and_returns_normal():
                     }
                 ],
             }
+        ),
+        agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
+            tool_names=tuple(_TOOLS_BY_NAME),
         ),
     )
 
@@ -330,7 +280,9 @@ async def test_platform_health_uses_all_read_only_tools_and_returns_normal():
 async def test_platform_health_does_not_treat_empty_alerts_as_normal():
     result = await MonitoringAgent(
         tools=_registry({}),
-        planner=RuleBasedMonitoringPlanner(),
+        agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
+            tool_names=tuple(_TOOLS_BY_NAME),
+        ),
     ).analyze(
         question="昨天平台运行正常吗",
         context={"role": "platform_super_admin", "scope_key": "platform", "time_range": "1h"},
@@ -345,7 +297,6 @@ async def test_platform_health_does_not_treat_empty_alerts_as_normal():
 @pytest.mark.asyncio
 async def test_resolved_alert_makes_period_health_warning():
     result = await MonitoringAgent(
-        planner=RuleBasedMonitoringPlanner(),
         tools=_registry(
             {
                 "query_health_snapshots": [
@@ -368,6 +319,9 @@ async def test_resolved_alert_makes_period_health_warning():
                 ],
             }
         ),
+        agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
+            tool_names=tuple(_TOOLS_BY_NAME),
+        ),
     ).analyze(
         question="昨天平台运行正常吗",
         context={"role": "platform_super_admin", "scope_key": "platform", "time_range": "1h"},
@@ -386,7 +340,8 @@ async def test_registered_alert_tool_includes_resolved_alerts_in_window(monkeypa
         return [
             {
                 "id": 7,
-                "alert_title": "Worker 心跳过期",
+                "metric_code": "qa_error_rate",
+                "alert_title": "指标异常：qa_error_rate",
                 "severity": "warning",
                 "status": "resolved",
                 "first_fired_at": datetime(2026, 7, 31, 2, 0, tzinfo=UTC),
@@ -398,7 +353,18 @@ async def test_registered_alert_tool_includes_resolved_alerts_in_window(monkeypa
             }
         ]
 
+    async def list_definitions(*_args, **_kwargs):
+        return [
+            {
+                "metric_code": "qa_error_rate",
+                "metric_name": "问答错误率",
+                "status": "active",
+                "version": 1,
+            }
+        ]
+
     monkeypatch.setattr(monitoring_analysis_tools.alert_db, "list", list_alerts)
+    monkeypatch.setattr(monitoring_analysis_tools.definition_db, "list", list_definitions)
     registry = monitoring_analysis_tools.build_monitoring_tool_registry(scope=None)
     token = monitoring_analysis_tools.DB.set(object())
     try:
@@ -414,6 +380,46 @@ async def test_registered_alert_tool_includes_resolved_alerts_in_window(monkeypa
     assert result["data_status"] == "ready"
     assert result["items"][0]["status"] == "resolved"
     assert result["items"][0]["id"] == "alert-7"
+    assert result["items"][0]["title"] == "指标异常：问答错误率"
+    assert "qa_error_rate" not in result["items"][0]["title"]
+
+
+@pytest.mark.asyncio
+async def test_alert_tool_never_falls_back_to_internal_metric_code(monkeypatch):
+    now = datetime(2026, 8, 9, 7, 0, tzinfo=UTC)
+
+    async def list_alerts(*_args, **_kwargs):
+        return [
+            {
+                "id": 8,
+                "metric_code": "unregistered_metric_code",
+                "alert_title": "指标异常：unregistered_metric_code",
+                "severity": "critical",
+                "status": "firing",
+                "first_fired_at": now,
+                "last_fired_at": now,
+            }
+        ]
+
+    async def list_definitions(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(monitoring_analysis_tools.alert_db, "list", list_alerts)
+    monkeypatch.setattr(monitoring_analysis_tools.definition_db, "list", list_definitions)
+    registry = monitoring_analysis_tools.build_monitoring_tool_registry(scope=None)
+    token = monitoring_analysis_tools.DB.set(object())
+    try:
+        result = await registry.invoke(
+            "query_alerts",
+            window_start=now - timedelta(hours=1),
+            window_end=now + timedelta(minutes=1),
+            scope_key="platform",
+        )
+    finally:
+        monitoring_analysis_tools.DB.reset(token)
+
+    assert result["items"][0]["title"] == "指标异常：未配置中文名称"
+    assert "unregistered_metric_code" not in result["items"][0]["title"]
 
 
 @pytest.mark.asyncio

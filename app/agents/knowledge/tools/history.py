@@ -4,10 +4,9 @@ from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 
-from app.agents.knowledge.policies import authorize_tool
+from app.db.base import DB
 from app.db.knowledge_base import conversation as conversation_db
 from app.db.knowledge_base import conversation_message as conversation_message_db
-from app.db.base import DB
 from app.schemas.agent import (
     AgentContext,
     HistoryToolInput,
@@ -15,6 +14,8 @@ from app.schemas.agent import (
     ToolCall,
     ToolResult,
 )
+
+from ..state import KnowledgeHarnessContext
 
 MAX_MESSAGE_CHARS = 4000
 MAX_HISTORY_CHARS = 12000
@@ -103,21 +104,16 @@ async def load_conversation_history_result(
 async def load_conversation_history(
     limit: int = 10,
     *,
-    runtime: ToolRuntime[AgentContext],
+    runtime: ToolRuntime[KnowledgeHarnessContext],
 ) -> dict[str, Any]:
     """读取当前用户当前知识库会话的有限历史。"""
+    session = runtime.context.session
     call = ToolCall(
-        call_id=f"model-history-{runtime.state.get('agent_step', 0)}",
+        call_id=session.runtime.next_call_id(),
         name="load_conversation_history",
         input={"limit": limit},
     )
-    from .registry import build_default_registry
-
-    authorize_tool(context=runtime.context, call=call, registry=build_default_registry())
-    result = await load_conversation_history_result(
-        call,
-        runtime.context,
-    )
+    result = await session.runtime.execute(call, session.trusted_context)
     if not result.ok:
         raise PermissionError(result.error_message or "会话历史不可用")
     return result.data

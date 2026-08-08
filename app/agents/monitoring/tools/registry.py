@@ -9,6 +9,8 @@ from app.schemas.monitoring import (
     MonitoringToolOutput,
 )
 
+from ..presentation import presentation_for_tool
+
 MonitoringToolHandler = Callable[..., Awaitable[dict[str, Any]]]
 
 
@@ -23,7 +25,12 @@ class MonitoringToolRegistry:
         if name in self._tools:
             raise ValueError(f"duplicate monitoring tool: {name}")
         self._tools[name] = handler
-        self._definitions[name] = MonitoringToolDefinition(name=name)
+        presentation = presentation_for_tool(name)
+        self._definitions[name] = MonitoringToolDefinition(
+            name=name,
+            fact_type=presentation.get("fact_type"),
+            presentation=presentation,
+        )
 
     def names(self) -> frozenset[str]:
         return frozenset(self._tools)
@@ -36,7 +43,14 @@ class MonitoringToolRegistry:
     async def invoke(self, name: str, **kwargs):
         payload = MonitoringToolInput.model_validate(kwargs)
         result = await self.get(name)(**payload.model_dump())
-        return MonitoringToolOutput.model_validate(result).model_dump()
+        definition = self.definition(name)
+        return MonitoringToolOutput.model_validate(
+            {
+                **result,
+                "fact_type": definition.fact_type,
+                "presentation": definition.presentation,
+            }
+        ).model_dump()
 
     def definition(self, name: str) -> MonitoringToolDefinition:
         self.get(name)

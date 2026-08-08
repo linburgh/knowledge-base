@@ -4,11 +4,10 @@ from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 
-from app.agents.knowledge.policies import authorize_tool
 from app.core.common.exception import BusiException
 from app.core.services.knowledge_base import retrieval as retrieval_service
-from app.db.knowledge_base import mgr as knowledge_base_db
 from app.db.base import DB
+from app.db.knowledge_base import mgr as knowledge_base_db
 from app.schemas.agent import (
     AgentContext,
     RetrievalToolInput,
@@ -16,6 +15,8 @@ from app.schemas.agent import (
     ToolCall,
     ToolResult,
 )
+
+from ..state import KnowledgeHarnessContext
 
 
 async def retrieve_knowledge_result(call: ToolCall, context: AgentContext) -> ToolResult:
@@ -95,23 +96,19 @@ async def retrieve_knowledge(
     query: str,
     top_k: int | None = None,
     *,
-    runtime: ToolRuntime[AgentContext],
+    runtime: ToolRuntime[KnowledgeHarnessContext],
 ) -> dict[str, Any]:
     """检索当前用户有权限访问的知识库内容。"""
+    session = runtime.context.session
     call = ToolCall(
-        call_id=f"model-retrieve-{runtime.state.get('agent_step', 0)}",
+        call_id=session.runtime.next_call_id(),
         name="retrieve_knowledge",
         input={"query": query, "top_k": top_k},
     )
-    from .registry import build_default_registry
-
-    authorize_tool(context=runtime.context, call=call, registry=build_default_registry())
-    result = await retrieve_knowledge_result(
-        call,
-        runtime.context,
-    )
+    result = await session.runtime.execute(call, session.trusted_context)
     if not result.ok:
         raise BusiException(result.error_message or "知识库检索失败")
+    session.store_chunks(result.data.get("chunks", []))
     return result.data
 
 

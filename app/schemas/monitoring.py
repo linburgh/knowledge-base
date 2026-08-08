@@ -123,6 +123,8 @@ class AnalysisPlanning(BaseModel):
     uncertainties: list[str] = Field(default_factory=list)
     confidence: float | None = None
     error: str | None = None
+    requested_view: str | None = None
+    referenced_fact_ids: list[str] = Field(default_factory=list)
 
 
 class AnalysisAnswering(BaseModel):
@@ -166,12 +168,16 @@ class MonitoringToolInput(BaseModel):
 class MonitoringToolOutput(BaseModel):
     items: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
     data_status: Literal["ready", "empty"]
+    fact_type: str | None = None
+    presentation: dict[str, Any] = Field(default_factory=dict)
 
 
 class MonitoringToolDefinition(BaseModel):
     name: str
     read_only: bool = True
     requires_tenant_scope: bool = True
+    fact_type: str | None = None
+    presentation: dict[str, Any] = Field(default_factory=dict)
 
 
 class MonitoringContext(BaseModel):
@@ -204,6 +210,7 @@ class MonitoringResult(BaseModel):
     model_call_count: int = Field(default=0, ge=0)
     duration_ms: int = Field(default=0, ge=0)
     skill_refs: list[AgentSkillRef] = Field(default_factory=list)
+    fact_set: dict[str, Any] = Field(default_factory=dict)
 
 
 class AnalysisSemanticOverview(BaseModel):

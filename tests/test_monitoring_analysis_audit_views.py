@@ -5,8 +5,6 @@ from datetime import timedelta
 import pytest
 
 from app.agents.monitoring import MonitoringAgent
-from app.agents.monitoring.answering import DeterministicMarkdownAnswerComposer
-from app.agents.monitoring.planner import RuleBasedMonitoringPlanner
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
 from app.core.common import utils
 from app.core.common.auth import CurrentUser
@@ -478,6 +476,11 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
         messages.append({"id": message_id, **values, "created_at": utils.utc_now()})
         return message_id
 
+    async def list_messages(_, **filters):
+        return [
+            row for row in messages if all(row.get(key) == value for key, value in filters.items())
+        ]
+
     async def audit(*_, **values):
         audits.append(values)
 
@@ -490,22 +493,62 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     monkeypatch.setattr(monitoring_analysis.conversation_db, "update_", update_conversation)
     monkeypatch.setattr(monitoring_analysis.conversation_db, "list", list_conversations)
     monkeypatch.setattr(monitoring_analysis.message_db, "insert_", insert_message)
+    monkeypatch.setattr(monitoring_analysis.message_db, "list", list_messages)
     monkeypatch.setattr(monitoring_analysis.audit_service, "record", audit)
     monkeypatch.setattr(
         monitoring_analysis,
         "build_monitoring_tool_registry",
         lambda **_: MonitoringToolRegistry(),
     )
-    monkeypatch.setattr(
-        monitoring_analysis,
-        "build_monitoring_planner",
-        lambda: RuleBasedMonitoringPlanner(),
-    )
-    monkeypatch.setattr(
-        monitoring_analysis,
-        "build_monitoring_answer_composer",
-        lambda: DeterministicMarkdownAnswerComposer(),
-    )
+
+    seen_prior_fact_sets = []
+
+    class StubMonitoringAgent:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def analyze(self, *, question, context):
+            del question
+            values = context.model_dump()
+            seen_prior_fact_sets.append(values.get("prior_fact_set") or {})
+            return {
+                "intent": "evidence_review",
+                "answer": "已根据中国标准时间内的授权证据完成分析。",
+                "conclusion": "unknown",
+                "data_status": "complete",
+                "time_range": {
+                    "label": "最近1小时",
+                    "timezone": "Asia/Shanghai",
+                    "source": "conversation",
+                },
+                "scope": {"type": "platform", "name": "全平台"},
+                "status": "completed",
+                "agent": "自主监控智能体",
+                "evidence": values.get("evidence") or [],
+                "limitations": [],
+                "tool_calls": [],
+                "planning": {"mode": "llm", "goal": "查看授权监控证据"},
+                "answering": {"mode": "llm"},
+                "fact_set": {
+                    "id": "monitor-facts-alerts",
+                    "sources": [
+                        {
+                            "tool_name": "query_alerts",
+                            "fact_type": "alert",
+                            "presentation": {"title": "告警明细"},
+                            "items": [
+                                {
+                                    "id": "alert-7",
+                                    "title": "Worker 心跳过期",
+                                    "status": "firing",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+
+    monkeypatch.setattr(monitoring_analysis, "MonitoringAgent", StubMonitoringAgent)
 
     user = CurrentUser(user_id="11")
     conversation = await monitoring_analysis.create_conversation(
@@ -519,6 +562,19 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     result = await monitoring_analysis.send_message(
         conversation["id"],
         AnalysisMessageRequest(content="有哪些直接证据？", context={}),
+        user,
+    )
+    followup = await monitoring_analysis.send_message(
+        conversation["id"],
+        AnalysisMessageRequest(
+            content="这1条具体是什么？",
+            context={
+                "prior_fact_set": {
+                    "id": "forged-client-facts",
+                    "sources": [{"items": [{"id": "forged-alert"}]}],
+                }
+            },
+        ),
         user,
     )
     with pytest.raises(BusiException, match="会话名称不能为空"):
@@ -540,6 +596,10 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     assert conversation["metadata"]["evidence"][0]["id"] == "alert-7"
     assert all(item.get("id") != "forged" for item in conversation["metadata"]["evidence"])
     assert result["agent"] == "自主监控智能体"
+    assert followup["agent"] == "自主监控智能体"
+    assert seen_prior_fact_sets[0] == {}
+    assert seen_prior_fact_sets[1]["id"] == "monitor-facts-alerts"
+    assert seen_prior_fact_sets[1]["id"] != "forged-client-facts"
     assert result["intent"] == "evidence_review"
     assert result["time_range"]["source"] == "conversation"
     assert renamed["title"] == "Worker 心跳分析"
@@ -550,6 +610,7 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     assert messages[-1]["metadata"]["evidence"][0]["id"] == "alert-7"
     assert messages[-1]["metadata"]["intent"] == "evidence_review"
     assert messages[-1]["metadata"]["time_range"]["source"] == "conversation"
+    assert messages[-1]["metadata"]["fact_set"]["id"] == "monitor-facts-alerts"
     AnalysisMessageResponse.model_validate(result)
     assert {item["action"] for item in audits} == {
         "monitor_analysis_conversation_created",

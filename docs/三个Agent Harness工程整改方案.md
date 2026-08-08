@@ -281,17 +281,16 @@ Chat Service
 Monitoring Service
   → MonitoringTask + MonitoringContext
   → MonitoringAgent
-  → 加载 monitoring-analysis Skill
-  → Structured Planner
-  → MonitoringRuntime
-  → Policy + Registry + 监控只读工具
+  → create_deep_agent 受限 Harness
+  → 官方 Skills Middleware 加载两个 Skill
+  → ToolRuntime + Policy + Registry + 监控只读工具
+  → 模型观察事实并自主继续查询或结束
   → 确定性事实评估
-  → 加载 answer-writing Skill
-  → 回答模型或确定性降级
+  → 输出安全校验或确定性降级
   → MonitoringResult
 ```
 
-结构化计划继续作为主路径，有限规则只作为模型不可用或输出非法时的降级路径。事实健康判断继续由确定性代码完成，Skill 和回答模型不得改变告警状态或把缺少数据解释为正常。
+工具选择、观察和终止由 `create_deep_agent` 官方模型—工具循环完成，不再使用独立 Structured Planner 和 Answer Composer 组成生产主链。事实健康判断继续由确定性代码完成，Skill 和模型输出不得改变告警状态或把缺少数据解释为正常。
 
 ### 技能补齐
 
@@ -303,7 +302,7 @@ app/agents/monitoring/skills/
 └── answer-writing/SKILL.md
 ```
 
-`monitoring-analysis` 包含时间语义、分析目标、监控维度、工具选择、证据充分性、影响边界和身份问题处理；`answer-writing` 包含中文回答、中国标准时间、动态 Markdown、表格使用、结论编码一致性、证据引用和禁止扩大结论。Planner 只加载分析 Skill，Answer Composer 只加载回答 Skill，并在运行摘要记录实际 Skill。
+`monitoring-analysis` 包含时间语义、分析目标、监控维度、工具选择、证据充分性、影响边界和身份问题处理；`answer-writing` 包含中文回答、中国标准时间、动态 Markdown、表格使用、结论编码一致性、证据引用和禁止扩大结论。两个 Skill 均由官方 Skills Middleware 提供给同一个 Agent 循环，并在运行摘要记录实际版本。
 
 ### 文件调整
 
@@ -314,14 +313,14 @@ app/agents/monitoring/skills/
 | `monitoring/policies.py` | 校验角色之外，增加租户范围、平台范围、最大时间窗口和输出敏感字段规则 |
 | `monitoring/tools/registry.py` | 工具定义包含输入 Schema、输出 Schema、只读属性和权限要求 |
 | `monitoring/tools/*.py` | 从 Service 迁入健康、告警、指标、事件和任务五类只读工具实现 |
-| `monitoring/planner.py` | 从分析 Skill 构造模型指导；保留 Schema 校验、工具白名单归一和规则降级 |
-| `monitoring/answering.py` | 从回答 Skill 构造回答指导；保留结论编码、证据 ID、中国标准时间和输出安全校验 |
+| `monitoring/state.py` | 保存 ToolRuntime 可信 Session、实际事实、调用轨迹和单轮时间窗口 |
+| `monitoring/validation.py` | 校验结论编码、证据 ID、中国标准时间和输出安全；不单独调用模型 |
 | `app/schemas/monitoring.py` | 增加任务、上下文、工具输入输出、事实集合、分析结果和运行摘要模型 |
 | `monitoring_analysis_tools.py` | 删除具体工具实现，只保留 Service 需要的依赖装配或完全移除 |
 
 ### 验收标准
 
-- 监控 Harness 至少存在两个 Skill，Planner 和 Answer Composer 均有真实加载记录。
+- 监控 Harness 至少存在两个 Skill，官方 Skills Middleware 有真实加载记录。
 - Service 不再实现监控 Agent 专属查询工具。
 - 所有五类工具只能通过 Registry 调用，模型无法覆盖租户、用户、角色或授权范围。
 - Agent 公开结果通过 Pydantic 校验后才交给 Service 保存。
@@ -364,11 +363,11 @@ Worker 继续负责领取任务、数据库状态、事务、结果持久化和�
   → 确定性指标与报告
 ```
 
-逐题失败进入单题失败结果后继续汇总；配置非法、权限拒绝、问题集无法解析和运行预算耗尽进入任务失败；取消状态进入 `cancelled`，不生成伪造成功报告。Graph 的状态使用 `evaluation/state.py`，跨 Worker 的任务与结果使用 `app/schemas/evaluation.py`。
+逐题失败进入单题失败结果后继续汇总；配置非法、权限拒绝、问题集无法解析和运行预算耗尽进入任务失败；取消状态进入 `cancelled`，不生成伪造成功报告。Deep Agent 的可信会话状态使用 `evaluation/state.py`，跨 Worker 的任务与结果使用 `app/schemas/evaluation.py`。
 
 ### 工具边界
 
-评测 Agent 第一阶段只注册一个外部执行工具：`call_knowledge_agent`。该工具封装知识 Agent 公开入口，输入包含问题及可信的用户、租户、组织、知识库、索引版本和问答配置快照，输出使用公开 `AgentResult`。问题生成、指标计算和报告生成属于评测图领域节点，不伪装成可由模型任意选择的工具。
+评测 Agent 的 Registry 只注册一个跨 Agent 外部工具：`call_knowledge_agent`。该工具封装知识 Agent 公开入口，输入包含问题及可信的用户、租户、组织、知识库、索引版本和问答配置快照，输出使用公开 `AgentResult`。Deep Agent 可调用 `execute_evaluation_cases`、`inspect_evaluation_results` 和 `retry_evaluation_cases` 三个 Harness 领域工具；指标与门禁仍由确定性代码计算，不能由模型覆盖。
 
 ### 文件调整
 
@@ -389,7 +388,7 @@ Worker 继续负责领取任务、数据库状态、事务、结果持久化和�
 ### 验收标准
 
 - Worker 不再直接调用 `EvaluationAgent.run(config, questions)` 旧签名，也不直接注入裸 `run_knowledge_agent` 函数。
-- Graph 是生产主链，有节点级日志和状态测试，不存在未调用的包装 Graph。
+- `create_deep_agent` 是生产自主决策主链，有 Skill、模型、工具和终态日志，不存在未调用的包装 Graph 或固定顺序工作流。
 - `authorize_evaluation()` 在 Agent 入口真实执行。
 - `EvaluationToolRegistry.invoke()` 是调用知识 Agent 的唯一通路。
 - 租户、组织、知识库、用户、索引版本和问答配置完整传递，模型或问题文件不能覆盖。
@@ -457,18 +456,18 @@ Worker 继续负责领取任务、数据库状态、事务、结果持久化和�
 
 ### 监控整改
 
-1. 增加两个 Skill，并先通过现有 Planner、Composer 显式加载。
+1. 增加两个 Skill，并通过 `create_deep_agent` 的官方 Skills Middleware 加载。
 2. 在 `app/schemas/monitoring.py` 增加结构化 Agent 协议。
 3. 将五类工具迁移到监控 Harness，Service 只装配可信上下文。
-4. 扩展 Runtime 错误、重试、停止原因和运行摘要。
-5. 保持结构化计划主路径及有限规则降级路径。
+4. 接入官方模型/工具调用上限与重试 Middleware，Runtime 保留项目特有预算和轨迹。
+5. 删除独立 Planner/Composer 生产主链，由 Agent 自主选择工具并输出结构化结果。
 
 ### 评测整改
 
 1. 先完善评测 Task、Context 和 Result Schema，补全租户与资源范围。
 2. 将知识 Agent 调用封装为评测 Registry 工具。
 3. 让 Policy 进入 Agent 入口与工具调用。
-4. 将现有顺序编排迁移为真实 LangGraph 节点，保持逐题结果兼容。
+4. 将现有顺序编排迁移为受限 `create_deep_agent` 自主工具循环，保持逐题结果兼容。
 5. Worker 切换到新的评测 Agent 公开入口。
 6. 增加取消、恢复、任务级超时和节点级日志验证。
 
@@ -503,7 +502,7 @@ Worker 继续负责领取任务、数据库状态、事务、结果持久化和�
 | Harness 接入增加延迟 | 问答和分析响应变慢 | 简单问题保持确定性单检索；复杂模式限制模型与工具次数 |
 | Skill 改变回答风格 | 客户展示不稳定 | Skill 进入版本化评测集，结论和引用继续由确定性校验保护 |
 | 工具迁移改变数据范围 | 越权或漏数 | 迁移前后执行租户、组织、平台范围合同测试和结果对比 |
-| 评测图迁移影响任务状态 | 运行卡住或重复执行 | 节点幂等、取消检查、任务快照和 Worker 故障注入测试 |
+| 评测 Agent 迁移影响任务状态 | 运行卡住或重复执行 | 工具幂等、取消检查、任务快照和 Worker 故障注入测试 |
 | 双路径长期共存 | 行为漂移和维护成本上升 | 每个 Agent 只允许一个生产入口，整改完成后机械检查无调用旧代码 |
 | 结构化协议变严格 | 历史元数据解析失败 | 所有新增字段提供兼容默认值，使用版本化解析与旧数据回归 |
 
@@ -547,7 +546,7 @@ Worker 继续负责领取任务、数据库状态、事务、结果持久化和�
 1. 三个 Agent 的入口、Runtime、Policies、Registry 和 Skill 整改代码。
 2. `app/schemas/agent.py`、`evaluation.py`、`monitoring.py` 的结构化协议。
 3. 监控五类只读工具迁移和评测知识 Agent 工具适配器。
-4. 评测真实 LangGraph 工作流和状态模型。
+4. 评测受限 Deep Agent Harness 和可信会话状态模型。
 5. Harness 结构、运行、权限、预算、Skill、故障和跨 Agent 合同测试。
 6. 三个业务域实施文档、联调记录和测试用例状态更新。
 

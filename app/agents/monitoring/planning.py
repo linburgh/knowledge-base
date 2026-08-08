@@ -81,11 +81,10 @@ def detect_intent(question: str) -> AnalysisIntent:
 
 
 def _local_now(now: datetime | None) -> datetime:
-    timezone = ZoneInfo(MONITORING_TIMEZONE)
     current = now or utils.utc_now()
     if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone)
-    return current.astimezone(timezone)
+        current = current.replace(tzinfo=ZoneInfo(MONITORING_TIMEZONE))
+    return utils.to_china_standard_time(current)
 
 
 def _natural_day(day, label: str) -> AnalysisTimeRange:
@@ -109,6 +108,24 @@ def resolve_time_range(
     current = _local_now(now)
     normalized = "".join(question.lower().split())
     time_limitation = None
+    if "昨晚" in normalized:
+        start = datetime.combine(
+            current.date() - timedelta(days=1),
+            time(hour=18),
+            tzinfo=current.tzinfo,
+        )
+        planned_end = datetime.combine(
+            current.date(),
+            time(hour=6),
+            tzinfo=current.tzinfo,
+        )
+        return AnalysisTimeRange(
+            start=start,
+            end=min(current, planned_end),
+            timezone=MONITORING_TIMEZONE,
+            label="昨晚",
+            source="question",
+        )
     if "昨天" in normalized:
         return _natural_day(current.date() - timedelta(days=1), "昨天")
     if "今天" in normalized:

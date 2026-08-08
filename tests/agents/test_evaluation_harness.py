@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -66,6 +67,27 @@ def _task(*questions: str, **config_overrides) -> EvaluationAgentTask:
     )
 
 
+def _completed_registry() -> EvaluationToolRegistry:
+    registry = EvaluationToolRegistry()
+
+    async def handler(payload, context):
+        del payload, context
+        return KnowledgeAgentCallResult(
+            result=AgentResult(
+                answer="答案",
+                mode="single_retrieval",
+                status="completed",
+                top_k=3,
+                hit_count=1,
+                termination_reason="completed",
+                duration_ms=1,
+            )
+        )
+
+    registry.register("call_knowledge_agent", handler)
+    return registry
+
+
 class FakeDeepAgent:
     def __init__(self, *, retry_case_numbers: list[int] | None = None) -> None:
         self.retry_case_numbers = retry_case_numbers or []
@@ -104,6 +126,40 @@ class FakeDeepAgent:
         }
 
 
+class MissingStructuredEvaluationAgent(FakeDeepAgent):
+    async def ainvoke(self, inputs, *, context, config):
+        result = await super().ainvoke(inputs, context=context, config=config)
+        result.pop("structured_response")
+        return result
+
+
+class SlowFinalEvaluationAgent:
+    async def ainvoke(self, inputs, *, context, config):
+        del inputs, config
+        runtime = SimpleNamespace(context=context)
+        await execute_evaluation_cases.coroutine(runtime=runtime)
+        await inspect_evaluation_results.coroutine(runtime=runtime)
+        # 模拟逐题结果和指标已经形成，但外部模型不返回最终结构化终态。
+        await asyncio.sleep(1)
+
+
+class SlowCasesEvaluationAgent:
+    async def ainvoke(self, inputs, *, context, config):
+        del inputs, config
+        await execute_evaluation_cases.coroutine(
+            runtime=SimpleNamespace(context=context),
+        )
+
+
+class ProviderFailureAfterCasesAgent:
+    async def ainvoke(self, inputs, *, context, config):
+        del inputs, config
+        await execute_evaluation_cases.coroutine(
+            runtime=SimpleNamespace(context=context),
+        )
+        raise RuntimeError("provider unavailable")
+
+
 def test_build_evaluation_agent_uses_restricted_deepagents_harness() -> None:
     config = EvaluationConfig(
         kb_id=6,
@@ -139,6 +195,13 @@ def test_build_evaluation_agent_uses_restricted_deepagents_harness() -> None:
         ToolRetryMiddleware,
     }
     assert isinstance(kwargs["response_format"], ToolStrategy)
+    tool_limit = next(
+        item for item in kwargs["middleware"] if isinstance(item, ToolCallLimitMiddleware)
+    )
+    assert tool_limit.run_limit == max(
+        config.max_model_calls * 4,
+        (config.max_review_rounds + 1) * 2 + 8,
+    )
     assert "conclusion" not in EvaluationAgentOutput.model_fields
     assert kwargs["permissions"][0].mode == "allow"
     assert kwargs["permissions"][0].paths == ["/skills/**"]
@@ -302,3 +365,89 @@ async def test_deep_agent_cannot_exceed_review_limit() -> None:
             registry=registry,
             agent_factory=lambda config: FakeDeepAgent(retry_case_numbers=[1]),
         ).run(_task("问题", max_review_rounds=0), _context())
+
+
+@pytest.mark.asyncio
+async def test_missing_structured_terminal_preserves_evaluation_results() -> None:
+    result = await EvaluationAgent(
+        registry=_completed_registry(),
+        agent_factory=lambda config: MissingStructuredEvaluationAgent(),
+    ).run(_task("问题"), _context())
+
+    assert result.summary.status == "completed"
+    assert result.summary.termination_reason == "evidence_insufficient"
+    assert result.summary.limitations == ["外部模型终态不可用：StructuredOutputMissing"]
+    assert len(result.case_results) == 1
+    assert result.report["agent_analysis"]["confidence"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_model_timeout_preserves_completed_evaluation_results() -> None:
+    result = await EvaluationAgent(
+        registry=_completed_registry(),
+        agent_factory=lambda config: SlowFinalEvaluationAgent(),
+    ).run(
+        _task("问题", run_timeout_seconds=0.15),
+        _context(),
+    )
+
+    assert result.summary.status == "completed"
+    assert result.summary.termination_reason == "evidence_insufficient"
+    assert result.summary.limitations == ["外部模型终态不可用：ModelTimeout"]
+    assert len(result.case_results) == 1
+    assert result.metrics["conclusion"] == result.conclusion
+
+
+@pytest.mark.asyncio
+async def test_total_timeout_preserves_individually_completed_cases() -> None:
+    registry = EvaluationToolRegistry()
+
+    async def handler(payload, context):
+        del context
+        if payload["case_no"] == 2:
+            await asyncio.sleep(1)
+        return KnowledgeAgentCallResult(
+            result=AgentResult(
+                answer="答案",
+                mode="single_retrieval",
+                status="completed",
+                top_k=3,
+                hit_count=1,
+                termination_reason="completed",
+                duration_ms=1,
+            )
+        )
+
+    registry.register("call_knowledge_agent", handler)
+    result = await EvaluationAgent(
+        registry=registry,
+        agent_factory=lambda config: SlowCasesEvaluationAgent(),
+    ).run(
+        _task("快速问题", "慢速问题", concurrency=2, run_timeout_seconds=0.2),
+        _context(),
+    )
+
+    assert result.summary.status == "failed"
+    assert result.summary.termination_reason == "timeout"
+    assert result.summary.completed_count == 1
+    assert result.summary.failed_count == 1
+    assert result.summary.limitations == ["评测总超时，仅保留已完成题目"]
+    assert [item["case_no"] for item in result.case_results] == [1]
+    assert result.conclusion == "indeterminate"
+
+
+@pytest.mark.asyncio
+async def test_provider_error_returns_structured_failure_and_preserves_cases() -> None:
+    result = await EvaluationAgent(
+        registry=_completed_registry(),
+        agent_factory=lambda config: ProviderFailureAfterCasesAgent(),
+    ).run(_task("问题"), _context())
+
+    assert result.summary.status == "failed"
+    assert result.summary.termination_reason == "agent_error"
+    assert result.summary.completed_count == 1
+    assert result.summary.failed_count == 0
+    assert result.summary.limitations == ["外部模型服务异常：RuntimeError"]
+    assert len(result.case_results) == 1
+    assert result.report["conclusion"] == "indeterminate"
+    assert result.conclusion == "indeterminate"

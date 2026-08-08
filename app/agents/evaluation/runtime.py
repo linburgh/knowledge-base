@@ -131,6 +131,14 @@ class EvaluationRuntime:
         semaphore = asyncio.Semaphore(self.concurrency)
         event_fields = monitoring_fields or {}
 
+        def record_partial(result: CaseResult) -> CaseResult:
+            # 每题完成即记录，而不是等待整批 gather 返回。这样整次 Deep Agent
+            # 被总超时取消时，已经完成的题目仍可进入失败报告和后续持久化。
+            merged = {item.case_no: item for item in self.partial_results}
+            merged[result.case_no] = result
+            self.partial_results = [merged[number] for number in sorted(merged)]
+            return result
+
         async def one(case_no: int, question: EvaluationQuestion) -> CaseResult:
             async with semaphore:
                 await self.check_cancelled()
@@ -173,7 +181,7 @@ class EvaluationRuntime:
                             status=result.status,
                             **event_fields,
                         )
-                        return result
+                        return record_partial(result)
                     except TimeoutError:
                         LOG.warning(
                             "自主评测Agent case timeout case_no={} attempt={}",
@@ -205,7 +213,7 @@ class EvaluationRuntime:
                                 status="timeout",
                                 **event_fields,
                             )
-                            return result
+                            return record_partial(result)
                         await emit_gather_event(
                             "evaluation.run",
                             "evaluation_case_retry",
@@ -249,7 +257,7 @@ class EvaluationRuntime:
                                 status="failed",
                                 **event_fields,
                             )
-                            return result
+                            return record_partial(result)
                         await emit_gather_event(
                             "evaluation.run",
                             "evaluation_case_retry",

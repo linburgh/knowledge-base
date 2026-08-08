@@ -103,7 +103,7 @@ class AgentRuntime:
         self.stop_reason = reason
 
     def validate_graph_budget(self, tool_call_count: int, model_call_count: int) -> None:
-        if tool_call_count > self.max_tool_calls or model_call_count > self.max_steps:
+        if tool_call_count > self.max_tool_calls or model_call_count > self.max_model_calls:
             raise AgentBudgetExceeded("Agent 执行超过预算")
 
     def register_skill(self, skill: AgentSkillRef) -> None:

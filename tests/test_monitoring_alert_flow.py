@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from langchain_core.messages import AIMessage
 
+from app.agents.monitoring.models import MonitoringAgentOutput
 from app.core.common.auth import CurrentUser
 from app.core.services.monitoring import access as monitoring_access
 from app.core.services.monitoring import mgr as monitoring
@@ -11,6 +13,26 @@ from app.db import api as db_api
 from app.db.base import DB
 from app.schemas.monitoring import MonitorEventRequest
 from app.workers import monitoring_aggregate, monitoring_notify
+
+
+class _StaticMonitoringDeepAgent:
+    def __init__(self, intent: str) -> None:
+        self.intent = intent
+
+    async def ainvoke(self, inputs, *, context, config):
+        del inputs, context, config
+        return {
+            "structured_response": MonitoringAgentOutput(
+                intent=self.intent,
+                goal="分析当前授权监控事实",
+                answer_markdown=("当前告警证据不足，需要结合中国标准时间内的监控事实继续核查。"),
+                conclusion_ack="unknown",
+                layout_reason="事实不足，使用简短说明",
+                confidence=0.3,
+                termination_reason="evidence_insufficient",
+            ),
+            "messages": [AIMessage(content="完成分析")],
+        }
 
 
 class FakeDatabase:
@@ -223,6 +245,8 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     await monitoring_aggregate.run_once()
     assert state["values"][0]["metric_value"] == 0.6
     assert state["alerts"][0]["status"] == "firing"
+    assert state["alerts"][0]["alert_title"] == "指标异常：问答错误率"
+    assert "error_rate" not in state["alerts"][0]["alert_title"]
     assert any(
         event.get("source_type") == "alert" and event.get("event_type") == "alert_fired"
         for event in state["events"]
@@ -274,9 +298,10 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
     assert all(item["status"] == "sent" for item in state["records"])
 
     from app.agents.monitoring import MonitoringAgent
-    from app.agents.monitoring.planner import RuleBasedMonitoringPlanner
 
-    result = await MonitoringAgent(planner=RuleBasedMonitoringPlanner()).analyze(
+    result = await MonitoringAgent(
+        agent_factory=lambda runtime: _StaticMonitoringDeepAgent("incident_cause")
+    ).analyze(
         question="为什么刚才触发告警？",
         context={"role": "tenant_admin", "alerts": state["alerts"], "evidence": state["events"]},
     )
@@ -288,9 +313,10 @@ async def test_alert_full_lifecycle_from_event_to_agent(monitoring_flow):
 @pytest.mark.asyncio
 async def test_monitoring_agent_introduces_itself_without_unrelated_evidence():
     from app.agents.monitoring import MonitoringAgent
-    from app.agents.monitoring.planner import RuleBasedMonitoringPlanner
 
-    result = await MonitoringAgent(planner=RuleBasedMonitoringPlanner()).analyze(
+    result = await MonitoringAgent(
+        agent_factory=lambda runtime: _StaticMonitoringDeepAgent("identity")
+    ).analyze(
         question="你是谁？介绍一下自己",
         context={
             "role": "tenant_admin",

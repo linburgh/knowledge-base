@@ -1,9 +1,10 @@
 import asyncio
 import unittest
+from datetime import UTC, datetime
 
 from app.core.common.exception import BusiException
 from app.core.common.log_utils import trace
-from app.core.common.utils import mask_sensitive, normalize_space
+from app.core.common.utils import mask_sensitive, normalize_space, to_china_standard_time
 
 
 class CommonTest(unittest.TestCase):
@@ -16,6 +17,10 @@ class CommonTest(unittest.TestCase):
     def test_utils(self):
         self.assertEqual(normalize_space("a  \n b"), "a b")
         self.assertEqual(mask_sensitive("1234567890"), "1234****7890")
+        converted = to_china_standard_time(datetime(2026, 8, 8, 23, 30, tzinfo=UTC))
+        self.assertEqual(converted.isoformat(), "2026-08-09T07:30:00+08:00")
+        with self.assertRaisesRegex(ValueError, "Timezone-aware"):
+            to_china_standard_time(datetime(2026, 8, 9, 7, 30))
 
     def test_trace_preserves_sync_exception(self):
         @trace

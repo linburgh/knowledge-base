@@ -6,15 +6,26 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
 
+CHINA_STANDARD_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
 
 def utc_now() -> datetime:
+    """返回带时区的 UTC 时间；业务自然日和客户展示必须先显式转换时区。"""
     return datetime.now(UTC)
+
+
+def to_china_standard_time(value: datetime) -> datetime:
+    """将带时区时间转换为中国标准时间，禁止猜测无时区时间的来源。"""
+    if value.tzinfo is None:
+        raise ValueError("Timezone-aware datetime is required")
+    return value.astimezone(CHINA_STANDARD_TIMEZONE)
 
 
 def new_request_id() -> str:

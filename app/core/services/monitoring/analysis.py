@@ -3,16 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.monitoring import MonitoringAgent
-from app.agents.monitoring.answering import build_monitoring_answer_composer
-from app.agents.monitoring.planner import build_monitoring_planner
 from app.core.common import utils
 from app.core.common.auth import CurrentUser
 from app.core.common.exception import BusiException
 from app.core.services.platform import audit as audit_service
-from app.db.knowledge_base import conversation as conversation_db
-from app.db.knowledge_base import conversation_message as message_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.db.knowledge_base import conversation as conversation_db
+from app.db.knowledge_base import conversation_message as message_db
 from app.schemas.monitoring import (
     AnalysisConversationModifyRequest,
     AnalysisConversationRequest,
@@ -126,9 +124,7 @@ async def modify_conversation(
 
 
 @check_db_connected
-async def remove_conversation(
-    conversation_id: int, current_user: CurrentUser
-) -> dict[str, Any]:
+async def remove_conversation(conversation_id: int, current_user: CurrentUser) -> dict[str, Any]:
     await require_monitoring_access(current_user)
     scope = await tenant_scope(current_user)
     db = DB.get()
@@ -167,11 +163,17 @@ async def send_message(
         raise BusiException("分析对话不存在", status_code=404)
     scope_key = "tenant" if scope is not None else "platform"
     conversation_context = conversation.get("metadata") or {}
-    agent = MonitoringAgent(
-        tools=build_monitoring_tool_registry(scope=scope),
-        planner=build_monitoring_planner(),
-        answer_composer=build_monitoring_answer_composer(),
-    )
+    conversation_messages = await message_db.list(db, conversation_id=conversation_id)
+    prior_fact_set: dict[str, Any] = {}
+    for message in reversed(conversation_messages):
+        if message.get("role") != "assistant":
+            continue
+        metadata = message.get("metadata") or {}
+        candidate = metadata.get("fact_set")
+        if isinstance(candidate, dict) and candidate.get("sources"):
+            prior_fact_set = candidate
+            break
+    agent = MonitoringAgent(tools=build_monitoring_tool_registry(scope=scope))
     context = {
         **conversation_context,
         "time_range": str(conversation_context.get("time_range") or "1h"),
@@ -180,6 +182,8 @@ async def send_message(
         "tenant_id": scope,
         "user_id": current_user.user_id,
         "role": "tenant_admin" if scope is not None else "platform_super_admin",
+        # 只接受同一授权会话中由服务端持久化的事实集合，忽略客户端覆盖值。
+        "prior_fact_set": prior_fact_set,
     }
     async with db.transaction():
         user_message_id = await message_db.insert_(
@@ -232,6 +236,7 @@ async def send_message(
             },
             "answering": {"mode": "fallback", "error": type(exc).__name__},
             "error": type(exc).__name__,
+            "fact_set": {},
         }
     incident_id = (
         conversation_context.get("incident_id")
@@ -260,6 +265,7 @@ async def send_message(
                 "tool_calls": result.get("tool_calls") or [],
                 "planning": result.get("planning") or {},
                 "answering": result.get("answering") or {},
+                "fact_set": result.get("fact_set") or {},
             },
         )
         await conversation_db.update_(db, {"updated_at": utils.utc_now()}, id=conversation_id)

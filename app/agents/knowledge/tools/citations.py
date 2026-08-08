@@ -4,7 +4,6 @@ from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 
-from app.agents.knowledge.policies import authorize_tool
 from app.schemas.agent import (
     AgentContext,
     CitationCandidate,
@@ -13,6 +12,8 @@ from app.schemas.agent import (
     ToolCall,
     ToolResult,
 )
+
+from ..state import KnowledgeHarnessContext
 
 
 def _build_candidates(chunks: list[dict[str, Any]]) -> CitationToolOutput:
@@ -72,21 +73,16 @@ async def build_citations_result(call: ToolCall, context: AgentContext) -> ToolR
 async def build_citations(
     chunks: list[dict[str, Any]],
     *,
-    runtime: ToolRuntime[AgentContext],
+    runtime: ToolRuntime[KnowledgeHarnessContext],
 ) -> dict[str, Any]:
     """整理本次真实检索结果中的引用。"""
+    session = runtime.context.session
     call = ToolCall(
-        call_id=f"model-citations-{runtime.state.get('agent_step', 0)}",
+        call_id=session.runtime.next_call_id(),
         name="build_citations",
         input={"chunks": chunks},
     )
-    from .registry import build_default_registry
-
-    authorize_tool(context=runtime.context, call=call, registry=build_default_registry())
-    result = await build_citations_result(
-        call,
-        runtime.context,
-    )
+    result = await session.runtime.execute(call, session.trusted_context)
     if not result.ok:
         raise ValueError(result.error_message or "引用整理失败")
     return result.data

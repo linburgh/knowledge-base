@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
+from app.db.base import DB
 from app.db.monitoring import (
     alert as alert_db,
 )
@@ -20,7 +21,6 @@ from app.db.monitoring import (
 from app.db.monitoring import (
     state_snapshot as snapshot_db,
 )
-from app.db.base import DB
 
 _STATUS_NAMES = {
     "healthy": "正常",
@@ -58,6 +58,35 @@ def _number(value: Any) -> int | float | None:
 
 def _result(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"items": items[:50], "data_status": "ready" if items else "empty"}
+
+
+def _metric_names(rows: list[dict[str, Any]]) -> dict[str, str]:
+    latest: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        code = str(row.get("metric_code") or "")
+        if not code or row.get("status") != "active":
+            continue
+        if code not in latest or int(row.get("version") or 0) > int(
+            latest[code].get("version") or 0
+        ):
+            latest[code] = row
+    return {
+        code: str(row.get("metric_name") or "").strip()
+        for code, row in latest.items()
+        if str(row.get("metric_name") or "").strip()
+    }
+
+
+def _customer_alert_title(row: dict[str, Any], metric_names: dict[str, str]) -> str:
+    """客户标题使用指标中文业务名，绝不回退暴露内部指标编码。"""
+    metric_code = str(row.get("metric_code") or "").strip()
+    stored_title = str(row.get("alert_title") or "").strip()
+    metric_name = metric_names.get(metric_code)
+    if metric_name and (metric_code in stored_title or stored_title.startswith("指标异常：")):
+        return f"指标异常：{metric_name}"
+    if metric_code and metric_code in stored_title:
+        return "指标异常：未配置中文名称"
+    return stored_title or "监控告警"
 
 
 def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegistry:
@@ -98,6 +127,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
         *, window_start: datetime, window_end: datetime, scope_key: str
     ) -> dict[str, Any]:
         del scope_key
+        metric_names = _metric_names(await definition_db.list(DB.get()))
         rows = await alert_db.list(DB.get(), **_scope_filter(scope))
         items = []
         for row in rows:
@@ -117,7 +147,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                     "id": f"alert-{row['id']}",
                     "evidence_type": "alert",
                     "evidence_type_name": "告警信息",
-                    "title": row.get("alert_title"),
+                    "title": _customer_alert_title(row, metric_names),
                     "summary": (
                         f"{severity} · {_STATUS_NAMES.get(status, status)} · "
                         f"当前值 {_number(row.get('current_value'))}"
@@ -130,6 +160,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                     "severity": severity,
                     "resource_type": row.get("resource_type"),
                     "resource_code": row.get("resource_code"),
+                    "current_value": _number(row.get("current_value")),
                 }
             )
         return _result(items)
@@ -161,7 +192,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                     "id": f"metric-{row['id']}",
                     "evidence_type": "metric",
                     "evidence_type_name": "指标数据",
-                    "title": definition.get("metric_name") or code,
+                    "title": definition.get("metric_name") or "未配置中文名称",
                     "summary": (
                         f"值 {_number(row.get('metric_value'))}{row.get('unit') or ''} · "
                         f"样本 {row.get('sample_count') or 0} · "

@@ -454,6 +454,13 @@ def _monitor_domain(metric_code: str, definitions: dict[str, dict[str, Any]]) ->
 def _alert_view(alert: dict[str, Any], definitions: dict[str, dict[str, Any]]) -> dict[str, Any]:
     row = dict(alert)
     metric_code = str(alert.get("metric_code") or "")
+    definition = definitions.get(metric_code) or {}
+    metric_name = str(definition.get("metric_name") or "").strip()
+    stored_title = str(alert.get("alert_title") or "").strip()
+    if metric_name and (metric_code in stored_title or stored_title.startswith("指标异常：")):
+        row["alert_title"] = f"指标异常：{metric_name}"
+    elif metric_code and metric_code in stored_title:
+        row["alert_title"] = "指标异常：未配置中文名称"
     domain, domain_name = _monitor_domain(metric_code, definitions)
     resource_code = str(alert.get("resource_code") or metric_code)
     started_at = alert.get("first_fired_at")
@@ -485,6 +492,7 @@ def _rule_view(rule: dict[str, Any], definitions: dict[str, dict[str, Any]]) -> 
     row = dict(rule)
     metric_code = str(rule.get("metric_code") or "")
     definition = definitions.get(metric_code) or {}
+    metric_name = str(definition.get("metric_name") or "").strip() or "未配置中文名称"
     domain, domain_name = _monitor_domain(metric_code, definitions)
     critical_threshold = rule.get("critical_threshold")
     warning_threshold = rule.get("warning_threshold")
@@ -495,9 +503,9 @@ def _rule_view(rule: dict[str, Any], definitions: dict[str, dict[str, Any]]) -> 
     trigger_expression = (
         "仅记录数据可用性"
         if trigger_type == "informational"
-        else f"{metric_code} {operator} {threshold}"
+        else f"{metric_name} {operator} {threshold}"
         if threshold is not None
-        else metric_code
+        else metric_name
     )
     consecutive_periods = int(rule.get("consecutive_periods") or 1)
     recovery_periods = int(rule.get("recovery_periods") or 1)
@@ -508,7 +516,7 @@ def _rule_view(rule: dict[str, Any], definitions: dict[str, dict[str, Any]]) -> 
         else f"连续 {recovery_periods} 个周期恢复"
     )
     row.update(
-        rule_name=f"{definition.get('metric_name') or metric_code}告警",
+        rule_name=f"{metric_name}告警",
         monitor_domain=domain,
         monitor_domain_name=domain_name,
         severity=severity,
@@ -574,8 +582,7 @@ def _alert_trend(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _alert_status_summary(alerts: list[dict[str, Any]]) -> dict[str, int]:
     statuses = ("firing", "acknowledged", "resolved", "closed")
     return {
-        status: sum(1 for alert in alerts if alert.get("status") == status)
-        for status in statuses
+        status: sum(1 for alert in alerts if alert.get("status") == status) for status in statuses
     }
 
 
@@ -600,15 +607,17 @@ def _recent_alert_changes(
             ("last_fired_at", "状态变化"),
         )
         changed_at = (
-            alert.get(timestamp_field)
-            or alert.get("last_fired_at")
-            or alert.get("first_fired_at")
+            alert.get(timestamp_field) or alert.get("last_fired_at") or alert.get("first_fired_at")
         )
         is_historical = status in {"resolved", "closed"}
-        if start_at is not None and is_historical and (
-            not isinstance(changed_at, datetime)
-            or changed_at < start_at
-            or (end_at is not None and changed_at > end_at)
+        if (
+            start_at is not None
+            and is_historical
+            and (
+                not isinstance(changed_at, datetime)
+                or changed_at < start_at
+                or (end_at is not None and changed_at > end_at)
+            )
         ):
             continue
         changes.append(
@@ -620,8 +629,7 @@ def _recent_alert_changes(
         )
     return sorted(
         changes,
-        key=lambda row: row.get("latest_change_at")
-        or datetime.min.replace(tzinfo=UTC),
+        key=lambda row: row.get("latest_change_at") or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )[:limit]
 
@@ -2755,7 +2763,7 @@ async def analysis_overview(
                     "id": f"metric-{metric['id']}",
                     "evidence_type": "metric",
                     "evidence_type_name": "指标数据",
-                    "title": definition.get("metric_name") or alert.get("metric_code"),
+                    "title": definition.get("metric_name") or "未配置中文名称",
                     "summary": (
                         f"当前值 {metric.get('metric_value')} · 样本 {metric.get('sample_count')}"
                     ),
@@ -2776,7 +2784,7 @@ async def analysis_overview(
                 "id": f"metric-{metric['id']}",
                 "evidence_type": "metric",
                 "evidence_type_name": "指标数据",
-                "title": definition.get("metric_name") or metric_code,
+                "title": definition.get("metric_name") or "未配置中文名称",
                 "summary": (
                     f"当前值 {metric.get('metric_value')} · 样本 {metric.get('sample_count')} · "
                     f"{assessment_name}"
@@ -2883,7 +2891,7 @@ async def analysis_overview(
                 str(definition.get("metric_domain") or ""),
                 "监控指标",
             )
-            metric_name = definition.get("metric_name") or metric_code
+            metric_name = definition.get("metric_name") or "未配置中文名称"
             if domain_name in seen_resources:
                 continue
             seen_resources.add(domain_name)
@@ -2941,7 +2949,7 @@ async def analysis_overview(
         )
     if presentation_state == "warning":
         warning_names = [
-            (definitions.get(metric_code) or {}).get("metric_name") or metric_code
+            (definitions.get(metric_code) or {}).get("metric_name") or "未配置中文名称"
             for metric_code in warning_metric_codes[:3]
         ]
         if warning_names:
@@ -3499,9 +3507,7 @@ async def alert_page(
         **_scope_filter(await tenant_scope(current_user)),
     )
     rows = [
-        _alert_view(row, definitions)
-        for row in alerts
-        if _alert_in_window(row, start_at, end_at)
+        _alert_view(row, definitions) for row in alerts if _alert_in_window(row, start_at, end_at)
     ]
     if status:
         rows = [row for row in rows if row.get("status") == status]
@@ -3736,6 +3742,10 @@ async def apply_rule(rule: dict[str, Any], metric: dict[str, Any]) -> dict[str, 
     if decision.action == "ignore":
         return None
     db = DB.get()
+    definitions = await definition_db.list(db, metric_code=rule["metric_code"])
+    active_definitions = [item for item in definitions if item.get("status") == "active"]
+    definition = max(active_definitions, key=lambda item: int(item.get("version") or 0), default={})
+    metric_name = str(definition.get("metric_name") or "").strip() or "未配置中文名称"
     alert_key = f"{rule['id']}:{metric.get('scope_key')}"
     existing = await alert_db.get(db, alert_key=alert_key)
     now = metric.get("window_end") or datetime.now(UTC)
@@ -3774,7 +3784,7 @@ async def apply_rule(rule: dict[str, Any], metric: dict[str, Any]) -> dict[str, 
             "alert_key": alert_key,
             "rule_id": rule["id"],
             "metric_code": rule["metric_code"],
-            "alert_title": f"指标异常：{rule['metric_code']}",
+            "alert_title": f"指标异常：{metric_name}",
             "severity": decision.severity,
             "status": "firing",
             "tenant_id": metric.get("tenant_id"),

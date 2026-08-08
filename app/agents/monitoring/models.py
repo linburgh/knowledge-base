@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,6 +59,8 @@ class AnalysisPlan:
     confidence: float | None = None
     planning_mode: str = "fallback"
     planning_error: str | None = None
+    requested_view: str | None = None
+    referenced_fact_ids: tuple[str, ...] = ()
 
     def planning_metadata(self) -> dict[str, object]:
         return {
@@ -69,25 +72,30 @@ class AnalysisPlan:
             "uncertainties": list(self.uncertainties),
             "confidence": self.confidence,
             "error": self.planning_error,
+            "requested_view": self.requested_view,
+            "referenced_fact_ids": list(self.referenced_fact_ids),
         }
 
 
-class StructuredTimeRange(BaseModel):
-    expression: str | None = Field(default=None, max_length=100)
-    label: str | None = Field(default=None, max_length=100)
-    start: datetime | None = None
-    end: datetime | None = None
+class MonitoringAgentOutput(BaseModel):
+    """Deep Agent 的语义分析输出；确定性结论仍由程序计算。"""
 
-
-class StructuredAnalysisPlan(BaseModel):
-    intent: str = Field(min_length=1, max_length=64)
+    intent: AnalysisIntent
     goal: str = Field(min_length=1, max_length=500)
-    time: StructuredTimeRange = Field(default_factory=StructuredTimeRange)
+    # 保留用户希望看到的结果形态原文，不压缩成持续膨胀的固定枚举。
+    requested_view: str | None = Field(default=None, max_length=500)
+    answer_markdown: str = Field(min_length=1, max_length=6000)
+    conclusion_ack: AnalysisConclusion
+    time_expression: str | None = Field(default=None, max_length=100)
     entities: list[str] = Field(default_factory=list, max_length=20)
     dimensions: list[str] = Field(default_factory=list, max_length=20)
-    required_tools: list[str] = Field(default_factory=list, max_length=10)
-    uncertainties: list[str] = Field(default_factory=list, max_length=10)
+    uncertainties: list[str] = Field(default_factory=list, max_length=20)
+    limitations: list[str] = Field(default_factory=list, max_length=20)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=50)
+    fact_refs: list[str] = Field(default_factory=list, max_length=20)
+    layout_reason: str = Field(min_length=1, max_length=300)
     confidence: float = Field(default=0.5, ge=0, le=1)
+    termination_reason: Literal["completed", "evidence_insufficient", "tool_failed"] = "completed"
 
 
 __all__ = (
@@ -95,6 +103,5 @@ __all__ = (
     "AnalysisIntent",
     "AnalysisPlan",
     "AnalysisTimeRange",
-    "StructuredAnalysisPlan",
-    "StructuredTimeRange",
+    "MonitoringAgentOutput",
 )

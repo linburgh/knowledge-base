@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -8,6 +9,11 @@ import pytest
 
 from app.agents.knowledge.agent import _select_citations, _skill_refs, run_knowledge_agent
 from app.agents.knowledge.runtime import AgentOutputInvalid, AgentRuntime
+from app.agents.knowledge.tools import (
+    build_citations,
+    load_conversation_history,
+    retrieve_knowledge,
+)
 from app.agents.knowledge.tools.registry import ToolRegistry, build_default_registry
 from app.agents.knowledge.tools.retrieval import retrieve_knowledge_result
 from app.schemas.agent import AgentContext, AgentTask, ToolCall, ToolResult
@@ -162,7 +168,158 @@ async def test_simple_question_uses_runtime_registry_model_and_skills(monkeypatc
 
 def test_deep_agent_is_configured_with_real_read_only_tools() -> None:
     source = inspect.getsource(
-        __import__("app.agents.knowledge.agent", fromlist=["get_knowledge_agent"])
-        .get_knowledge_agent
+        __import__(
+            "app.agents.knowledge.agent", fromlist=["get_knowledge_agent"]
+        ).get_knowledge_agent
     )
     assert "tools=[retrieve_knowledge, load_conversation_history, build_citations]" in source
+
+
+def test_knowledge_tool_runtime_context_is_hidden_from_model_schema() -> None:
+    assert set(retrieve_knowledge.tool_call_schema.model_fields) == {"query", "top_k"}
+    assert set(load_conversation_history.tool_call_schema.model_fields) == {"limit"}
+    assert set(build_citations.tool_call_schema.model_fields) == {"chunks"}
+    assert all(
+        "runtime" not in tool.tool_call_schema.model_fields
+        for tool in (retrieve_knowledge, load_conversation_history, build_citations)
+    )
+
+
+@pytest.mark.asyncio
+async def test_deep_agent_timeout_preserves_agent_retrieval_and_tool_traces(monkeypatch) -> None:
+    registry = ToolRegistry()
+    retrieval_calls = 0
+
+    async def retrieve(call, context):
+        nonlocal retrieval_calls
+        del context
+        retrieval_calls += 1
+        chunk_id = retrieval_calls
+        return ToolResult(
+            call_id=call.call_id,
+            name="retrieve_knowledge",
+            ok=True,
+            data={
+                "chunks": [
+                    {
+                        "id": chunk_id,
+                        "document_id": 20,
+                        "content": f"资料 {chunk_id}",
+                        "source_name": "知识资料",
+                    }
+                ]
+            },
+            hit_count=1,
+        )
+
+    async def history(call, context):
+        del context
+        return ToolResult(call_id=call.call_id, name="load_conversation_history", ok=True)
+
+    async def citations(call, context):
+        del context
+        return ToolResult(
+            call_id=call.call_id,
+            name="build_citations",
+            ok=True,
+            data={
+                "citations": [
+                    {
+                        "document_id": chunk["document_id"],
+                        "chunk_id": chunk["id"],
+                        "source_name": chunk["source_name"],
+                        "snippet": chunk["content"],
+                        "rank": index,
+                    }
+                    for index, chunk in enumerate(call.input["chunks"], 1)
+                ]
+            },
+            hit_count=len(call.input["chunks"]),
+        )
+
+    registry.register("retrieve_knowledge", retrieve)
+    registry.register("load_conversation_history", history)
+    registry.register("build_citations", citations)
+
+    class SlowFinalAgent:
+        async def ainvoke(self, inputs, *, context, config):
+            del inputs, config
+            await retrieve_knowledge.coroutine(
+                "补充比较资料",
+                runtime=SimpleNamespace(context=context),
+            )
+            await asyncio.sleep(1)
+
+    class SummaryModel:
+        async def ainvoke(self, messages):
+            del messages
+            return "根据现有资料形成降级回答。"
+
+    monkeypatch.setattr("app.agents.knowledge.agent.build_default_registry", lambda: registry)
+    monkeypatch.setattr(
+        "app.agents.knowledge.agent.get_knowledge_agent",
+        lambda *args: SlowFinalAgent(),
+    )
+    monkeypatch.setattr(
+        "app.agents.knowledge.agent._build_chat_model",
+        lambda: SummaryModel(),
+    )
+    monkeypatch.setattr(
+        "app.agents.knowledge.agent.CONF",
+        SimpleNamespace(
+            agent=SimpleNamespace(
+                enabled=True,
+                max_steps=4,
+                max_tool_calls=6,
+                tool_timeout_seconds=1,
+                max_retries=0,
+                total_timeout_seconds=0.3,
+            ),
+            chat=SimpleNamespace(model="test-model"),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.agents.knowledge.agent.emit_gather_event",
+        AsyncMock(return_value=None),
+    )
+    target = run_knowledge_agent
+    while hasattr(target, "__wrapped__"):
+        target = target.__wrapped__
+    result = await target(
+        AgentTask(kb_id=1, question="比较两个方案", user_id="2"),
+        AgentContext(kb_id=1, user_id="2"),
+    )
+
+    assert result.status == "failed"
+    assert result.termination_reason == "fallback"
+    assert result.limitations == ["timeout"]
+    assert result.hit_count == 2
+    assert [item.chunk_id for item in result.citations] == [1, 2]
+    assert [item.name for item in result.tool_calls] == [
+        "retrieve_knowledge",
+        "retrieve_knowledge",
+        "build_citations",
+    ]
+
+    class MissingStructuredAgent:
+        async def ainvoke(self, inputs, *, context, config):
+            del inputs, config
+            await retrieve_knowledge.coroutine(
+                "补充比较资料",
+                runtime=SimpleNamespace(context=context),
+            )
+            return {"messages": []}
+
+    monkeypatch.setattr(
+        "app.agents.knowledge.agent.get_knowledge_agent",
+        lambda *args: MissingStructuredAgent(),
+    )
+    missing_result = await target(
+        AgentTask(kb_id=1, question="比较另外两个方案", user_id="2"),
+        AgentContext(kb_id=1, user_id="2"),
+    )
+
+    assert missing_result.status == "failed"
+    assert missing_result.limitations == ["structured_output_missing"]
+    assert missing_result.hit_count == 2
+    assert [item.chunk_id for item in missing_result.citations] == [3, 4]

@@ -107,8 +107,13 @@ def build_evaluation_deep_agent(
     """使用官方 Deep Agents API 创建自主评测生产 Harness。"""
     _register_evaluation_harness_profile()
     middleware: list[Any] = [
+        # 官方限制覆盖 Skill 读取、结构化终态等 Harness 工具；逐题知识库调用
+        # 仍由 EvaluationRuntime 独立计数，不能把两种预算混为同一口径。
         ToolCallLimitMiddleware(
-            run_limit=(config.max_review_rounds + 1) * 2 + 4,
+            run_limit=max(
+                config.max_model_calls * 4,
+                (config.max_review_rounds + 1) * 2 + 8,
+            ),
             exit_behavior="error",
         ),
         ModelCallLimitMiddleware(
@@ -175,6 +180,34 @@ def _model_call_count(result: dict[str, Any]) -> int:
     return sum(getattr(message, "type", None) == "ai" for message in result.get("messages", []))
 
 
+def _fallback_analysis(
+    session: EvaluationSession,
+    *,
+    reason: str,
+) -> EvaluationAgentOutput:
+    """模型终态失败时，仅根据已完成逐题结果生成可审计分析。"""
+    metrics = session.metrics()
+    results = session.ordered_results()
+    failures = [item for item in results if item.status != "completed"]
+    missing_citations = [
+        item for item in results if item.status == "completed" and item.citation_count == 0
+    ]
+    findings = [f"已完成 {len(results)} 道题的确定性统计，门禁结论为 {metrics.conclusion}。"]
+    if failures:
+        findings.append(f"其中 {len(failures)} 道题未正常完成。")
+    if missing_citations:
+        findings.append(f"其中 {len(missing_citations)} 道已完成题目缺少引用。")
+    return EvaluationAgentOutput(
+        goal="基于已完成逐题结果形成自主评测结论",
+        rationale=f"外部模型终态不可用（{reason}），已使用确定性指标和门禁安全收敛。",
+        findings=findings,
+        recommendations=["请结合失败样品、引用异常和门禁指标进行人工复核。"],
+        reviewed_case_numbers=session.reviewed_case_numbers,
+        confidence=0.5,
+        termination_reason="evidence_insufficient",
+    )
+
+
 class EvaluationAgent:
     """自主评测 Deep Agent Harness 的唯一公开入口。"""
 
@@ -234,36 +267,98 @@ class EvaluationAgent:
             len(questions),
         )
         try:
-            result_state = await asyncio.wait_for(
-                agent.ainvoke(
-                    {
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": (
-                                    f"执行自主评测。题号范围：1-{len(questions)}。"
-                                    f"业务范围来源：{config.business_scope_source}。"
-                                    f"门禁配置：{config.model_dump(mode='json')['gates']}。"
-                                ),
-                            }
-                        ],
-                        "files": _skill_files(skill_content),
-                    },
-                    context=EvaluationHarnessContext(session=session),
-                    config={"recursion_limit": max(config.max_model_calls * 16 + 16, 64)},
-                ),
-                timeout=config.run_timeout_seconds,
-            )
+            # 预留报告、门禁和协议校验时间；最终模型超时不能抹掉已经完成的逐题结果。
+            convergence_reserve = min(2.0, config.run_timeout_seconds * 0.2)
+            agent_timeout = max(0.01, config.run_timeout_seconds - convergence_reserve)
+            model_timeout = False
+            try:
+                result_state = await asyncio.wait_for(
+                    agent.ainvoke(
+                        {
+                            "messages": [
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        f"执行自主评测。题号范围：1-{len(questions)}。"
+                                        f"业务范围来源：{config.business_scope_source}。"
+                                        f"门禁配置：{config.model_dump(mode='json')['gates']}。"
+                                    ),
+                                }
+                            ],
+                            "files": _skill_files(skill_content),
+                        },
+                        context=EvaluationHarnessContext(session=session),
+                        config={"recursion_limit": max(config.max_model_calls * 16 + 16, 64)},
+                    ),
+                    timeout=agent_timeout,
+                )
+            except TimeoutError:
+                model_timeout = True
+                runtime.stop_reason = "model_timeout_converged"
+                result_state = {"messages": []}
+                LOG.warning(
+                    "自主评测Agent model timed out; preserving completed cases "
+                    "run_id={} completed_count={}",
+                    trusted_context.run_id,
+                    len(session.results),
+                )
+            for item in runtime.partial_results:
+                session.results.setdefault(item.case_no, item)
             if not session.all_cases_completed():
-                raise BusiException("自主评测 Agent 未完成全部初次问题")
+                if not model_timeout:
+                    raise BusiException("自主评测 Agent 未完成全部初次问题")
+                results = session.ordered_results()
+                metrics = session.metrics()
+                analysis = _fallback_analysis(session, reason="ModelTimeoutPartial")
+                report = build_report(config, results, metrics, analysis=analysis)
+                report.update(
+                    {
+                        "summary": "自主评测未在总时限内完成，以下仅为已完成题目的部分结果。",
+                        "conclusion": "indeterminate",
+                    }
+                )
+                result = EvaluationAgentResult(
+                    case_results=[item.model_dump(mode="json") for item in results],
+                    metrics=metrics.model_dump(mode="json"),
+                    report=report,
+                    conclusion="indeterminate",
+                    summary=EvaluationRunSummary(
+                        status="failed",
+                        termination_reason="timeout",
+                        tool_calls=runtime.tool_traces,
+                        model_call_count=runtime.model_call_count,
+                        duration_ms=int((monotonic() - started) * 1000),
+                        limitations=["评测总超时，仅保留已完成题目"],
+                        skill_refs=runtime.skill_refs,
+                        completed_count=len(results),
+                        failed_count=len(questions) - len(results),
+                    ),
+                )
+                LOG.warning(
+                    "自主评测Agent partial timeout converged run_id={} "
+                    "completed_count={} total_count={}",
+                    trusted_context.run_id,
+                    len(results),
+                    len(questions),
+                )
+                return result
             raw_output = result_state.get("structured_response")
             if raw_output is None:
-                raise BusiException("自主评测 Agent 未返回结构化结果")
-            analysis = (
-                raw_output
-                if isinstance(raw_output, EvaluationAgentOutput)
-                else EvaluationAgentOutput.model_validate(raw_output)
-            )
+                fallback_reason = "ModelTimeout" if model_timeout else "StructuredOutputMissing"
+                analysis = _fallback_analysis(session, reason=fallback_reason)
+                LOG.warning(
+                    "自主评测Agent structured terminal unavailable; "
+                    "using deterministic convergence run_id={} reason={}",
+                    trusted_context.run_id,
+                    fallback_reason,
+                )
+            else:
+                fallback_reason = None
+                analysis = (
+                    raw_output
+                    if isinstance(raw_output, EvaluationAgentOutput)
+                    else EvaluationAgentOutput.model_validate(raw_output)
+                )
             analysis = analysis.model_copy(
                 update={"reviewed_case_numbers": session.reviewed_case_numbers}
             )
@@ -298,6 +393,9 @@ class EvaluationAgent:
                     skill_refs=runtime.skill_refs,
                     completed_count=len(results),
                     failed_count=sum(item.status != "completed" for item in results),
+                    limitations=(
+                        [f"外部模型终态不可用：{fallback_reason}"] if fallback_reason else []
+                    ),
                 ),
             )
         except EvaluationCancelled:
@@ -316,6 +414,53 @@ class EvaluationAgent:
                     skill_refs=runtime.skill_refs,
                     completed_count=len(partial_results),
                     failed_count=sum(item.status != "completed" for item in partial_results),
+                ),
+            )
+        except BusiException:
+            # 权限、配置和 Agent 业务协议错误由调用方按既有错误语义处理，不能
+            # 与外部模型供应商故障混淆成可重试的任务级失败。
+            raise
+        except Exception as exc:
+            # 429、5xx、连接失败等供应商异常也必须形成结构化终态。已完成逐题
+            # 结果仍进入失败报告，但门禁结论固定为 indeterminate，不能用部分
+            # 样本冒充一次完整评测。
+            for item in runtime.partial_results:
+                session.results.setdefault(item.case_no, item)
+            partial_results = session.ordered_results()
+            if partial_results:
+                metrics = session.metrics()
+                analysis = _fallback_analysis(session, reason="ProviderError")
+                report = build_report(config, partial_results, metrics, analysis=analysis)
+                report.update(
+                    {
+                        "summary": "外部模型服务异常，以下仅保留已经完成的逐题结果。",
+                        "conclusion": "indeterminate",
+                    }
+                )
+                metric_payload = metrics.model_dump(mode="json")
+            else:
+                report = {}
+                metric_payload = {}
+            LOG.opt(exception=exc).error(
+                "自主评测Agent provider execution failed run_id={} error_type={}",
+                trusted_context.run_id,
+                type(exc).__name__,
+            )
+            result = EvaluationAgentResult(
+                case_results=[item.model_dump(mode="json") for item in partial_results],
+                metrics=metric_payload,
+                report=report,
+                conclusion="indeterminate",
+                summary=EvaluationRunSummary(
+                    status="failed",
+                    termination_reason="agent_error",
+                    tool_calls=runtime.tool_traces,
+                    model_call_count=runtime.model_call_count,
+                    duration_ms=int((monotonic() - started) * 1000),
+                    limitations=[f"外部模型服务异常：{type(exc).__name__}"],
+                    skill_refs=runtime.skill_refs,
+                    completed_count=len(partial_results),
+                    failed_count=len(questions) - len(partial_results),
                 ),
             )
         LOG.info(
