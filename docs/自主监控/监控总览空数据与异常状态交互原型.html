@@ -522,6 +522,58 @@
         height: calc(100% - 62px);
       }
 
+      .alert-status-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .alert-status-metric {
+        padding: 9px 6px;
+        border: 1px solid #e3e8ef;
+        border-radius: 4px;
+        background: #fafbfd;
+        text-align: center;
+      }
+
+      .alert-status-metric strong,
+      .alert-status-metric span,
+      .alert-status-info strong,
+      .alert-status-info span {
+        display: block;
+      }
+
+      .alert-status-metric strong {
+        color: #526178;
+        font-size: 19px;
+      }
+
+      .alert-status-metric span,
+      .alert-status-info span {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .alert-status-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      .alert-status-table th,
+      .alert-status-table td {
+        padding: 9px 10px;
+        border: 1px solid #e0e5ec;
+        text-align: left;
+      }
+
+      .alert-status-table th {
+        color: #4d5c72;
+        background: #f5f7fa;
+      }
+
       .resource-bars {
         display: grid;
         gap: 18px;
@@ -840,32 +892,22 @@
 
       function normalAlertChart() {
         return `
-          <div class="chart-shell">
-            <svg
-              class="line-chart"
-              viewBox="0 0 600 160"
-              preserveAspectRatio="none"
-            >
-              <polyline
-                points="0,135 100,135 200,102 300,70 400,100 500,100 600,92"
-                fill="none"
-                stroke="#dd6673"
-                stroke-width="3"
-              />
-              <polyline
-                points="0,135 100,135 200,135 300,102 400,102 500,102 600,102"
-                fill="none"
-                stroke="#e6b53f"
-                stroke-width="3"
-              />
-              <polyline
-                points="0,135 100,135 200,135 300,135 400,102 500,102 600,102"
-                fill="none"
-                stroke="#62c49a"
-                stroke-width="3"
-              />
-            </svg>
+          <div class="alert-status-summary">
+            ${[[1, "触发中"], [1, "已确认"], [1, "已恢复"], [3, "已关闭"]]
+              .map(
+                ([value, label]) =>
+                  `<div class="alert-status-metric"><strong>${value}</strong><span>${label}</span></div>`,
+              )
+              .join("")}
           </div>
+          <table class="alert-status-table">
+            <thead><tr><th>告警信息</th><th>当前状态</th><th>最近变化</th></tr></thead>
+            <tbody>
+              <tr><td><div class="alert-status-info"><strong>Worker 心跳过期</strong><span>评测 Worker</span></div></td><td>严重 · 触发中</td><td>持续触发 · 09:58</td></tr>
+              <tr><td><div class="alert-status-info"><strong>问答 P95 超过阈值</strong><span>知识库问答</span></div></td><td>警告 · 已确认</td><td>人工确认 · 09:52</td></tr>
+              <tr><td><div class="alert-status-info"><strong>向量采集恢复</strong><span>向量服务</span></div></td><td>警告 · 已恢复</td><td>告警恢复 · 09:46</td></tr>
+            </tbody>
+          </table>
         `;
       }
 
@@ -1064,7 +1106,7 @@
             <div class="chart-grid">
               ${panel(
                 "告警状态",
-                "四类状态随时间变化。",
+                "汇总当前状态并展示最近 3 条真实告警变化。",
                 normalAlertChart(),
                 '<button class="button text">查看告警详情 →</button>',
               )}
@@ -1082,12 +1124,12 @@
             <div class="chart-grid">
               ${panel(
                 "告警状态",
-                "四类状态随时间变化。",
+                "汇总当前状态并展示最近 3 条真实告警变化。",
                 stateBox(
                   "empty",
-                  "暂无告警趋势",
-                  "当前时间窗口内没有告警状态变化。",
-                  "图表不绘制零值折线",
+                  "当前时间窗口暂无告警变化",
+                  "四类状态数字均为 0，且没有可展示的最近变化。",
+                  "不使用本地数据补造告警记录",
                 ),
               )}
               ${panel(
@@ -1108,12 +1150,12 @@
             <div class="chart-grid">
               ${panel(
                 "告警状态",
-                "四类状态随时间变化。",
+                "汇总当前状态并展示最近 3 条真实告警变化。",
                 stateBox(
                   "error",
-                  "告警趋势加载失败",
-                  "告警统计接口请求失败。",
-                  "错误码：MONITORING_ALERT_TREND_ERROR",
+                  "告警状态加载失败",
+                  "告警统计与最近变化暂时不可用。",
+                  "错误码：MONITORING_ALERT_STATUS_ERROR",
                   "retry-module",
                 ),
               )}
@@ -1135,11 +1177,11 @@
           <div class="chart-grid">
             ${panel(
               "告警状态",
-              "四类状态随时间变化。",
+              "汇总当前状态并展示最近 3 条真实告警变化。",
               stateBox(
                 "stale",
-                "展示最后成功的告警趋势",
-                "最新窗口统计失败，当前图表没有继续向后补零。",
+                "告警状态数据已过期",
+                "当前状态来自最后一次成功加载，最新告警变化可能不完整。",
                 "最后成功统计：2026年07月31日 14:10:00",
                 "retry-module",
               ),

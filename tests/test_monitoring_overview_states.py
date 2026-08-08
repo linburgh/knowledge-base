@@ -229,6 +229,36 @@ def test_alert_status_overview_uses_all_alerts_and_limits_recent_changes():
     ]
 
 
+def test_recent_alert_changes_keeps_active_alerts_but_filters_historical_changes():
+    start_at = datetime(2026, 7, 31, 4, 45, tzinfo=UTC)
+    end_at = datetime(2026, 7, 31, 5, 0, tzinfo=UTC)
+    alerts = [
+        {
+            "id": 1,
+            "status": "firing",
+            "last_fired_at": datetime(2026, 7, 31, 4, 30, tzinfo=UTC),
+        },
+        {
+            "id": 2,
+            "status": "resolved",
+            "resolved_at": datetime(2026, 7, 31, 4, 55, tzinfo=UTC),
+        },
+        {
+            "id": 3,
+            "status": "closed",
+            "closed_at": datetime(2026, 7, 31, 5, 5, tzinfo=UTC),
+        },
+    ]
+
+    recent = monitoring._recent_alert_changes(
+        alerts,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
+    assert [item["id"] for item in recent] == [2, 1]
+
+
 @pytest.mark.parametrize(
     ("time_range", "duration", "expected_interval", "expected_count"),
     (
@@ -499,6 +529,13 @@ async def test_overview_http_contract_returns_module_states(
     assert payload["data_status"] == "empty"
     assert payload["section_statuses"]["propagation"] == "empty"
     assert payload["section_errors"] == {}
+    assert payload["alert_status_summary"] == {
+        "firing": 0,
+        "acknowledged": 0,
+        "resolved": 0,
+        "closed": 0,
+    }
+    assert payload["recent_alert_changes"] == []
 
 
 @pytest.mark.asyncio
@@ -534,6 +571,71 @@ async def test_overview_applies_selected_time_window(
     assert captured["snapshots"]["updated_at__gte"] == now - monitoring.timedelta(minutes=15)
     assert result["time_range"] == "15m"
     assert result["window_end"] == now
+
+
+@pytest.mark.asyncio
+async def test_overview_keeps_active_alerts_in_summary_and_recent_changes(
+    overview_context,
+    monkeypatch,
+):
+    now = datetime(2026, 7, 31, 5, 0, tzinfo=UTC)
+
+    async def empty_list(*_, **__):
+        return []
+
+    async def alerts(*_, **__):
+        return [
+            {
+                "id": 1,
+                "status": "firing",
+                "last_fired_at": now - monitoring.timedelta(hours=1),
+            },
+            {
+                "id": 2,
+                "status": "acknowledged",
+                "acknowledged_at": now - monitoring.timedelta(minutes=10),
+                "last_fired_at": now - monitoring.timedelta(minutes=12),
+            },
+            {
+                "id": 3,
+                "status": "resolved",
+                "resolved_at": now - monitoring.timedelta(minutes=5),
+                "last_fired_at": now - monitoring.timedelta(hours=2),
+            },
+            {
+                "id": 4,
+                "status": "closed",
+                "closed_at": now - monitoring.timedelta(hours=2),
+                "last_fired_at": now - monitoring.timedelta(hours=3),
+            },
+            {
+                "id": 5,
+                "status": "closed",
+                "closed_at": now + monitoring.timedelta(minutes=5),
+                "last_fired_at": now - monitoring.timedelta(hours=3),
+            },
+        ]
+
+    monkeypatch.setattr(monitoring.utils, "utc_now", lambda: now)
+    monkeypatch.setattr(monitoring.event_db, "list", empty_list)
+    monkeypatch.setattr(monitoring.alert_db, "list", alerts)
+    monkeypatch.setattr(monitoring.snapshot_db, "list", empty_list)
+
+    result = await monitoring.overview(overview_context, "15m", "platform")
+
+    assert result["alert_status_summary"] == {
+        "firing": 1,
+        "acknowledged": 1,
+        "resolved": 1,
+        "closed": 0,
+    }
+    assert [item["id"] for item in result["recent_alert_changes"]] == [3, 2, 1]
+    assert [item["latest_change_name"] for item in result["recent_alert_changes"]] == [
+        "告警恢复",
+        "人工确认",
+        "持续触发",
+    ]
+    assert [item["id"] for item in result["alerts"]] == [1, 2, 3]
 
 
 @pytest.mark.asyncio

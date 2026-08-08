@@ -122,12 +122,18 @@ def _overview_window(time_range: str) -> tuple[datetime, datetime]:
     return end_at - duration, end_at
 
 
-def _alert_in_window(alert: dict[str, Any], start_at: datetime) -> bool:
+def _alert_in_window(
+    alert: dict[str, Any],
+    start_at: datetime,
+    end_at: datetime | None = None,
+) -> bool:
     """未恢复告警始终可见，历史告警才受查询时间窗口限制。"""
     if alert.get("status") not in {"resolved", "closed"}:
         return True
     return any(
-        isinstance(alert.get(field), datetime) and alert[field] >= start_at
+        isinstance(alert.get(field), datetime)
+        and alert[field] >= start_at
+        and (end_at is None or alert[field] <= end_at)
         for field in ("last_fired_at", "resolved_at", "closed_at")
     )
 
@@ -573,7 +579,13 @@ def _alert_status_summary(alerts: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
-def _recent_alert_changes(alerts: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
+def _recent_alert_changes(
+    alerts: list[dict[str, Any]],
+    limit: int = 3,
+    *,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+) -> list[dict[str, Any]]:
     status_changes = {
         "firing": ("last_fired_at", "持续触发"),
         "acknowledged": ("acknowledged_at", "人工确认"),
@@ -592,6 +604,13 @@ def _recent_alert_changes(alerts: list[dict[str, Any]], limit: int = 3) -> list[
             or alert.get("last_fired_at")
             or alert.get("first_fired_at")
         )
+        is_historical = status in {"resolved", "closed"}
+        if start_at is not None and is_historical and (
+            not isinstance(changed_at, datetime)
+            or changed_at < start_at
+            or (end_at is not None and changed_at > end_at)
+        ):
+            continue
         changes.append(
             {
                 **alert,
@@ -1364,7 +1383,7 @@ async def overview(
         db,
         alert_filters,
     )
-    alerts = [alert for alert in alerts if _alert_in_window(alert, start_at)]
+    alerts = [alert for alert in alerts if _alert_in_window(alert, start_at, end_at)]
     snapshots, snapshot_status, snapshot_error = await _overview_source(
         "snapshots",
         "运行快照查询失败",
@@ -1516,7 +1535,11 @@ async def overview(
     ][:100]
     alert_status_trend = _alert_trend(alerts)
     alert_status_summary = _alert_status_summary(alerts)
-    recent_alert_changes = _recent_alert_changes(alerts)
+    recent_alert_changes = _recent_alert_changes(
+        alerts,
+        start_at=start_at,
+        end_at=end_at,
+    )
     resource_capacity = _resource_capacity(snapshots)
     business_has_data = any(item["value"] is not None for item in business_status)
 
@@ -3317,7 +3340,7 @@ async def alerts_overview(current_user: CurrentUser, time_range: str = "1h") -> 
     start_at, end_at = _overview_window(time_range)
     scope = await tenant_scope(current_user)
     alerts = await alert_db.list(DB.get(), **_scope_filter(scope))
-    window_alerts = [alert for alert in alerts if _alert_in_window(alert, start_at)]
+    window_alerts = [alert for alert in alerts if _alert_in_window(alert, start_at, end_at)]
     unresolved = [alert for alert in alerts if alert.get("status") not in {"resolved", "closed"}]
     severity_distribution = {severity: 0 for severity in _ALERT_SEVERITY_NAMES}
     for alert in unresolved:
@@ -3397,7 +3420,7 @@ async def event_page(
     status: str | None = None,
 ) -> dict[str, Any]:
     await require_monitoring_access(current_user)
-    start_at, _ = _overview_window(time_range)
+    start_at, end_at = _overview_window(time_range)
     filters = {
         **_scope_filter(await tenant_scope(current_user)),
         "occurred_at__gte": start_at,
@@ -3469,13 +3492,17 @@ async def alert_page(
     time_range: str = "1h",
 ) -> dict[str, Any]:
     await require_monitoring_access(current_user)
-    start_at, _ = _overview_window(time_range)
+    start_at, end_at = _overview_window(time_range)
     definitions = _metric_definition_map(await definition_db.list(DB.get()))
     alerts = await alert_db.list(
         DB.get(),
         **_scope_filter(await tenant_scope(current_user)),
     )
-    rows = [_alert_view(row, definitions) for row in alerts if _alert_in_window(row, start_at)]
+    rows = [
+        _alert_view(row, definitions)
+        for row in alerts
+        if _alert_in_window(row, start_at, end_at)
+    ]
     if status:
         rows = [row for row in rows if row.get("status") == status]
     if severity:
