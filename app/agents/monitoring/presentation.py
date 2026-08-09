@@ -8,7 +8,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .models import AnalysisConclusion, AnalysisPlan
+from app.schemas.monitoring import (
+    CausalAssessment,
+    InvestigationAnalysis,
+    InvestigationFinding,
+    InvestigationObservation,
+    InvestigationRelation,
+)
+
+from .models import AnalysisConclusion, AnalysisIntent, AnalysisPlan
 
 MONITORING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -102,6 +110,50 @@ TOOL_PRESENTATIONS: dict[str, dict[str, Any]] = {
             {"field": "status", "label": "任务状态"},
             {"field": "summary", "label": "任务摘要"},
             {"field": "occurred_at", "label": "发生时间"},
+        ],
+    },
+    "get_alert_details": {
+        "fact_type": "alert",
+        "title": "告警明细",
+        "view_terms": ["告警", "明细", "分别", "具体"],
+        "columns": [
+            {"field": "alert_info", "label": "告警信息"},
+            {"field": "status_detail", "label": "状态详情"},
+            {"field": "time_detail", "label": "时间信息"},
+        ],
+    },
+    "correlate_alerts": {
+        "fact_type": "alert_correlation",
+        "title": "告警关联",
+        "view_terms": ["重复", "关联", "同一", "相同"],
+        "columns": [
+            {"field": "title", "label": "告警分组"},
+            {"field": "member_count", "label": "告警数量"},
+            {"field": "status_name", "label": "关联判断"},
+            {"field": "summary", "label": "判断依据"},
+            {"field": "judgment_boundary", "label": "判断边界"},
+        ],
+    },
+    "query_metric_series": {
+        "fact_type": "metric_series",
+        "title": "指标趋势",
+        "view_terms": ["趋势", "变化", "前后", "指标"],
+        "columns": [
+            {"field": "title", "label": "指标名称"},
+            {"field": "summary", "label": "指标结果"},
+            {"field": "window_end", "label": "统计时间"},
+            {"field": "assessment_status", "label": "评估状态"},
+        ],
+    },
+    "query_resource_timeline": {
+        "fact_type": "timeline",
+        "title": "资源时间线",
+        "view_terms": ["时间线", "发生了什么", "资源", "链路"],
+        "columns": [
+            {"field": "occurred_at", "label": "发生时间"},
+            {"field": "title", "label": "事件类型"},
+            {"field": "status", "label": "事件状态"},
+            {"field": "summary", "label": "事件摘要"},
         ],
     },
 }
@@ -280,7 +332,10 @@ def _selected_sources(
         sources,
         plan.requested_view or question,
     )
-    return (requested_sources or sources), using_prior
+    selected = requested_sources or sources
+    if any(source.get("tool_name") == "get_alert_details" for source in selected):
+        selected = [source for source in selected if source.get("tool_name") != "query_alerts"]
+    return selected, using_prior
 
 
 def _conclusion_description(conclusion: AnalysisConclusion) -> str:
@@ -293,6 +348,271 @@ def _conclusion_description(conclusion: AnalysisConclusion) -> str:
     return descriptions[conclusion]
 
 
+def _fact_ids(items: list[dict[str, Any]]) -> list[str]:
+    return list(dict.fromkeys(str(item.get("id") or "") for item in items if item.get("id")))
+
+
+def _alert_items(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    detailed = next(
+        (source for source in sources if source.get("tool_name") == "get_alert_details"),
+        None,
+    )
+    if detailed is not None:
+        return list(detailed.get("items") or [])
+    return [
+        item
+        for source in sources
+        if source.get("fact_type") == "alert"
+        for item in source.get("items") or []
+    ]
+
+
+def _threshold_relation(current: Any, threshold: Any) -> str:
+    try:
+        current_number = Decimal(str(current))
+        threshold_number = Decimal(str(threshold))
+    except Exception:
+        return "达到规则触发条件"
+    if current_number < threshold_number:
+        return "低于"
+    if current_number > threshold_number:
+        return "高于"
+    return "达到"
+
+
+def _direct_cause_findings(alerts: list[dict[str, Any]]) -> list[InvestigationFinding]:
+    groups: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    for item in alerts:
+        key = (
+            str(item.get("metric_name") or item.get("title") or "监控指标"),
+            str(item.get("current_value")),
+            str(item.get("threshold")),
+            str(item.get("sample_count") or 0),
+        )
+        groups.setdefault(key, []).append(item)
+    findings = []
+    for (metric_name, _current, _threshold, sample_count), items in groups.items():
+        relation = _threshold_relation(items[0].get("current_value"), items[0].get("threshold"))
+        scopes = list(
+            dict.fromkeys(str(item.get("resource_name") or "当前授权范围") for item in items)
+        )
+        scope_text = "、".join(scopes)
+        findings.append(
+            InvestigationFinding(
+                finding_type="threshold_breach",
+                title=f"{metric_name}触发告警",
+                summary=(
+                    f"{scope_text}的{metric_name}当前值为"
+                    f"{_display_value('current_value', items[0].get('current_value'))}，"
+                    f"{relation}阈值{_display_value('threshold', items[0].get('threshold'))}，"
+                    f"统计样本为{sample_count}，因此满足当前告警规则的直接触发条件。"
+                ),
+                status="confirmed",
+                subject_refs=_fact_ids(items),
+                evidence_refs=_fact_ids(items),
+                confidence=1.0,
+            )
+        )
+    return findings
+
+
+def _relation_findings(
+    sources: list[dict[str, Any]], alerts: list[dict[str, Any]]
+) -> list[InvestigationRelation]:
+    relations = []
+    for source in sources:
+        if source.get("fact_type") != "alert_correlation":
+            continue
+        for item in source.get("items") or []:
+            if int(item.get("member_count") or 0) < 2:
+                continue
+            relations.append(
+                InvestigationRelation(
+                    relation_type="alert_correlation",
+                    title=str(item.get("title") or "告警关联"),
+                    summary=(
+                        f"{item.get('summary') or '告警存在共同字段'}；"
+                        f"{item.get('judgment_boundary') or '当前只能确认关联，不能直接认定因果。'}"
+                    ),
+                    status=(
+                        "suspected"
+                        if item.get("status") in {"likely_duplicate", "related"}
+                        else "unconfirmed"
+                    ),
+                    subject_refs=[str(value) for value in item.get("member_ids") or []],
+                    evidence_refs=_fact_ids([item]),
+                )
+            )
+
+    # 不硬编码指标名称：同一范围、样本量一致且触发时间接近，只标记为同批次候选。
+    seen_pairs: set[tuple[str, str]] = set()
+    for index, left in enumerate(alerts):
+        for right in alerts[index + 1 :]:
+            if left.get("metric_name") == right.get("metric_name"):
+                continue
+            if left.get("scope_key") != right.get("scope_key"):
+                continue
+            if left.get("sample_count") != right.get("sample_count"):
+                continue
+            left_time = left.get("last_fired_at") or left.get("occurred_at")
+            right_time = right.get("last_fired_at") or right.get("occurred_at")
+            if not isinstance(left_time, datetime) or not isinstance(right_time, datetime):
+                continue
+            if abs((left_time - right_time).total_seconds()) > 300:
+                continue
+            pair = tuple(sorted((str(left.get("id") or ""), str(right.get("id") or ""))))
+            if not all(pair) or pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            relations.append(
+                InvestigationRelation(
+                    relation_type="same_sample_window",
+                    title="同一统计批次候选",
+                    summary=(
+                        f"{left.get('metric_name') or '监控指标'}与"
+                        f"{right.get('metric_name') or '监控指标'}的统计范围、样本量一致，"
+                        "并且触发时间接近，"
+                        "可能来自同一批业务请求，但当前证据不足以认定底层因果。"
+                    ),
+                    status="suspected",
+                    subject_refs=list(pair),
+                    evidence_refs=list(pair),
+                )
+            )
+    return relations
+
+
+def build_investigation_analysis(
+    *,
+    question: str,
+    plan: AnalysisPlan,
+    facts: dict[str, dict[str, Any]],
+    prior_fact_set: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """将工具事实统一收敛为开放调查结构，供模型成功和降级路径共同使用。"""
+    sources = _sources_from_facts(facts)
+    if not sources and references_prior_facts(question):
+        sources = _prior_sources(prior_fact_set)
+    alerts = _alert_items(sources)
+    observations = [
+        InvestigationObservation(
+            observation_type=str(source.get("fact_type") or "fact"),
+            title=str((source.get("presentation") or {}).get("title") or "监控事实"),
+            summary=f"已取得{len(source.get('items') or [])}条授权事实。",
+            subject_refs=_fact_ids(list(source.get("items") or [])),
+            evidence_refs=_fact_ids(list(source.get("items") or [])),
+        )
+        for source in sources
+    ]
+    findings = (
+        _direct_cause_findings(alerts) if plan.intent == AnalysisIntent.INCIDENT_CAUSE else []
+    )
+    relations = _relation_findings(sources, alerts)
+    timeline_items = [
+        item
+        for source in sources
+        if source.get("fact_type") in {"timeline", "event", "task"}
+        for item in source.get("items") or []
+    ]
+    unknowns = []
+    next_checks = []
+    if plan.intent == AnalysisIntent.INCIDENT_CAUSE:
+        unknowns.append(
+            "当前证据可以确认规则阈值的直接触发原因，但不能仅凭指标和时间相关性认定底层根因。"
+        )
+        if any(
+            item.get("status") in {"firing", "acknowledged"}
+            and isinstance(item.get("first_fired_at"), datetime)
+            and item["first_fired_at"] < plan.time_range.start
+            for item in alerts
+        ):
+            unknowns.append(
+                "本轮时间范围包含当前仍活动的告警，部分告警首次触发时间早于窗口开始，"
+                "不能将其表述为本窗口内新产生。"
+            )
+        if not timeline_items:
+            unknowns.append("当前未取得可关联的资源时间线、运行事件或任务事实。")
+        next_checks.append("按告警对应的时间、资源或 Trace 继续核查检索、模型及外部依赖事件。")
+    evidence_refs = list(
+        dict.fromkeys(
+            reference for observation in observations for reference in observation.evidence_refs
+        )
+    )
+    root_cause_status = (
+        "unconfirmed" if plan.intent == AnalysisIntent.INCIDENT_CAUSE else "not_applicable"
+    )
+    root_cause_summary = (
+        "现有事实只能确认指标越过规则阈值及告警之间的关联，尚无充分证据定位到底层组件根因。"
+        if plan.intent == AnalysisIntent.INCIDENT_CAUSE
+        else "本轮分析目标不要求形成因果结论。"
+    )
+    analysis = InvestigationAnalysis(
+        analysis_goal=plan.goal or question.strip(),
+        subject_refs=_fact_ids(alerts) or evidence_refs,
+        observations=observations,
+        findings=findings,
+        relations=relations,
+        causal_assessment=CausalAssessment(
+            direct_causes=findings,
+            correlated_factors=relations,
+            root_cause_status=root_cause_status,
+            root_cause_summary=root_cause_summary,
+        ),
+        unknowns=unknowns,
+        next_checks=next_checks,
+        evidence_refs=evidence_refs,
+    )
+    return analysis.model_dump(mode="json")
+
+
+def render_investigation_answer(
+    analysis: dict[str, Any],
+    plan: AnalysisPlan,
+    conclusion: AnalysisConclusion,
+) -> str | None:
+    if plan.intent != AnalysisIntent.INCIDENT_CAUSE:
+        return None
+    direct_causes = list((analysis.get("causal_assessment") or {}).get("direct_causes") or [])
+    if not direct_causes:
+        return None
+    lines = [
+        "### 原因结论",
+        "",
+        f"当前可以确认 {len(direct_causes)} 组规则阈值直接触发原因。"
+        "告警之间存在的指标或时间关联只能作为调查线索，不能直接等同于底层根因。",
+        "",
+        f"- 时间范围：{_time_description(plan)}",
+        f"- 状态判断：{_conclusion_description(conclusion)}",
+        "",
+        "### 直接触发原因",
+        "",
+    ]
+    lines.extend(f"{index}. {item['summary']}" for index, item in enumerate(direct_causes, 1))
+    relations = list(analysis.get("relations") or [])
+    lines.extend(["", "### 关联判断", ""])
+    if relations:
+        lines.extend(f"- {item['summary']}" for item in relations)
+    else:
+        lines.append("- 当前没有足够事实确认这些告警是否来自同一统计批次或同一底层故障。")
+    causal = analysis.get("causal_assessment") or {}
+    lines.extend(
+        [
+            "",
+            "### 底层根因",
+            "",
+            str(causal.get("root_cause_summary") or "现有证据不足，暂时无法确认底层根因。"),
+            "",
+            "### 判断边界",
+            "",
+        ]
+    )
+    lines.extend(f"- {item}" for item in analysis.get("unknowns") or [])
+    if analysis.get("next_checks"):
+        lines.extend(["", "### 后续检查", ""])
+        lines.extend(f"- {item}" for item in analysis["next_checks"])
+    return "\n".join(lines)
+
+
 def build_fact_presentation(
     *,
     question: str,
@@ -300,6 +620,7 @@ def build_fact_presentation(
     conclusion: AnalysisConclusion,
     facts: dict[str, dict[str, Any]],
     prior_fact_set: dict[str, Any] | None = None,
+    investigation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """为 Web 等富客户端提供结构化视图提示；完整 Markdown 回答仍保留。"""
     sources, using_prior = _selected_sources(
@@ -308,9 +629,16 @@ def build_fact_presentation(
         facts=facts,
         prior_fact_set=prior_fact_set,
     )
-    if len(sources) != 1 or sources[0].get("fact_type") != "alert":
+    alert_sources = [source for source in sources if source.get("fact_type") == "alert"]
+    correlation_sources = [
+        source for source in sources if source.get("fact_type") == "alert_correlation"
+    ]
+    if not alert_sources:
         return {}
-    total = len(sources[0].get("items") or [])
+    alert_ids = {
+        str(item.get("id") or "") for source in alert_sources for item in source.get("items") or []
+    }
+    total = len(alert_ids)
     lines = [
         "### 查询结果",
         "",
@@ -320,7 +648,40 @@ def build_fact_presentation(
     ]
     if using_prior:
         lines.append("- 数据来源：上一轮已授权查询结果")
+    if correlation_sources:
+        groups = [item for source in correlation_sources for item in source.get("items") or []]
+        likely = sum(item.get("status") == "likely_duplicate" for item in groups)
+        lines.extend(
+            [
+                "",
+                "### 关联判断",
+                "",
+                f"共形成 {len(groups)} 个告警关联分组，其中 {likely} 个分组高度相似。",
+                "字段和时间相似只能证明告警高度相关，不能单独证明数据库重复写入。",
+            ]
+        )
     lines.extend(["", "### 事实说明", "", _conclusion_description(conclusion)])
+    if plan.intent == AnalysisIntent.INCIDENT_CAUSE and investigation:
+        summary = render_investigation_answer(investigation, plan, conclusion)
+        return {
+            "type": "composite",
+            "fact_type": "alert",
+            "title": "原因分析",
+            "summary_markdown": summary,
+            "blocks": [
+                {"type": "conclusion", "title": "原因结论"},
+                {"type": "cause_findings", "title": "直接触发原因"},
+                {"type": "relation_groups", "title": "关联判断"},
+                {"type": "limitations", "title": "判断边界"},
+                {"type": "next_checks", "title": "后续检查"},
+                {
+                    "type": "alert_list",
+                    "title": "告警明细",
+                    "source_tools": ["get_alert_details", "query_alerts"],
+                    "fact_types": ["alert"],
+                },
+            ],
+        }
     return {
         "type": "alert_list",
         "fact_type": "alert",
@@ -336,8 +697,12 @@ def render_fact_answer(
     conclusion: AnalysisConclusion,
     facts: dict[str, dict[str, Any]],
     prior_fact_set: dict[str, Any] | None = None,
+    investigation: dict[str, Any] | None = None,
 ) -> str | None:
     """按真实工具事实渲染通用回答，不依赖固定 Intent 或问句模板。"""
+    investigation_answer = render_investigation_answer(investigation or {}, plan, conclusion)
+    if investigation_answer:
+        return investigation_answer
     sources, using_prior = _selected_sources(
         question=question,
         plan=plan,
@@ -346,11 +711,16 @@ def render_fact_answer(
     )
     if not sources:
         return None
-    # 单一事实类型可以安全地直接展开明细；多类型综合分析仍交给现有确定性
-    # 综合报告，避免把平台健康问题退化成多张缺少业务判断的原始表格。
-    if len(sources) > 1:
+    specialized_tools = {
+        "get_alert_details",
+        "correlate_alerts",
+        "query_metric_series",
+        "query_resource_timeline",
+    }
+    if len(sources) > 1 and not any(
+        source.get("tool_name") in specialized_tools for source in sources
+    ):
         return None
-
     total = sum(len(source["items"]) for source in sources)
     if len(sources) == 1:
         fact_title = str(sources[0]["presentation"].get("title") or "事实明细")
@@ -405,7 +775,9 @@ __all__ = (
     "TOOL_PRESENTATIONS",
     "build_fact_presentation",
     "build_fact_set",
+    "build_investigation_analysis",
     "presentation_for_tool",
     "references_prior_facts",
+    "render_investigation_answer",
     "render_fact_answer",
 )

@@ -17,6 +17,13 @@ from app.core.common.exception import BusiException
 from app.core.services.monitoring import analysis_tools as monitoring_analysis_tools
 
 _TOOLS_BY_NAME = {tool.name: tool for tool in MONITORING_ANALYSIS_TOOLS}
+_DISCOVERY_TOOL_NAMES = (
+    "query_health_snapshots",
+    "query_alerts",
+    "query_metrics",
+    "query_events",
+    "query_tasks",
+)
 
 
 class _FakeMonitoringDeepAgent:
@@ -258,7 +265,7 @@ async def test_platform_health_uses_all_read_only_tools_and_returns_normal():
             }
         ),
         agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
-            tool_names=tuple(_TOOLS_BY_NAME),
+            tool_names=_DISCOVERY_TOOL_NAMES,
         ),
     )
 
@@ -281,7 +288,7 @@ async def test_platform_health_does_not_treat_empty_alerts_as_normal():
     result = await MonitoringAgent(
         tools=_registry({}),
         agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
-            tool_names=tuple(_TOOLS_BY_NAME),
+            tool_names=_DISCOVERY_TOOL_NAMES,
         ),
     ).analyze(
         question="昨天平台运行正常吗",
@@ -320,7 +327,7 @@ async def test_resolved_alert_makes_period_health_warning():
             }
         ),
         agent_factory=lambda runtime: _FakeMonitoringDeepAgent(
-            tool_names=tuple(_TOOLS_BY_NAME),
+            tool_names=_DISCOVERY_TOOL_NAMES,
         ),
     ).analyze(
         question="昨天平台运行正常吗",

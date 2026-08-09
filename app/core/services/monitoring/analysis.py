@@ -238,6 +238,7 @@ async def send_message(
             "error": type(exc).__name__,
             "fact_set": {},
             "presentation": {},
+            "investigation": {},
         }
     incident_id = (
         conversation_context.get("incident_id")
@@ -268,6 +269,7 @@ async def send_message(
                 "answering": result.get("answering") or {},
                 "fact_set": result.get("fact_set") or {},
                 "presentation": result.get("presentation") or {},
+                "investigation": result.get("investigation") or {},
             },
         )
         await conversation_db.update_(db, {"updated_at": utils.utc_now()}, id=conversation_id)

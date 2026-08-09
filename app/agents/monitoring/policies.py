@@ -11,6 +11,10 @@ READ_ONLY_TOOLS = frozenset(
         "query_metrics",
         "query_events",
         "query_tasks",
+        "get_alert_details",
+        "correlate_alerts",
+        "query_metric_series",
+        "query_resource_timeline",
     }
 )
 TRUSTED_CONTEXT_FIELDS = frozenset({"tenant_id", "user_id", "role"})

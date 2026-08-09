@@ -21,7 +21,7 @@ from langchain.agents.structured_output import ToolStrategy
 from langchain_openai import ChatOpenAI
 
 from app.agents.knowledge.policies import validate_agent_context, validate_agent_result
-from app.agents.knowledge.runtime import AgentError, AgentOutputInvalid, AgentRuntime
+from app.agents.knowledge.runtime import AgentError, AgentOutputInvalid, AgentRuntime, ToolTimeout
 from app.agents.knowledge.state import KnowledgeHarnessContext, KnowledgeSession
 from app.agents.knowledge.tools import (
     build_citations,
@@ -32,6 +32,7 @@ from app.agents.knowledge.tools import (
 from app.config import CONF
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
+from app.core.common.structured_output import repair_structured_output
 from app.core.monitoring import emit_gather_event, monitor_gather
 from app.schemas.agent import (
     AgentAnswer,
@@ -348,6 +349,32 @@ def _structured_answer(result: Any) -> AgentAnswer:
     raise AgentOutputInvalid("Agent 未返回有效答案")
 
 
+async def _repair_knowledge_answer(
+    *,
+    task: AgentTask,
+    chunks: list[dict[str, Any]],
+    timeout_seconds: float,
+):
+    """仅用已检索分块修复问答终态，不在修复轮开放知识库工具。"""
+
+    evidence = [
+        {
+            "chunk_id": item.get("id"),
+            "source_name": item.get("source_name"),
+            "content": str(item.get("content") or "")[:2400],
+        }
+        for item in chunks[:20]
+    ]
+    return await repair_structured_output(
+        model=_build_chat_model(),
+        schema=AgentAnswer,
+        evidence_payload={"question": task.question, "retrieved_chunks": evidence},
+        timeout_seconds=timeout_seconds,
+        agent_name="knowledge_agent",
+        max_payload_chars=50_000,
+    )
+
+
 async def _fallback_result(
     task: AgentTask,
     context: AgentContext,
@@ -535,7 +562,7 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
             else:
                 # 给引用校验和确定性降级预留时间；Agent 最终模型超时后，
                 # KnowledgeSession 中已经取得的检索事实仍然可用于返回引用。
-                convergence_reserve = min(2.0, runtime.remaining_seconds() * 0.2)
+                convergence_reserve = min(8.0, runtime.remaining_seconds() * 0.2)
                 agent_timeout = max(0.01, runtime.remaining_seconds() - convergence_reserve)
                 result = await asyncio.wait_for(
                     get_knowledge_agent(
@@ -639,16 +666,39 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
             and isinstance(result, dict)
             and _parse_agent_answer(result.get("structured_response")) is None
         ):
-            # Deep Agent 的普通文本消息不能冒充官方结构化终态。已取得的分块
-            # 仍交给同一受控降级路径生成答案和引用，并明确记录失败原因。
-            return await _fallback_result(
-                task,
-                context,
-                started_at,
-                "structured_output_missing",
-                runtime,
-                session.chunks() or retrieved_chunks,
+            # 首次结构化终态缺失或不合法时，只允许一次无业务工具的 Schema 修复。
+            # 修复仍失败才进入确定性降级，普通文本不能冒充完整 Agent 成功。
+            repair_chunks = session.chunks() or retrieved_chunks
+            try:
+                repair_timeout = min(6.0, max(0.0, runtime.remaining_seconds() - 0.5))
+            except ToolTimeout:
+                repair_timeout = 0.0
+            repair = await _repair_knowledge_answer(
+                task=task,
+                chunks=repair_chunks,
+                timeout_seconds=(
+                    repair_timeout if runtime.model_call_count < runtime.max_model_calls else 0.0
+                ),
             )
+            if repair.attempted:
+                runtime.model_call_count += 1
+            if repair.value is not None:
+                result["structured_response"] = repair.value
+                LOG.info("Knowledge agent structured output repair succeeded kb_id={}", task.kb_id)
+            else:
+                LOG.warning(
+                    "Knowledge agent structured output repair unavailable kb_id={} reason={}",
+                    task.kb_id,
+                    repair.error,
+                )
+                return await _fallback_result(
+                    task,
+                    context,
+                    started_at,
+                    "structured_output_missing",
+                    runtime,
+                    repair_chunks,
+                )
         answer = _structured_answer(result)
         await emit_gather_event(
             "knowledge.qa",

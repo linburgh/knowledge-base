@@ -93,6 +93,8 @@ class MonitoringAgentOutput(BaseModel):
     limitations: list[str] = Field(default_factory=list, max_length=20)
     evidence_refs: list[str] = Field(default_factory=list, max_length=50)
     fact_refs: list[str] = Field(default_factory=list, max_length=20)
+    hypotheses: list[str] = Field(default_factory=list, max_length=10)
+    unresolved_questions: list[str] = Field(default_factory=list, max_length=10)
     layout_reason: str = Field(min_length=1, max_length=300)
     confidence: float = Field(default=0.5, ge=0, le=1)
     termination_reason: Literal["completed", "evidence_insufficient", "tool_failed"] = "completed"

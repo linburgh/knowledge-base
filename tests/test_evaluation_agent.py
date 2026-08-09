@@ -160,6 +160,10 @@ class EvaluationAgentTest(unittest.IsolatedAsyncioTestCase):
             {"success_rate": Gate(operator=">=", value=0.5)},
         )
         self.assertEqual(metrics.metrics["fallback_rate"].value, 0.5)
+        self.assertEqual(
+            metrics.metrics["recall_at_k"].reason,
+            "评测数据未标注该问题应命中的标准文档或证据片段",
+        )
         self.assertEqual(metrics.conclusion, "passed")
 
     def test_generated_knowledge_mode_requires_knowledge_context(self) -> None:

@@ -24,6 +24,10 @@ from langchain.agents.structured_output import ToolStrategy
 
 from app.core.common.exception import BusiException
 from app.core.common.log import LOG
+from app.core.common.structured_output import (
+    StructuredOutputRepairResult,
+    repair_structured_output,
+)
 from app.schemas.agent import AgentToolTrace
 from app.schemas.evaluation import (
     EvaluationAgentContext,
@@ -217,10 +221,12 @@ class EvaluationAgent:
         registry: EvaluationToolRegistry | None = None,
         cancel_check=None,
         agent_factory: Callable[[EvaluationConfig], Any] | None = None,
+        structured_output_repair: Callable[..., Any] = repair_structured_output,
     ) -> None:
         self.registry = registry or build_default_registry()
         self.cancel_check = cancel_check
         self.agent_factory = agent_factory
+        self.structured_output_repair = structured_output_repair
 
     async def run(
         self,
@@ -255,11 +261,12 @@ class EvaluationAgent:
             executor=KnowledgeAgentExecutor(self.registry),
             runtime=runtime,
         )
-        agent = (
-            self.agent_factory(config)
-            if self.agent_factory is not None
-            else build_evaluation_deep_agent(config)
-        )
+        if self.agent_factory is not None:
+            agent_model = None
+            agent = self.agent_factory(config)
+        else:
+            agent_model = build_evaluation_chat_model()
+            agent = build_evaluation_deep_agent(config, model=agent_model)
         LOG.info(
             "自主评测Agent start run_id={} kb_id={} question_count={} harness=deepagents",
             trusted_context.run_id,
@@ -342,9 +349,93 @@ class EvaluationAgent:
                     len(questions),
                 )
                 return result
+            runtime.model_call_count = _model_call_count(result_state)
             raw_output = result_state.get("structured_response")
-            if raw_output is None:
-                fallback_reason = "ModelTimeout" if model_timeout else "StructuredOutputMissing"
+            analysis: EvaluationAgentOutput | None = None
+            structured_error: str | None = None
+            if raw_output is not None:
+                try:
+                    analysis = (
+                        raw_output
+                        if isinstance(raw_output, EvaluationAgentOutput)
+                        else EvaluationAgentOutput.model_validate(raw_output)
+                    )
+                except ValueError:
+                    structured_error = "StructuredOutputInvalid"
+            elif not model_timeout:
+                structured_error = "StructuredOutputMissing"
+
+            if structured_error is not None:
+                repair_model = agent_model
+                if (
+                    repair_model is None
+                    and self.structured_output_repair is repair_structured_output
+                ):
+                    try:
+                        repair_model = build_evaluation_chat_model()
+                    except Exception:
+                        LOG.warning(
+                            "自主评测Agent structured output repair model unavailable run_id={}",
+                            trusted_context.run_id,
+                        )
+                repair_timeout = min(
+                    8.0,
+                    max(0.0, config.run_timeout_seconds - (monotonic() - started) - 0.5),
+                )
+                if (
+                    repair_model is None
+                    and self.structured_output_repair is repair_structured_output
+                ):
+                    repair = StructuredOutputRepairResult(
+                        value=None,
+                        attempted=False,
+                        error="RepairModelUnavailable",
+                    )
+                else:
+                    repair = await self.structured_output_repair(
+                        model=repair_model,
+                        schema=EvaluationAgentOutput,
+                        evidence_payload={
+                            "goal": "分析本次知识库问答评测结果",
+                            "metrics": session.metrics().model_dump(mode="json"),
+                            "reviewed_case_numbers": session.reviewed_case_numbers,
+                            "cases": [
+                                {
+                                    "case_no": item.case_no,
+                                    "status": item.status,
+                                    "citation_count": item.citation_count,
+                                    "hit_count": item.hit_count,
+                                    "error_code": item.error_code,
+                                }
+                                for item in session.ordered_results()
+                            ],
+                        },
+                        timeout_seconds=(
+                            repair_timeout
+                            if runtime.model_call_count < config.max_model_calls
+                            else 0.0
+                        ),
+                        agent_name="evaluation_agent",
+                    )
+                if repair.attempted:
+                    runtime.model_call_count += 1
+                if repair.value is not None:
+                    analysis = repair.value
+                    structured_error = None
+                    LOG.info(
+                        "自主评测Agent structured output repair succeeded run_id={}",
+                        trusted_context.run_id,
+                    )
+                else:
+                    LOG.warning(
+                        "自主评测Agent structured output repair unavailable run_id={} reason={}",
+                        trusted_context.run_id,
+                        repair.error,
+                    )
+
+            if analysis is None:
+                fallback_reason = "ModelTimeout" if model_timeout else structured_error
+                fallback_reason = fallback_reason or "StructuredOutputMissing"
                 analysis = _fallback_analysis(session, reason=fallback_reason)
                 LOG.warning(
                     "自主评测Agent structured terminal unavailable; "
@@ -354,11 +445,6 @@ class EvaluationAgent:
                 )
             else:
                 fallback_reason = None
-                analysis = (
-                    raw_output
-                    if isinstance(raw_output, EvaluationAgentOutput)
-                    else EvaluationAgentOutput.model_validate(raw_output)
-                )
             analysis = analysis.model_copy(
                 update={"reviewed_case_numbers": session.reviewed_case_numbers}
             )
@@ -377,7 +463,6 @@ class EvaluationAgent:
                 metrics.failed_gates,
             )
             report = build_report(config, results, metrics, analysis=analysis)
-            runtime.model_call_count = _model_call_count(result_state)
             traces = [*_agent_tool_traces(result_state), *runtime.tool_traces]
             result = EvaluationAgentResult(
                 case_results=[item.model_dump(mode="json") for item in results],

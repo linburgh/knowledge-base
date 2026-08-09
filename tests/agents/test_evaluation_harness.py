@@ -28,6 +28,7 @@ from app.agents.evaluation.tools import (
 )
 from app.agents.evaluation.tools.registry import EvaluationToolRegistry
 from app.core.common.exception import BusiException
+from app.core.common.structured_output import StructuredOutputRepairResult
 from app.schemas.agent import AgentResult
 from app.schemas.evaluation import (
     EvaluationAgentContext,
@@ -158,6 +159,15 @@ class ProviderFailureAfterCasesAgent:
             runtime=SimpleNamespace(context=context),
         )
         raise RuntimeError("provider unavailable")
+
+
+async def _unavailable_repair(**kwargs):
+    del kwargs
+    return StructuredOutputRepairResult(
+        value=None,
+        attempted=True,
+        error="StructuredOutputMissing",
+    )
 
 
 def test_build_evaluation_agent_uses_restricted_deepagents_harness() -> None:
@@ -372,6 +382,7 @@ async def test_missing_structured_terminal_preserves_evaluation_results() -> Non
     result = await EvaluationAgent(
         registry=_completed_registry(),
         agent_factory=lambda config: MissingStructuredEvaluationAgent(),
+        structured_output_repair=_unavailable_repair,
     ).run(_task("问题"), _context())
 
     assert result.summary.status == "completed"
@@ -379,6 +390,54 @@ async def test_missing_structured_terminal_preserves_evaluation_results() -> Non
     assert result.summary.limitations == ["外部模型终态不可用：StructuredOutputMissing"]
     assert len(result.case_results) == 1
     assert result.report["agent_analysis"]["confidence"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_missing_evaluation_terminal_is_repaired_without_reexecuting_cases() -> None:
+    calls = 0
+    registry = EvaluationToolRegistry()
+
+    async def handler(payload, context):
+        nonlocal calls
+        del payload, context
+        calls += 1
+        return KnowledgeAgentCallResult(
+            result=AgentResult(
+                answer="答案",
+                mode="single_retrieval",
+                status="completed",
+                top_k=3,
+                hit_count=1,
+                termination_reason="completed",
+                duration_ms=1,
+            )
+        )
+
+    async def repair(**kwargs):
+        assert kwargs["schema"] is EvaluationAgentOutput
+        assert kwargs["evidence_payload"]["cases"][0]["status"] == "completed"
+        return StructuredOutputRepairResult(
+            value=EvaluationAgentOutput(
+                goal="分析评测结果",
+                rationale="根据确定性指标完成结构修复",
+                findings=["全部题目已执行"],
+                recommendations=["持续观察"],
+                confidence=0.8,
+            ),
+            attempted=True,
+        )
+
+    registry.register("call_knowledge_agent", handler)
+    result = await EvaluationAgent(
+        registry=registry,
+        agent_factory=lambda config: MissingStructuredEvaluationAgent(),
+        structured_output_repair=repair,
+    ).run(_task("问题"), _context())
+
+    assert calls == 1
+    assert result.summary.status == "completed"
+    assert result.summary.limitations == []
+    assert result.report["agent_analysis"]["confidence"] == 0.8
 
 
 @pytest.mark.asyncio

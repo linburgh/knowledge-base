@@ -496,7 +496,6 @@ def _alert_view(alert: dict[str, Any], definitions: dict[str, dict[str, Any]]) -
     elif metric_code and metric_code in stored_title:
         row["alert_title"] = "指标异常：未配置中文名称"
     domain, domain_name = _monitor_domain(metric_code, definitions)
-    resource_code = str(alert.get("resource_code") or metric_code)
     started_at = alert.get("first_fired_at")
     ended_at = alert.get("resolved_at") or alert.get("closed_at") or utils.utc_now()
     duration_seconds = None
@@ -507,7 +506,12 @@ def _alert_view(alert: dict[str, Any], definitions: dict[str, dict[str, Any]]) -
         status_name=_ALERT_STATUS_NAMES.get(str(alert.get("status")), "未知状态"),
         monitor_domain=domain,
         monitor_domain_name=domain_name,
-        resource_name=_event_resource_name({"source_code": resource_code}),
+        resource_name=_event_resource_name(
+            {
+                "source_type": "alert",
+                "tenant_id": alert.get("tenant_id"),
+            }
+        ),
         duration_seconds=duration_seconds,
         acknowledged_by_name=alert.get("acknowledged_by") or "—",
     )
@@ -1425,6 +1429,19 @@ async def overview(
         db,
         alert_filters,
     )
+    definition_rows, definition_status, definition_error = await _overview_source(
+        "metric_definitions",
+        "指标定义查询失败",
+        definition_db.list,
+        db,
+        {},
+    )
+    definitions = _metric_definition_map(definition_rows)
+    # 总览与告警中心共用客户视图，避免历史告警标题泄露内部指标编码。
+    alerts = [_alert_view(alert, definitions) for alert in alerts]
+    if alerts and definition_status == "error":
+        alert_status = "error"
+        alert_error = definition_error
     alerts = [alert for alert in alerts if _alert_in_window(alert, start_at, end_at)]
     snapshots, snapshot_status, snapshot_error = await _overview_source(
         "snapshots",

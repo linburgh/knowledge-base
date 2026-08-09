@@ -52,7 +52,10 @@ def calculate_metrics(results: list[CaseResult], gates: dict[str, Gate]) -> Eval
         "p99_duration_ms": MetricValue(
             value=_percentile(durations, 99), sample_count=len(durations)
         ),
-        "recall_at_k": MetricValue(available=False, reason="缺少标准文档或人工标注"),
+        "recall_at_k": MetricValue(
+            available=False,
+            reason="评测数据未标注该问题应命中的标准文档或证据片段",
+        ),
         "answer_correctness": MetricValue(available=False, reason="缺少标准答案或人工标注"),
     }
     failed: list[str] = []

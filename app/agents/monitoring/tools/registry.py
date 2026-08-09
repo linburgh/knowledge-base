@@ -42,7 +42,7 @@ class MonitoringToolRegistry:
 
     async def invoke(self, name: str, **kwargs):
         payload = MonitoringToolInput.model_validate(kwargs)
-        result = await self.get(name)(**payload.model_dump())
+        result = await self.get(name)(**payload.model_dump(exclude_defaults=True))
         definition = self.definition(name)
         return MonitoringToolOutput.model_validate(
             {

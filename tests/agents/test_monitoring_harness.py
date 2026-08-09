@@ -30,6 +30,7 @@ from app.agents.monitoring.skills import load_skill
 from app.agents.monitoring.state import MonitoringSession
 from app.agents.monitoring.tools import MONITORING_ANALYSIS_TOOLS
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
+from app.core.common.structured_output import StructuredOutputRepairResult
 
 
 def _window() -> tuple[datetime, datetime]:
@@ -42,7 +43,7 @@ class FakeMonitoringDeepAgent:
     async def ainvoke(self, inputs, *, context, config):
         del inputs, config
         runtime = SimpleNamespace(context=context)
-        for monitoring_tool in MONITORING_ANALYSIS_TOOLS:
+        for monitoring_tool in MONITORING_ANALYSIS_TOOLS[:5]:
             await monitoring_tool.coroutine(runtime=runtime)
         return {
             "structured_response": MonitoringAgentOutput(
@@ -109,6 +110,15 @@ class NoToolProviderFailureMonitoringDeepAgent:
         raise RuntimeError("provider unavailable")
 
 
+async def _unavailable_repair(**kwargs):
+    del kwargs
+    return StructuredOutputRepairResult(
+        value=None,
+        attempted=True,
+        error="StructuredOutputMissing",
+    )
+
+
 def test_monitoring_skills_are_loaded_with_versions() -> None:
     analysis, analysis_ref = load_skill("monitoring-analysis")
     answering, answering_ref = load_skill("answer-writing")
@@ -158,6 +168,10 @@ def test_build_monitoring_agent_uses_restricted_deepagents_harness() -> None:
         "query_metrics",
         "query_events",
         "query_tasks",
+        "get_alert_details",
+        "correlate_alerts",
+        "query_metric_series",
+        "query_resource_timeline",
     }
     assert {type(item) for item in kwargs["middleware"]} == {
         ModelCallLimitMiddleware,
@@ -187,9 +201,17 @@ def test_build_monitoring_agent_uses_restricted_deepagents_harness() -> None:
 
 
 def test_tool_runtime_context_is_hidden_from_model_schema() -> None:
+    expected_inputs = {
+        "get_alert_details": {"fact_ids"},
+        "correlate_alerts": {"fact_ids"},
+        "query_metric_series": {"metric_codes", "resource_codes"},
+        "query_resource_timeline": {"resource_codes", "trace_ids"},
+    }
     for monitoring_tool in MONITORING_ANALYSIS_TOOLS:
         assert "runtime" not in monitoring_tool.tool_call_schema.model_fields
-        assert set(monitoring_tool.tool_call_schema.model_fields) == set()
+        assert set(monitoring_tool.tool_call_schema.model_fields) == expected_inputs.get(
+            monitoring_tool.name, set()
+        )
 
 
 @pytest.mark.asyncio
@@ -271,6 +293,7 @@ async def test_missing_provider_structured_output_uses_deterministic_convergence
     result = await MonitoringAgent(
         tools=registry,
         agent_factory=lambda runtime: UnstructuredMonitoringDeepAgent(),
+        structured_output_repair=_unavailable_repair,
     ).analyze(
         question="最近有哪些活动告警",
         context={
@@ -284,6 +307,57 @@ async def test_missing_provider_structured_output_uses_deterministic_convergence
     assert result["planning"]["mode"] == "fallback"
     assert result["planning"]["error"] == "StructuredOutputMissing"
     assert result["conclusion"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_missing_monitoring_terminal_is_repaired_without_requerying_tools() -> None:
+    registry = MonitoringToolRegistry()
+    query_count = 0
+
+    async def handler(**kwargs):
+        nonlocal query_count
+        del kwargs
+        query_count += 1
+        return {
+            "items": [{"id": "alert-1", "status": "firing", "severity": "warning"}],
+            "data_status": "ready",
+        }
+
+    async def repair(**kwargs):
+        assert kwargs["schema"] is MonitoringAgentOutput
+        assert set(kwargs["evidence_payload"]["facts"]) == {"query_alerts"}
+        return StructuredOutputRepairResult(
+            value=MonitoringAgentOutput(
+                intent="evidence_review",
+                goal="列出活动告警",
+                requested_view="告警明细",
+                answer_markdown="已取得中国标准时间范围内的活动告警明细，请结合证据继续核查。",
+                conclusion_ack="warning",
+                evidence_refs=["alert-1"],
+                layout_reason="按告警明细展示",
+                confidence=0.9,
+            ),
+            attempted=True,
+        )
+
+    registry.register("query_alerts", handler)
+    result = await MonitoringAgent(
+        tools=registry,
+        agent_factory=lambda runtime: UnstructuredMonitoringDeepAgent(),
+        structured_output_repair=repair,
+    ).analyze(
+        question="最近有哪些活动告警",
+        context={
+            "user_id": "1",
+            "role": "platform_super_admin",
+            "scope_key": "platform",
+        },
+    )
+
+    assert query_count == 1
+    assert result["planning"]["mode"] == "llm"
+    assert result["planning"]["error"] is None
+    assert result["answering"]["mode"] == "llm"
 
 
 @pytest.mark.asyncio

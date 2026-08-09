@@ -42,12 +42,12 @@ class MonitoringModelCallAccountingMiddleware(AgentMiddleware):
 
 @dataclass
 class MonitoringRuntime:
-    timeout_seconds: float = 15.0
+    timeout_seconds: float = 30.0
     max_context_items: int = 50
     max_steps: int = 8
-    max_tool_calls: int = 5
+    max_tool_calls: int = 10
     # Deep Agent 需要为 Skill 发现、工具观察和结构化收敛保留有限轮次。
-    max_model_calls: int = 8
+    max_model_calls: int = 10
     tool_timeout_seconds: float = 5.0
     max_retries: int = 1
     cancel_check: Callable[[], bool | Awaitable[bool]] | None = None
@@ -103,6 +103,10 @@ class MonitoringRuntime:
             context=context,
             registered_tools=registry.names(),
         )
+        session = context.get("_monitoring_session")
+        workspace = getattr(session, "workspace", None)
+        if workspace is not None and workspace.has_query(name, arguments):
+            raise MonitoringAgentError("自主监控 Agent 不允许重复执行相同查询")
         self.tool_call_count += 1
         started_at = utils.utc_now()
         started = perf_counter()
@@ -111,6 +115,8 @@ class MonitoringRuntime:
             registry.invoke(name, **arguments),
             timeout=self.tool_timeout_seconds,
         )
+        if workspace is not None:
+            workspace.record_query(name, arguments)
         trace = {
             "name": name,
             "status": "completed",

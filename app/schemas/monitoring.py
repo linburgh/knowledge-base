@@ -135,6 +135,71 @@ class AnalysisAnswering(BaseModel):
     layout_reason: str | None = None
 
 
+class InvestigationObservation(BaseModel):
+    observation_type: str
+    title: str
+    summary: str
+    subject_refs: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class InvestigationFinding(BaseModel):
+    finding_type: str
+    title: str
+    summary: str
+    status: Literal["confirmed", "suspected", "unconfirmed"]
+    subject_refs: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class InvestigationRelation(BaseModel):
+    relation_type: str
+    title: str
+    summary: str
+    status: Literal["confirmed", "suspected", "unconfirmed"]
+    subject_refs: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class CausalAssessment(BaseModel):
+    direct_causes: list[InvestigationFinding] = Field(default_factory=list)
+    correlated_factors: list[InvestigationRelation] = Field(default_factory=list)
+    root_cause_status: Literal["confirmed", "suspected", "unconfirmed", "not_applicable"]
+    root_cause_summary: str
+
+
+class InvestigationAnalysis(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    analysis_goal: str
+    subject_refs: list[str] = Field(default_factory=list)
+    observations: list[InvestigationObservation] = Field(default_factory=list)
+    findings: list[InvestigationFinding] = Field(default_factory=list)
+    relations: list[InvestigationRelation] = Field(default_factory=list)
+    causal_assessment: CausalAssessment
+    unknowns: list[str] = Field(default_factory=list)
+    next_checks: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class AnalysisPresentationBlock(BaseModel):
+    type: str
+    title: str | None = None
+    source_tools: list[str] = Field(default_factory=list)
+    fact_types: list[str] = Field(default_factory=list)
+
+
+class AnalysisPresentation(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str | None = None
+    fact_type: str | None = None
+    title: str | None = None
+    summary_markdown: str | None = None
+    blocks: list[AnalysisPresentationBlock] = Field(default_factory=list)
+
+
 class AnalysisMessageResponse(BaseModel):
     conversation_id: int
     user_message_id: int
@@ -153,7 +218,8 @@ class AnalysisMessageResponse(BaseModel):
     planning: AnalysisPlanning
     answering: AnalysisAnswering
     fact_set: dict[str, Any] = Field(default_factory=dict)
-    presentation: dict[str, Any] = Field(default_factory=dict)
+    presentation: AnalysisPresentation = Field(default_factory=AnalysisPresentation)
+    investigation: InvestigationAnalysis | dict[str, Any] = Field(default_factory=dict)
 
 
 class MonitoringTask(BaseModel):
@@ -165,6 +231,10 @@ class MonitoringToolInput(BaseModel):
     window_start: datetime
     window_end: datetime
     scope_key: Literal["platform", "tenant"]
+    fact_ids: list[str] = Field(default_factory=list, max_length=50)
+    metric_codes: list[str] = Field(default_factory=list, max_length=20)
+    resource_codes: list[str] = Field(default_factory=list, max_length=20)
+    trace_ids: list[str] = Field(default_factory=list, max_length=20)
 
 
 class MonitoringToolOutput(BaseModel):
@@ -213,7 +283,8 @@ class MonitoringResult(BaseModel):
     duration_ms: int = Field(default=0, ge=0)
     skill_refs: list[AgentSkillRef] = Field(default_factory=list)
     fact_set: dict[str, Any] = Field(default_factory=dict)
-    presentation: dict[str, Any] = Field(default_factory=dict)
+    presentation: AnalysisPresentation = Field(default_factory=AnalysisPresentation)
+    investigation: InvestigationAnalysis | dict[str, Any] = Field(default_factory=dict)
 
 
 class AnalysisSemanticOverview(BaseModel):

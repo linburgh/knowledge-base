@@ -872,6 +872,21 @@
         margin-top: 5px;
         font-size: 23px;
       }
+      .summary-card small {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 18px;
+      }
+      .summary-card.unavailable {
+        border-color: #e3e7ee;
+        background: #fafbfc;
+      }
+      .summary-card.unavailable strong {
+        color: #68758b;
+        font-size: 16px;
+      }
       .result-section {
         margin-top: 20px;
         padding: 20px;
@@ -1531,8 +1546,9 @@
               <span>成功率</span
               ><strong style="color: var(--success)">100%</strong>
             </div>
-            <div class="summary-card">
-              <span>错误率</span><strong>0%</strong>
+            <div class="summary-card unavailable">
+              <span>召回率@K</span><strong>无法计算</strong
+              ><small>未标注应命中的标准文档或证据片段</small>
             </div>
             <div class="summary-card">
               <span>降级率</span><strong>0%</strong>
@@ -1560,6 +1576,23 @@
                   <td><div class="compact-table-cell"><strong>成功率</strong><span>样本 20</span></div></td>
                   <td><div class="compact-table-cell"><strong>100%</strong><span>&gt;= 95%</span></div></td>
                   <td><span class="tag success">合格</span></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="compact-table-cell">
+                      <strong>召回率@K</strong><span>样本 20</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="compact-table-cell">
+                      <strong>无法计算</strong
+                      ><span
+                        title="评测数据未标注该问题应命中的标准文档或证据片段"
+                        >未标注应命中的标准文档或证据片段</span
+                      >
+                    </div>
+                  </td>
+                  <td><span class="tag">无法计算</span></td>
                 </tr>
                 <tr>
                   <td><div class="compact-table-cell"><strong>错误率</strong><span>样本 20</span></div></td>

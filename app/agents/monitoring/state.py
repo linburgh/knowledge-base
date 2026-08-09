@@ -10,6 +10,7 @@ from app.core.common import utils
 from app.core.common.exception import BusiException
 
 from .models import AnalysisTimeRange
+from .workspace import EvidenceWorkspace
 
 MONITORING_TIMEZONE = "Asia/Shanghai"
 
@@ -26,6 +27,7 @@ class MonitoringSession:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     failed_tools: list[str] = field(default_factory=list)
     time_range: AnalysisTimeRange | None = None
+    workspace: EvidenceWorkspace = field(default_factory=EvidenceWorkspace)
     _facts_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     async def store_fact(self, name: str, result: dict[str, Any]) -> dict[str, Any]:
@@ -33,6 +35,7 @@ class MonitoringSession:
         async with self._facts_lock:
             used = sum(len(item.get("items") or []) for item in self.facts.values())
             remaining = max(self.runtime.max_context_items - used, 0)
+            result = self.workspace.add_result(result)
             items = list(result.get("items") or [])
             per_source_limit = max(self.runtime.max_context_items // 5, 1)
             allowed = min(remaining, per_source_limit)
@@ -41,6 +44,11 @@ class MonitoringSession:
                 "items": items[:allowed],
                 "items_truncated": len(items) > allowed,
             }
+            previous = self.facts.get(name) or {}
+            previous_items = list(previous.get("items") or [])
+            merged = {str(item.get("id") or ""): item for item in [*previous_items, *compact["items"]]}
+            compact["items"] = list(merged.values())[:allowed]
+            compact["items_truncated"] = bool(compact.get("items_truncated")) or len(merged) > allowed
             self.facts[name] = compact
             return compact
 

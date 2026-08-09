@@ -6,6 +6,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
+from app.agents.monitoring.correlation import correlate_alert_items
 from app.db.base import DB
 from app.db.monitoring import (
     alert as alert_db,
@@ -229,6 +230,11 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                     "severity_name": severity_name,
                     "monitor_domain": definition.get("metric_domain") or "platform",
                     "monitor_domain_name": domain_name,
+                    "metric_code": row.get("metric_code"),
+                    "metric_name": metric_names.get(str(row.get("metric_code") or ""))
+                    or "未配置中文名称",
+                    "rule_id": str(row.get("rule_id") or ""),
+                    "scope_key": str(row.get("tenant_id") or "platform"),
                     "resource_type": row.get("resource_type"),
                     "resource_code": row.get("resource_code"),
                     "resource_name": resource_name,
@@ -296,6 +302,13 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                     "evidence_level_name": "直接证据",
                     "occurred_at": row.get("window_end"),
                     "target_id": code,
+                    "metric_code": code,
+                    "metric_name": definition.get("metric_name") or "未配置中文名称",
+                    "metric_value": _number(row.get("metric_value")),
+                    "unit": row.get("unit") or definition.get("unit"),
+                    "window_start": row.get("window_start"),
+                    "window_end": row.get("window_end"),
+                    "scope_key": row.get("scope_key"),
                     "assessment_status": assessment,
                     "data_status": data_status,
                     "sample_count": int(row.get("sample_count") or 0),
@@ -333,6 +346,7 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
                     "target_id": str(row.get("event_id") or row["id"]),
                     "status": status,
                     "trace_id": row.get("trace_id"),
+                    "resource_code": row.get("source_code"),
                     "error_category": row.get("error_category"),
                 }
             )
@@ -376,11 +390,159 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
             )
         return _result(items)
 
+    async def get_alert_details(
+        *, window_start: datetime, window_end: datetime, scope_key: str, fact_ids: list[str]
+    ) -> dict[str, Any]:
+        result = await query_alerts(
+            window_start=window_start,
+            window_end=window_end,
+            scope_key=scope_key,
+        )
+        selected = set(fact_ids)
+        return _result([item for item in result["items"] if item["id"] in selected])
+
+    async def correlate_alerts(
+        *, window_start: datetime, window_end: datetime, scope_key: str, fact_ids: list[str]
+    ) -> dict[str, Any]:
+        result = await query_alerts(
+            window_start=window_start,
+            window_end=window_end,
+            scope_key=scope_key,
+        )
+        selected = set(fact_ids)
+        alerts = [item for item in result["items"] if not selected or item["id"] in selected]
+        return _result(correlate_alert_items(alerts))
+
+    async def query_metric_series(
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        scope_key: str,
+        metric_codes: list[str],
+        resource_codes: list[str] | None = None,
+    ) -> dict[str, Any]:
+        selected = set(metric_codes)
+        selected_resources = set(resource_codes or [])
+        if not selected:
+            return _result([])
+        definitions = {
+            str(item.get("metric_code")): item
+            for item in await definition_db.list(DB.get(), status="active")
+        }
+        rows = await value_db.list(
+            DB.get(),
+            **_scope_filter(scope),
+            scope_key=scope_key,
+            metric_code__in=sorted(selected),
+            window_end__gte=window_start,
+        )
+        items = []
+        for row in rows:
+            if row.get("window_start") is None or row["window_start"] >= window_end:
+                continue
+            if selected_resources and row.get("scope_key") not in selected_resources:
+                continue
+            code = str(row.get("metric_code") or "")
+            definition = definitions.get(code) or {}
+            assessment = str(row.get("assessment_status") or "unknown")
+            items.append(
+                {
+                    "id": f"metric-{row['id']}",
+                    "evidence_type": "metric_series",
+                    "evidence_type_name": "指标趋势",
+                    "title": definition.get("metric_name") or "未配置中文名称",
+                    "summary": (
+                        f"值 {_display_number(row.get('metric_value'))}{row.get('unit') or ''} · "
+                        f"样本 {row.get('sample_count') or 0} · "
+                        f"{_STATUS_NAMES.get(assessment, assessment)}"
+                    ),
+                    "evidence_level": "direct",
+                    "evidence_level_name": "直接证据",
+                    "occurred_at": row.get("window_end"),
+                    "target_id": code,
+                    "metric_code": code,
+                    "metric_name": definition.get("metric_name") or "未配置中文名称",
+                    "metric_value": _number(row.get("metric_value")),
+                    "unit": row.get("unit") or definition.get("unit"),
+                    "window_start": row.get("window_start"),
+                    "window_end": row.get("window_end"),
+                    "scope_key": row.get("scope_key"),
+                    "assessment_status": assessment,
+                    "data_status": str(row.get("data_status") or "unknown"),
+                    "sample_count": int(row.get("sample_count") or 0),
+                }
+            )
+        return _result(items)
+
+    async def query_resource_timeline(
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        scope_key: str,
+        resource_codes: list[str] | None = None,
+        trace_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        del scope_key
+        selected_resources = set(resource_codes or [])
+        selected_traces = set(trace_ids or [])
+        if not selected_resources and not selected_traces:
+            return _result([])
+        rows = []
+        if selected_resources:
+            rows.extend(
+                await event_db.list(
+                    DB.get(),
+                    **_scope_filter(scope),
+                    source_code__in=sorted(selected_resources),
+                    occurred_at__gte=window_start,
+                )
+            )
+        if selected_traces:
+            rows.extend(
+                await event_db.list(
+                    DB.get(),
+                    **_scope_filter(scope),
+                    trace_id__in=sorted(selected_traces),
+                    occurred_at__gte=window_start,
+                )
+            )
+        rows_by_id = {row["id"]: row for row in rows}
+        items = []
+        for row in rows_by_id.values():
+            if not _in_window(row.get("occurred_at"), window_start, window_end):
+                continue
+            status = str(row.get("status") or "unknown")
+            items.append(
+                {
+                    "id": f"event-{row['id']}",
+                    "evidence_type": "timeline",
+                    "evidence_type_name": "资源时间线",
+                    "title": row.get("event_type"),
+                    "summary": (
+                        f"{row.get('source_type')} · {_STATUS_NAMES.get(status, status)}"
+                        + (f" · {row.get('stage')}" if row.get("stage") else "")
+                    ),
+                    "evidence_level": "associated",
+                    "evidence_level_name": "关联证据",
+                    "occurred_at": row.get("occurred_at"),
+                    "target_id": str(row.get("event_id") or row["id"]),
+                    "status": status,
+                    "trace_id": row.get("trace_id"),
+                    "resource_code": row.get("source_code"),
+                    "error_category": row.get("error_category"),
+                }
+            )
+        return _result(sorted(items, key=lambda item: item.get("occurred_at") or window_start))
+
     registry.register("query_health_snapshots", query_health_snapshots)
     registry.register("query_alerts", query_alerts)
     registry.register("query_metrics", query_metrics)
     registry.register("query_events", query_events)
     registry.register("query_tasks", query_tasks)
+    registry.register("get_alert_details", get_alert_details)
+    registry.register("correlate_alerts", correlate_alerts)
+    registry.register("query_metric_series", query_metric_series)
+    registry.register("query_resource_timeline", query_resource_timeline)
     return registry
 
 

@@ -202,7 +202,9 @@ def test_alert_status_overview_uses_all_alerts_and_limits_recent_changes():
             "status": status,
             "last_fired_at": base_time + monitoring.timedelta(minutes=index),
             "acknowledged_at": (
-                base_time + monitoring.timedelta(minutes=index) if status == "acknowledged" else None
+                base_time + monitoring.timedelta(minutes=index)
+                if status == "acknowledged"
+                else None
             ),
             "resolved_at": (
                 base_time + monitoring.timedelta(minutes=index) if status == "resolved" else None
@@ -636,6 +638,54 @@ async def test_overview_keeps_active_alerts_in_summary_and_recent_changes(
         "持续触发",
     ]
     assert [item["id"] for item in result["alerts"]] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_overview_uses_chinese_metric_name_for_historical_alert_title(
+    overview_context,
+    monkeypatch,
+):
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
+
+    async def empty_list(*_, **__):
+        return []
+
+    async def alerts(*_, **__):
+        return [
+            {
+                "id": 1,
+                "metric_code": "qa_success_rate",
+                "alert_title": "指标异常：qa_success_rate",
+                "status": "firing",
+                "severity": "critical",
+                "first_fired_at": now - monitoring.timedelta(minutes=10),
+                "last_fired_at": now - monitoring.timedelta(minutes=5),
+            }
+        ]
+
+    async def definitions(*_, **__):
+        return [
+            {
+                "metric_code": "qa_success_rate",
+                "metric_name": "问答成功率",
+                "metric_domain": "qa",
+                "version": 1,
+                "status": "active",
+            }
+        ]
+
+    monkeypatch.setattr(monitoring.utils, "utc_now", lambda: now)
+    monkeypatch.setattr(monitoring.event_db, "list", empty_list)
+    monkeypatch.setattr(monitoring.alert_db, "list", alerts)
+    monkeypatch.setattr(monitoring.definition_db, "list", definitions)
+    monkeypatch.setattr(monitoring.snapshot_db, "list", empty_list)
+
+    result = await monitoring.overview(overview_context, "1h", "platform")
+
+    assert result["alerts"][0]["alert_title"] == "指标异常：问答成功率"
+    assert result["unresolved_alerts"][0]["alert_title"] == "指标异常：问答成功率"
+    assert result["recent_alert_changes"][0]["alert_title"] == "指标异常：问答成功率"
+    assert result["recent_alert_changes"][0]["resource_name"] == "全平台"
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,8 @@ from app.agents.knowledge.tools import (
 )
 from app.agents.knowledge.tools.registry import ToolRegistry, build_default_registry
 from app.agents.knowledge.tools.retrieval import retrieve_knowledge_result
-from app.schemas.agent import AgentContext, AgentTask, ToolCall, ToolResult
+from app.core.common.structured_output import StructuredOutputRepairResult
+from app.schemas.agent import AgentAnswer, AgentContext, AgentTask, ToolCall, ToolResult
 
 
 def test_knowledge_skills_have_versioned_runtime_references() -> None:
@@ -314,6 +315,19 @@ async def test_deep_agent_timeout_preserves_agent_retrieval_and_tool_traces(monk
         "app.agents.knowledge.agent.get_knowledge_agent",
         lambda *args: MissingStructuredAgent(),
     )
+
+    async def unavailable_repair(**kwargs):
+        del kwargs
+        return StructuredOutputRepairResult(
+            value=None,
+            attempted=True,
+            error="StructuredOutputMissing",
+        )
+
+    monkeypatch.setattr(
+        "app.agents.knowledge.agent._repair_knowledge_answer",
+        unavailable_repair,
+    )
     missing_result = await target(
         AgentTask(kb_id=1, question="比较另外两个方案", user_id="2"),
         AgentContext(kb_id=1, user_id="2"),
@@ -323,3 +337,26 @@ async def test_deep_agent_timeout_preserves_agent_retrieval_and_tool_traces(monk
     assert missing_result.limitations == ["structured_output_missing"]
     assert missing_result.hit_count == 2
     assert [item.chunk_id for item in missing_result.citations] == [3, 4]
+
+    async def successful_repair(**kwargs):
+        chunk_ids = [item["id"] for item in kwargs["chunks"]]
+        return StructuredOutputRepairResult(
+            value=AgentAnswer(
+                answer="根据已取得资料完成结构化回答。",
+                citation_chunk_ids=chunk_ids,
+            ),
+            attempted=True,
+        )
+
+    monkeypatch.setattr(
+        "app.agents.knowledge.agent._repair_knowledge_answer",
+        successful_repair,
+    )
+    repaired_result = await target(
+        AgentTask(kb_id=1, question="比较第三组方案", user_id="2"),
+        AgentContext(kb_id=1, user_id="2"),
+    )
+
+    assert repaired_result.status == "completed"
+    assert repaired_result.answer == "根据已取得资料完成结构化回答。"
+    assert [item.chunk_id for item in repaired_result.citations] == [5, 6]
