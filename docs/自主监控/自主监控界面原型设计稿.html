@@ -538,6 +538,36 @@
     .drawer-section { padding-top: 16px; margin-top: 16px; border-top: 1px solid var(--line); }
     .drawer-section h3 { margin: 0 0 12px; font-size: 14px; }
     .drawer-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 18px; }
+    .collection-execution { display: grid; grid-template-columns: minmax(240px, 1.2fr) minmax(260px, 1fr) auto; gap: 18px; align-items: center; padding: 16px 18px; margin-bottom: 16px; border: 1px solid #dfe7f4; border-radius: 10px; background: linear-gradient(90deg, #f8faff, #fff); }
+    .collection-execution-main { display: flex; align-items: center; gap: 12px; }
+    .collection-execution-main strong, .collection-execution-main span { display: block; }
+    .collection-execution-main span { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .collection-execution-progress { min-width: 0; }
+    .collection-execution-progress > div:first-child { display: flex; justify-content: space-between; margin-bottom: 7px; color: #52617a; font-size: 12px; }
+    .collection-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: #e9eef6; }
+    .collection-progress-track i { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width .35s ease; }
+    .collection-mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .collection-mode-card { padding: 14px; border: 1px solid #e2e8f2; border-radius: 9px; background: #fbfcfe; }
+    .collection-mode-card strong, .collection-mode-card span { display: block; }
+    .collection-mode-card span { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .collection-confirm-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .collection-confirm-summary div { padding: 12px; border: 1px solid #e5ebf4; border-radius: 8px; background: #f8faff; }
+    .collection-confirm-summary span, .collection-confirm-summary strong { display: block; }
+    .collection-confirm-summary span { color: var(--muted); font-size: 11px; }
+    .collection-confirm-summary strong { margin-top: 5px; font-size: 15px; }
+    .collection-safety-note { padding: 12px 14px; color: #6d5a23; border: 1px solid #f0dfaa; border-radius: 8px; background: #fffaf0; font-size: 12px; line-height: 1.7; }
+    .collection-target-tools { display: grid; grid-template-columns: 1fr 150px; gap: 10px; margin-bottom: 10px; }
+    .collection-target-list { overflow: hidden; border: 1px solid #e3e9f2; border-radius: 8px; }
+    .collection-target-option { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid #edf1f6; }
+    .collection-target-option:last-child { border-bottom: 0; }
+    .collection-target-option input { width: 16px; height: 16px; }
+    .collection-target-option strong, .collection-target-option span { display: block; }
+    .collection-target-option span { margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .collection-target-option > small { color: #65748b; }
+    .collection-reason { display: grid; gap: 7px; }
+    .collection-reason textarea { min-height: 88px; padding: 10px 12px; resize: vertical; border: 1px solid #cfd8e6; border-radius: 7px; color: var(--text); font: inherit; }
+    .collection-reason-footer { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+    .btn:disabled { cursor: not-allowed; opacity: .5; }
     .compact-cell strong, .compact-cell span, .compact-cell small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .compact-cell strong { color: var(--text); font-size: 12px; }
     .compact-cell span { margin-top: 4px; color: #66758b; font-size: 11px; }
@@ -557,7 +587,7 @@
     .toast { position: fixed; z-index: 30; right: 24px; bottom: 24px; display: none; padding: 12px 18px; color: #fff; border-radius: 5px; background: #25334b; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
     .toast.show { display: block; }
     @media (max-width: 1180px) { .health-grid, .health-matrix, .health-summary, .business-summary { grid-template-columns: repeat(3, 1fr); } .metric-strip { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 800px) { .sidebar { width: 72px; flex-basis: 72px; } .brand { padding: 0 15px; font-size: 0; } .brand small, .nav-title, .nav-item span:last-child, .subnav { display: none; } .nav-item { justify-content: center; padding: 13px 0; } .content { padding: 18px 14px 28px; } .chart-grid { grid-template-columns: 1fr; } .topbar { padding: 0 14px; } .user span { display: none; } }
+    @media (max-width: 800px) { .sidebar { width: 72px; flex-basis: 72px; } .brand { padding: 0 15px; font-size: 0; } .brand small, .nav-title, .nav-item span:last-child, .subnav { display: none; } .nav-item { justify-content: center; padding: 13px 0; } .content { padding: 18px 14px 28px; } .chart-grid { grid-template-columns: 1fr; } .topbar { padding: 0 14px; } .user span { display: none; } .collection-execution { grid-template-columns: 1fr; } .collection-mode-cards, .collection-confirm-summary { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -587,12 +617,13 @@
       ['analysis', '智能分析'], ['audit', '审计管理']
     ];
     const state = { module: 'overview', scope: '全平台', window: '最近1小时', alertStatus: '全部', alertView: 'instances', page: 1 };
+    let collectionExecution = null;
     let overviewCharts = [];
     let autoRefreshTimer = null;
     let autoRefreshEnabled = true;
     const alerts = [
       { level: '严重', levelClass: 'red', title: 'Worker 心跳过期', rule: 'Worker 心跳超时', resourceType: 'Worker', tenant: '演示租户', resource: 'evaluation-worker-01', current: '心跳 12 分钟前', threshold: '≤ 2 分钟', first: '2026年07月30日 09:18:20', last: '2026年07月30日 09:30:20', recovery: '—', duration: '12分钟', status: 'acknowledged', owner: '林管理员' },
-      { level: '警告', levelClass: 'yellow', title: '问答响应变慢', rule: '问答 P95 超阈值', resourceType: 'API', tenant: '全平台', resource: 'qa-api / 全平台', current: 'P95 1.8s', threshold: '≤ 1.5s', first: '2026年07月30日 09:22:10', last: '2026年07月30日 09:29:10', recovery: '—', duration: '7分钟', status: 'firing', owner: '—' },
+      { level: '警告', levelClass: 'yellow', title: '问答错误率过高', rule: '问答错误率超阈值', resourceType: 'API', tenant: '全平台', resource: 'qa-api / 全平台', current: '0.33', threshold: '≤ 0.05', first: '2026年07月30日 09:22:10', last: '2026年07月30日 09:29:10', recovery: '—', duration: '7分钟', status: 'firing', owner: '—' },
       { level: '提示', levelClass: 'blue', title: '评测门禁不通过', rule: '评测门禁结论不通过', resourceType: '评测运行', tenant: '演示租户', resource: 'eval-run-20260730-08', current: '总体结论：不通过', threshold: '通过', first: '2026年07月30日 08:46:00', last: '2026年07月30日 08:46:00', recovery: '2026年07月30日 09:02:10', duration: '已结束', status: 'resolved', owner: '周管理员' }
     ];
     const alertRules = [
@@ -778,6 +809,8 @@
     }
     function collectionOverviewPageSuccess() {
       let page = collectionOverviewPageHeatmap();
+      page = page.replace('<button class="btn" id="refresh">↻ 刷新</button><button class="btn" id="dataInfo">数据说明</button>', '<button class="btn primary" id="automaticCollection">自动采集</button><button class="btn" id="activeCollection">主动采集</button><button class="btn" id="refresh">↻ 刷新</button><button class="btn" id="dataInfo">数据说明</button>');
+      page = page.replace('</div><section class="panel">', `</div>${collectionExecutionPanel()}<section class="panel">`);
       page = page.replace('<h2>采集运行结论</h2>', '<h2>运行结论</h2>');
       page = page.replace('<h2>采集状态趋势</h2>', '<h2>状态趋势</h2>');
       page = page.replace('<h2>当前状态分布</h2>', '<h2>状态分布</h2>');
@@ -792,6 +825,63 @@
       page = page.replace('<strong>当前执行结果</strong>', '<strong>执行结果</strong>');
       page = page.replace('<th>目标名称</th><th>目标编码</th><th>采集类型</th><th>最近采集</th><th>采集耗时</th><th>数据状态</th><th>版本</th><th>操作</th>', '<th>目标名称</th><th>采集类型</th><th>最近采集</th><th>采集耗时</th><th>数据状态</th><th>操作入口</th>');
       return page.replace('<div id="collectionStatusOverviewChart" class="collection-overview-chart"></div>', '<div class="collection-result-panel"><div class="collection-success-rate"><div class="collection-success-rate-content"><strong>83.3%</strong><span>执行成功率</span></div></div><div class="collection-result-detail"><strong>执行结果</strong><div class="collection-result-track"><i class="ok" title="正常 10" style="width:83.3%"></i><i class="warn" title="部分失败 1" style="width:8.35%"></i><i class="bad" title="获取失败 1" style="width:8.35%"></i></div><div class="collection-result-legend"><span style="--legend:#72c99b">正常</span><span style="--legend:#e5b347">部分</span><span style="--legend:#dd6673">失败</span></div><span class="caption">成功率只统计已执行采集周期；无数据和过期目标单独标记，不计入成功。</span></div></div><div id="collectionStatusOverviewChart" style="display:none"></div>');
+    }
+    function collectionExecutionPanel() {
+      if (!collectionExecution) {
+        return '<section class="collection-execution"><div class="collection-execution-main"><span class="status gray">尚未执行</span><div><strong>选择本次采集方式</strong><span>自动采集按系统策略筛选到期目标；主动采集由管理员选择目标并填写原因。</span></div></div><div class="collection-mode-cards"><div class="collection-mode-card"><strong>自动采集</strong><span>执行已启用且本周期到期的标准目标。</span></div><div class="collection-mode-card"><strong>主动采集</strong><span>忽略到期时间执行所选目标，不改变原调度周期。</span></div></div><span class="caption">执行过程写入审计</span></section>';
+      }
+      const running = collectionExecution.status === 'running';
+      const percent = Math.round(collectionExecution.completed / collectionExecution.total * 100);
+      return `<section class="collection-execution"><div class="collection-execution-main"><span class="status ${running ? 'blue' : 'green'}">${running ? '执行中' : '已完成'}</span><div><strong>${collectionExecution.type} · ${collectionExecution.batch}</strong><span>${collectionExecution.scope} · 发起人：林管理员 · ${collectionExecution.startedAt}</span></div></div><div class="collection-execution-progress"><div><span>${running ? '正在采集运行事实' : '本轮采集已完成'}</span><strong>${collectionExecution.completed} / ${collectionExecution.total}</strong></div><div class="collection-progress-track"><i style="width:${percent}%"></i></div></div><button class="btn text" id="collectionExecutionDetail">查看结果 →</button></section>`;
+    }
+    function showAutomaticCollection() {
+      showDrawer(`<div class="drawer-head"><div><h2>执行自动采集</h2><span class="caption">按系统标准策略执行一个采集周期</span></div><button class="close">×</button></div><div class="collection-confirm-summary"><div><span>当前范围</span><strong>${state.scope}</strong></div><div><span>符合条件</span><strong>12 个目标</strong></div><div><span>预计耗时</span><strong>约 1 分钟</strong></div></div><section class="drawer-section"><h3>执行范围</h3><div class="collection-mode-cards"><div class="collection-mode-card"><strong>本轮执行</strong><span>已启用且当前周期到期的周期采集、通用采集及依赖探针目标。</span></div><div class="collection-mode-card"><strong>本轮排除</strong><span>等待业务触发的事件型目标、已停用目标及尚未到期目标。</span></div></div></section><section class="drawer-section"><h3>执行说明</h3><p class="collection-safety-note">自动采集只执行一次标准周期，不修改目标配置与后续调度时间。重复提交中的同一目标会被幂等保护，操作结果写入审计。</p></section><div class="drawer-section drawer-actions"><button class="btn" id="cancelAutomaticCollection">取消</button><button class="btn primary" id="confirmAutomaticCollection">确认执行</button></div>`);
+      document.getElementById('cancelAutomaticCollection').addEventListener('click', closeDrawer);
+      document.getElementById('confirmAutomaticCollection').addEventListener('click', () => startCollectionExecution('自动采集', 12));
+    }
+    function showActiveCollection() {
+      const targets = [
+        ['问答 API', '通用采集', '运行状态与请求统计'],
+        ['评测 Worker', '周期采集', '心跳与运行明细'],
+        ['向量服务', '依赖探针', '服务连通性与响应耗时'],
+        ['数据库连接池', '容量探针', '连接使用量与等待数'],
+        ['模型服务', '依赖探针', '模型接口可用性'],
+        ['任务队列', '周期采集', '积压数量与消费速率']
+      ];
+      showDrawer(`<div class="drawer-head"><div><h2>主动采集</h2><span class="caption">选择需要立即核查的目标，并说明本次执行原因</span></div><button class="close">×</button></div><section><div class="collection-target-tools"><input class="text-input" id="activeTargetKeyword" placeholder="请输入目标名称" /><select class="control" id="activeTargetType"><option value="">全部类型</option><option>通用采集</option><option>周期采集</option><option>依赖探针</option><option>容量探针</option></select></div><div class="collection-target-list" id="activeTargetList">${targets.map((target, index) => `<label class="collection-target-option" data-target-name="${target[0]}" data-target-type="${target[1]}"><input type="checkbox" name="activeTarget" value="${target[0]}" ${index < 2 ? 'checked' : ''} /><div><strong>${target[0]}</strong><span>${target[2]}</span></div><small>${target[1]}</small></label>`).join('')}</div><p class="caption">事件触发型目标不在可选范围内，避免脱离真实业务运行生成无效采集结果。</p></section><section class="drawer-section"><label class="collection-reason"><strong>采集原因 <span style="color:var(--red)">*</span></strong><textarea id="activeCollectionReason" maxlength="200" placeholder="例如：核查告警关联资源的实时状态"></textarea><span class="collection-reason-footer"><span id="activeCollectionSelected">已选择 2 个目标</span><span id="activeCollectionReasonCount">0 / 200</span></span></label></section><div class="drawer-section drawer-actions"><button class="btn" id="cancelActiveCollection">取消</button><button class="btn primary" id="confirmActiveCollection" disabled>确认执行</button></div>`);
+      const update = () => {
+        const selected = document.querySelectorAll('input[name="activeTarget"]:checked').length;
+        const reason = document.getElementById('activeCollectionReason').value.trim();
+        document.getElementById('activeCollectionSelected').textContent = `已选择 ${selected} 个目标`;
+        document.getElementById('activeCollectionReasonCount').textContent = `${document.getElementById('activeCollectionReason').value.length} / 200`;
+        document.getElementById('confirmActiveCollection').disabled = selected === 0 || reason.length < 5;
+      };
+      const filterTargets = () => {
+        const keyword = document.getElementById('activeTargetKeyword').value.trim().toLowerCase();
+        const type = document.getElementById('activeTargetType').value;
+        document.querySelectorAll('.collection-target-option').forEach(item => { item.style.display = (!keyword || item.dataset.targetName.toLowerCase().includes(keyword)) && (!type || item.dataset.targetType === type) ? '' : 'none'; });
+      };
+      document.querySelectorAll('input[name="activeTarget"]').forEach(item => item.addEventListener('change', update));
+      document.getElementById('activeCollectionReason').addEventListener('input', update);
+      document.getElementById('activeTargetKeyword').addEventListener('input', filterTargets);
+      document.getElementById('activeTargetType').addEventListener('change', filterTargets);
+      document.getElementById('cancelActiveCollection').addEventListener('click', closeDrawer);
+      document.getElementById('confirmActiveCollection').addEventListener('click', () => startCollectionExecution('主动采集', document.querySelectorAll('input[name="activeTarget"]:checked').length));
+    }
+    function startCollectionExecution(type, total) {
+      const now = new Date();
+      collectionExecution = { type, total, completed: 0, status: 'running', scope: state.scope, batch: `COL-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`, startedAt: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}` };
+      closeDrawer();
+      toast(`${type}任务已提交`);
+      render();
+      window.setTimeout(() => { collectionExecution.completed = Math.max(1, Math.ceil(total * .65)); if (state.module === 'collection') render(); }, 800);
+      window.setTimeout(() => { collectionExecution.completed = total; collectionExecution.status = 'completed'; if (state.module === 'collection') { render(); toast(`${type}已完成，可查看执行结果`); } }, 1900);
+    }
+    function showCollectionExecutionDetail() {
+      const execution = collectionExecution;
+      if (!execution) return;
+      const running = execution.status === 'running';
+      showDrawer(`<div class="drawer-head"><div><h2>采集结果</h2><span class="caption">${execution.batch} · ${execution.type}</span></div><button class="close">×</button></div><div class="collection-confirm-summary"><div><span>执行状态</span><strong>${running ? '执行中' : '已完成'}</strong></div><div><span>目标数量</span><strong>${execution.total} 个</strong></div><div><span>当前进度</span><strong>${execution.completed} / ${execution.total}</strong></div></div><section class="drawer-section"><h3>执行记录</h3><div class="timeline"><div class="timeline-row"><span class="timeline-time">${execution.startedAt}</span><i class="timeline-mark"></i><div class="timeline-text"><strong>创建采集任务</strong><span>${execution.scope} · 林管理员 · 已记录审计</span></div><span class="status green">完成</span></div><div class="timeline-row"><span class="timeline-time">处理中</span><i class="timeline-mark"></i><div class="timeline-text"><strong>执行目标采集</strong><span>已完成 ${execution.completed} 个，失败 0 个</span></div><span class="status ${running ? 'blue' : 'green'}">${running ? '运行中' : '完成'}</span></div><div class="timeline-row"><span class="timeline-time">${running ? '等待中' : '刚刚'}</span><i class="timeline-mark"></i><div class="timeline-text"><strong>汇总采集结果</strong><span>${running ? '等待全部目标返回' : '结果已进入采集总览、指标计算与事件记录'}</span></div><span class="status ${running ? 'gray' : 'green'}">${running ? '待处理' : '完成'}</span></div></div></section><section class="drawer-section"><h3>边界说明</h3><p class="collection-safety-note">本次执行不会修改采集目标配置和原调度周期；事件触发型目标未被纳入执行范围。</p></section>`);
     }
     function metricsOverviewPage() {
       return `<div class="content metrics-page">${pageHead('指标分析', '从指标健康、趋势变化和监控域分布判断业务与平台运行质量。', '<button class="btn" id="refresh">↻ 刷新</button><button class="btn" id="metricInfo">数据说明</button>')}<section class="panel"><div class="panel-head"><div><h2>指标结论</h2><span class="caption">统计当前授权范围内的有效指标，不把无样本误判为达标</span></div><span class="caption">${state.scope} · 最近1小时</span></div><div class="metrics-overview-head"><div class="metrics-overview-conclusion"><span class="status yellow">部分异常</span><div><strong>问答性能接近阈值，2 个指标需要关注</strong><span>问答 P95 进入预警，向量服务可用率当前无法判定</span></div></div><div class="metrics-overview-metrics"><span>指标总数<strong>16</strong></span><span>预警指标<strong>2</strong></span><span>无法判定<strong>1</strong></span></div></div></section><div class="metrics-overview-grid"><section class="panel"><div class="panel-head"><div><h2>状态趋势</h2><span class="caption">按时间观察达标、预警、不达标和无法判定指标数量变化</span></div><span class="caption">5 分钟聚合</span></div><div id="metricsTrendChart" class="metrics-overview-chart"></div></section><section class="panel"><div class="panel-head"><div><h2>域状态图</h2><span class="caption">按监控域查看当前指标考核结果、健康率和更新时间</span></div><span class="caption">共 4 个监控域</span></div><div class="metrics-domain-status"><div class="metrics-domain-row"><strong>知识库问答</strong><div class="metrics-domain-track"><i class="ready" title="达标 5" style="width:83.3%"></i><i class="warn" title="预警 1" style="width:16.7%"></i></div><span class="metrics-domain-count"><strong>6 项指标 · 健康率 83%</strong><span>更新于 10:00:00</span></span></div><div class="metrics-domain-row"><strong>平台运行</strong><div class="metrics-domain-track"><i class="ready" title="达标 4" style="width:80%"></i><i class="unknown" title="无法判定 1" style="width:20%"></i></div><span class="metrics-domain-count"><strong>5 项指标 · 健康率 80%</strong><span>更新于 10:00:00</span></span></div><div class="metrics-domain-row"><strong>异步任务</strong><div class="metrics-domain-track"><i class="ready" title="达标 2" style="width:66.7%"></i><i class="warn" title="预警 1" style="width:33.3%"></i></div><span class="metrics-domain-count"><strong>3 项指标 · 健康率 67%</strong><span>更新于 09:55:00</span></span></div><div class="metrics-domain-row"><strong>自主评测</strong><div class="metrics-domain-track"><i class="ready" title="达标 2" style="width:100%"></i></div><span class="metrics-domain-count"><strong>2 项指标 · 健康率 100%</strong><span>更新于 10:00:00</span></span></div><div class="metrics-domain-legend"><span style="--legend:#72c99b">达标</span><span style="--legend:#e5b347">预警</span><span style="--legend:#dd6673">不达标</span><span style="--legend:#aeb9c8">无法判定</span></div></div></section></div><section class="panel"><div class="panel-head"><div><h2>指标明细</h2><span class="caption">查询指标口径、样本量和当前考核状态</span></div><span class="caption">配置版本由系统发布</span></div><div class="filters query-form"><div class="query-field"><label>指标名称</label><input class="text-input" placeholder="请输入指标名称" /></div><div class="query-field"><label>监控领域</label><select class="control"><option>全部</option><option>知识库问答</option><option>平台运行</option><option>异步任务</option><option>自主评测</option></select></div><div class="query-field"><label>数据范围</label><select class="control"><option>当前范围</option><option>全平台</option><option>当前租户</option></select></div><div class="query-field"><label>时间窗口</label><select class="control"><option>最近1小时</option><option>最近15分钟</option><option>最近6小时</option><option>最近24小时</option></select></div><div class="query-field"><label>数据状态</label><select class="control"><option>全部</option><option>正常</option><option>部分失败</option><option>暂无数据</option><option>数据过期</option></select></div><div class="query-actions"><button class="btn primary" id="search">查询</button><button class="btn" id="reset">重置</button></div></div>${tableFor('metrics', ['指标名称','监控领域','当前数值','统计单位','样本数量','统计窗口','考核状态','数据状态','生成时间','操作入口'])}<div class="pager"><span>共 16 条</span><button>上一页</button><button class="active">1</button><button>2</button><button>下一页</button><select class="control"><option>10条/页</option><option>20条/页</option></select></div></section></div>`;
@@ -918,7 +1008,7 @@
     }
 
     function analysisChatPanelBase() {
-      return `<section class="panel"><div class="panel-head"><div><h2>分析对话</h2><span class="caption">自主监控 Agent 围绕当前异常范围追问，回答仅引用已授权证据</span></div></div><div class="analysis-chat"><div class="analysis-chat-messages" id="analysisChatMessages"><div class="analysis-chat-message assistant">当前分析基于 Worker 心跳告警、心跳年龄指标、索引任务积压、问答 P95 和 Trace 关联。你可以继续追问影响范围、证据来源或下一步检查方向。<small>引用：alert-10021 · qa_p95 · index-241 · trace-7ac9</small></div><div class="analysis-chat-message user">为什么判断问答性能可能受到影响？</div><div class="analysis-chat-message assistant">目前只能确认问答 P95 连续两个周期处于预警，且与索引任务积压处于同一时间窗口；这属于关联证据，不能单独证明因果关系，建议继续观察后续两个 5 分钟窗口。<small>引用：指标 qa_p95 · 任务 index-241 · 时间窗口 09:20—09:30</small></div></div><div class="analysis-chat-quick"><button data-analysis-question="为什么判断问答性能可能受到影响？">为什么影响问答？</button><button data-analysis-question="当前结论有哪些直接证据？">查看直接证据</button><button data-analysis-question="下一步应该检查什么？">下一步检查什么？</button><button data-analysis-question="这个异常影响了哪些资源？">影响哪些资源？</button></div><div class="analysis-chat-compose"><input id="analysisChatInput" placeholder="请输入对当前异常的追问" /><button class="btn primary" id="analysisChatSend">发送</button></div><span class="analysis-chat-note">对话历史由自主监控域复用通用会话模型保存；对话不会自动修改规则、重试任务或执行处置，建议需人工确认后执行。</span></div></section>`;
+      return `<section class="panel"><div class="panel-head"><div><h2>分析对话</h2><span class="caption">自主监控 Agent 围绕当前异常范围追问，回答仅引用已授权证据</span></div></div><div class="analysis-chat"><div class="analysis-chat-messages" id="analysisChatMessages"><div class="analysis-chat-message assistant"><strong>共取得 3 条告警，具体如下。</strong><span class="caption">列表复用告警中心的告警信息、状态详情和时间信息三列结构。</span>${tableFor('alerts', [])}<small><button class="btn text" data-module="alerts">前往告警中心查看完整详情</button></small></div><div class="analysis-chat-message user">为什么判断问答性能可能受到影响？</div><div class="analysis-chat-message assistant">目前只能确认问答 P95 连续两个周期处于预警，且与索引任务积压处于同一时间窗口；这属于关联证据，不能单独证明因果关系，建议继续观察后续两个 5 分钟窗口。<small>引用：指标 qa_p95 · 任务 index-241 · 时间窗口 09:20—09:30</small></div></div><div class="analysis-chat-quick"><button data-analysis-question="为什么判断问答性能可能受到影响？">为什么影响问答？</button><button data-analysis-question="当前结论有哪些直接证据？">查看直接证据</button><button data-analysis-question="下一步应该检查什么？">下一步检查什么？</button><button data-analysis-question="这个异常影响了哪些资源？">影响哪些资源？</button></div><div class="analysis-chat-compose"><input id="analysisChatInput" placeholder="请输入对当前异常的追问" /><button class="btn primary" id="analysisChatSend">发送</button></div><span class="analysis-chat-note">对话历史由自主监控域复用通用会话模型保存；对话不会自动修改规则、重试任务或执行处置，建议需人工确认后执行。</span></div></section>`;
     }
     function analysisChatPanel() {
       const panel = analysisChatPanelBase();
@@ -1177,6 +1267,9 @@
       if (autoRefresh) autoRefresh.addEventListener('click', () => { autoRefreshEnabled = !autoRefreshEnabled; toast(autoRefreshEnabled ? '已开启总览自动刷新' : '已关闭总览自动刷新'); render(); });
       const collectionAddAction = state.module === 'collection' && document.getElementById('addAction');
       if (collectionAddAction) collectionAddAction.remove();
+      const automaticCollection = document.getElementById('automaticCollection'); if (automaticCollection) automaticCollection.addEventListener('click', showAutomaticCollection);
+      const activeCollection = document.getElementById('activeCollection'); if (activeCollection) activeCollection.addEventListener('click', showActiveCollection);
+      const collectionExecutionDetail = document.getElementById('collectionExecutionDetail'); if (collectionExecutionDetail) collectionExecutionDetail.addEventListener('click', showCollectionExecutionDetail);
       document.querySelectorAll('#refresh, #refreshCollection, #refreshMetrics, #refreshTasks, #refreshAlerts, #refreshEvents, #search, #reset, #dataInfo, #metricInfo, #taskInfo, #alertInfo, #eventInfo, #noticeInfo, #analysisInfo, #addAction').forEach(el => el.addEventListener('click', () => { if ((el.id === 'refresh' || el.id === 'refreshCollection') && window.refreshOverviewCharts) window.refreshOverviewCharts(); if ((el.id === 'refresh' || el.id === 'refreshCollection') && window.refreshCollectionCharts) window.refreshCollectionCharts(); if ((el.id === 'refresh' || el.id === 'refreshMetrics') && window.refreshMetricsCharts) window.refreshMetricsCharts(); if ((el.id === 'refresh' || el.id === 'refreshTasks') && window.refreshTasksCharts) window.refreshTasksCharts(); if ((el.id === 'refresh' || el.id === 'refreshAlerts') && window.refreshAlertCharts) window.refreshAlertCharts(); if ((el.id === 'refresh' || el.id === 'refreshEvents') && window.refreshEventCharts) window.refreshEventCharts(); toast(el.id === 'dataInfo' || el.id === 'metricInfo' || el.id === 'alertInfo' || el.id === 'eventInfo' || el.id === 'noticeInfo' || el.id === 'analysisInfo' ? '统计数据来自事件、指标和告警接口，当前范围：' + state.scope + '，窗口：' + state.window : el.id === 'taskInfo' ? '任务状态来自任务和 Worker 统计接口，当前范围：' + state.scope + '，窗口：' + state.window : el.id === 'addAction' ? '原型演示：打开新增配置表单' : '已刷新，数据状态：ready'); }));
       const addChannel = document.getElementById('addChannel'); if (addChannel) addChannel.addEventListener('click', () => showNoticeForm('channel'));
       const addPolicy = document.getElementById('addPolicy'); if (addPolicy) addPolicy.addEventListener('click', () => showNoticeForm('policy'));

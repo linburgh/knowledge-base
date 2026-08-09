@@ -499,6 +499,37 @@ async def test_events_overview_excludes_recovered_worker_stop_from_focus(list_co
 
 
 @pytest.mark.asyncio
+async def test_events_overview_translates_alert_key_to_tenant_name(list_context, monkeypatch):
+    now = utils.utc_now()
+
+    async def events(*_, **__):
+        return [
+            {
+                "event_id": "alert-fired-1",
+                "event_type": "alert_fired",
+                "source_type": "alert",
+                "source_code": "5:tenant:103",
+                "tenant_id": 103,
+                "status": "firing",
+                "occurred_at": now,
+                "payload": {"alert_id": 7, "metric_code": "qa_error_rate"},
+            }
+        ]
+
+    async def tenant(*_, **__):
+        return {"id": 103, "name": "演示租户"}
+
+    monkeypatch.setattr(monitoring.event_db, "list", events)
+    monkeypatch.setattr(monitoring.tenant_db, "get", tenant)
+
+    result = await monitoring.events_overview(list_context)
+
+    assert result["focus_event"]["resource_name"] == "演示租户"
+    assert result["focus_event"]["event_content"] == "演示租户：触发中"
+    assert "5:tenant:103" not in str(result["focus_event"])
+
+
+@pytest.mark.asyncio
 async def test_event_detail_returns_mapped_and_sanitized_context(list_context, monkeypatch):
     now = utils.utc_now()
 

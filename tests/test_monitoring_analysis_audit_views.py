@@ -546,6 +546,12 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
                         }
                     ],
                 },
+                "presentation": {
+                    "type": "alert_list",
+                    "fact_type": "alert",
+                    "title": "告警明细",
+                    "summary_markdown": "### 查询结果",
+                },
             }
 
     monkeypatch.setattr(monitoring_analysis, "MonitoringAgent", StubMonitoringAgent)
@@ -611,6 +617,7 @@ async def test_analysis_conversation_binds_server_context_and_persists_evidence(
     assert messages[-1]["metadata"]["intent"] == "evidence_review"
     assert messages[-1]["metadata"]["time_range"]["source"] == "conversation"
     assert messages[-1]["metadata"]["fact_set"]["id"] == "monitor-facts-alerts"
+    assert messages[-1]["metadata"]["presentation"]["type"] == "alert_list"
     AnalysisMessageResponse.model_validate(result)
     assert {item["action"] for item in audits} == {
         "monitor_analysis_conversation_created",

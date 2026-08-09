@@ -36,7 +36,12 @@ from .models import (
 )
 from .planning import detect_intent, resolve_time_range
 from .policies import redact_context, validate_context
-from .presentation import build_fact_set, references_prior_facts, render_fact_answer
+from .presentation import (
+    build_fact_presentation,
+    build_fact_set,
+    references_prior_facts,
+    render_fact_answer,
+)
 from .runtime import MonitoringModelCallAccountingMiddleware, MonitoringRuntime
 from .skills import load_skill
 from .state import MonitoringHarnessContext, MonitoringSession
@@ -736,6 +741,13 @@ class MonitoringAgent:
                 facts=facts,
                 prior_fact_set=prior_fact_set,
             )
+            fact_presentation = build_fact_presentation(
+                question=question,
+                plan=plan,
+                conclusion=conclusion,
+                facts=facts,
+                prior_fact_set=prior_fact_set,
+            )
             provider_failed_without_facts = (
                 bool(model_failure_reason) and not facts and fact_answer is None
             )
@@ -808,6 +820,7 @@ class MonitoringAgent:
                     if prior_reference
                     else {}
                 ),
+                "presentation": fact_presentation,
             }
 
         LOG.info("自主监控Agent analysis start question_length={}", len(question))

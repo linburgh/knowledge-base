@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -54,12 +55,9 @@ TOOL_PRESENTATIONS: dict[str, dict[str, Any]] = {
         "title": "告警明细",
         "view_terms": ["告警", "预警", "报警"],
         "columns": [
-            {"field": "title", "label": "告警名称"},
-            {"field": "severity", "label": "告警级别"},
-            {"field": "status", "label": "当前状态"},
-            {"field": "resource_type", "label": "资源类型"},
-            {"field": "current_value", "label": "当前值"},
-            {"field": "occurred_at", "label": "最近触发时间"},
+            {"field": "alert_info", "label": "告警信息"},
+            {"field": "status_detail", "label": "状态详情"},
+            {"field": "time_detail", "label": "时间信息"},
         ],
     },
     "query_health_snapshots": {
@@ -131,6 +129,10 @@ def _display_value(field: str, value: Any) -> str:
         if current.tzinfo is None:
             current = current.replace(tzinfo=MONITORING_TIMEZONE)
         return current.astimezone(MONITORING_TIMEZONE).strftime("%Y年%m月%d日 %H:%M:%S")
+    if field in {"current_value", "threshold"} and isinstance(value, (int, float)):
+        if abs(value) < 0.005:
+            value = 0
+        return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
     text = str(value)
     if field in {"status", "assessment_status"}:
         text = _STATUS_NAMES.get(text.lower(), text)
@@ -139,6 +141,50 @@ def _display_value(field: str, value: Any) -> str:
     elif field == "resource_type":
         text = _RESOURCE_TYPE_NAMES.get(text.lower(), text)
     return text.replace("|", "｜").replace("\n", " ").strip()[:500] or "—"
+
+
+def _duration_description(value: Any) -> str:
+    try:
+        seconds = max(0, int(value))
+    except (TypeError, ValueError):
+        return "暂无"
+    if seconds < 60:
+        return f"{seconds}秒"
+    if seconds < 3600:
+        return f"{seconds // 60}分钟"
+    if seconds < 86400:
+        return f"{seconds // 3600}小时"
+    return f"{seconds // 86400}天"
+
+
+def _fact_display_value(source: dict[str, Any], item: dict[str, Any], field: str) -> str:
+    """兼容已注册工具只返回原子字段的情况，展示层不要求工具拼接文案。"""
+    value = item.get(field)
+    if value not in (None, "") or source.get("fact_type") != "alert":
+        return _display_value(field, value)
+    if field == "alert_info":
+        title = _display_value("title", item.get("alert_title") or item.get("title"))
+        severity = _display_value("severity", item.get("severity_name") or item.get("severity"))
+        domain = _display_value("monitor_domain_name", item.get("monitor_domain_name"))
+        resource = _display_value("resource_name", item.get("resource_name"))
+        return f"{title}；{severity} · {domain}；资源：{resource}"
+    if field == "status_detail":
+        status = _display_value("status", item.get("status_name") or item.get("status"))
+        current = _display_value("current_value", item.get("current_value"))
+        threshold = _display_value("threshold", item.get("threshold"))
+        samples = _display_value("sample_count", item.get("sample_count"))
+        return f"{status}；当前值：{current}；阈值：{threshold}；样本：{samples}"
+    if field == "time_detail":
+        last_fired = _display_value("last_fired_at", item.get("last_fired_at"))
+        first_fired = _display_value("first_fired_at", item.get("first_fired_at"))
+        duration = _duration_description(item.get("duration_seconds"))
+        firing_count = _display_value("firing_count", item.get("firing_count"))
+        acknowledged = _display_value("acknowledged_by_name", item.get("acknowledged_by_name"))
+        return (
+            f"最近：{last_fired}；首次：{first_fired}；持续：{duration}；"
+            f"触发：{firing_count} 次；确认：{acknowledged}"
+        )
+    return "—"
 
 
 def _time_description(plan: AnalysisPlan) -> str:
@@ -217,6 +263,72 @@ def _sources_for_requested_view(
     return matched
 
 
+def _selected_sources(
+    *,
+    question: str,
+    plan: AnalysisPlan,
+    facts: dict[str, dict[str, Any]],
+    prior_fact_set: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """统一确定本轮应展示的事实，避免 Markdown 与结构化视图选择不一致。"""
+    sources = _sources_from_facts(facts)
+    using_prior = False
+    if not sources and references_prior_facts(question):
+        sources = _prior_sources(prior_fact_set)
+        using_prior = bool(sources)
+    requested_sources = _sources_for_requested_view(
+        sources,
+        plan.requested_view or question,
+    )
+    return (requested_sources or sources), using_prior
+
+
+def _conclusion_description(conclusion: AnalysisConclusion) -> str:
+    descriptions = {
+        AnalysisConclusion.NORMAL: "现有事实未显示需要关注的异常。",
+        AnalysisConclusion.WARNING: "现有事实中存在需要关注的情况。",
+        AnalysisConclusion.ABNORMAL: "现有事实中存在异常或严重活动告警。",
+        AnalysisConclusion.UNKNOWN: "以上仅展示查询事实，现有证据不足以形成整体状态判断。",
+    }
+    return descriptions[conclusion]
+
+
+def build_fact_presentation(
+    *,
+    question: str,
+    plan: AnalysisPlan,
+    conclusion: AnalysisConclusion,
+    facts: dict[str, dict[str, Any]],
+    prior_fact_set: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """为 Web 等富客户端提供结构化视图提示；完整 Markdown 回答仍保留。"""
+    sources, using_prior = _selected_sources(
+        question=question,
+        plan=plan,
+        facts=facts,
+        prior_fact_set=prior_fact_set,
+    )
+    if len(sources) != 1 or sources[0].get("fact_type") != "alert":
+        return {}
+    total = len(sources[0].get("items") or [])
+    lines = [
+        "### 查询结果",
+        "",
+        f"共取得 {total} 条告警，具体如下。",
+        "",
+        f"- 时间范围：{_time_description(plan)}",
+    ]
+    if using_prior:
+        lines.append("- 数据来源：上一轮已授权查询结果")
+    lines.extend(["", "### 事实说明", "", _conclusion_description(conclusion)])
+    return {
+        "type": "alert_list",
+        "fact_type": "alert",
+        "title": "告警明细",
+        "summary_markdown": "\n".join(lines),
+    }
+
+
 def render_fact_answer(
     *,
     question: str,
@@ -226,19 +338,14 @@ def render_fact_answer(
     prior_fact_set: dict[str, Any] | None = None,
 ) -> str | None:
     """按真实工具事实渲染通用回答，不依赖固定 Intent 或问句模板。"""
-    sources = _sources_from_facts(facts)
-    using_prior = False
-    if not sources and references_prior_facts(question):
-        sources = _prior_sources(prior_fact_set)
-        using_prior = bool(sources)
+    sources, using_prior = _selected_sources(
+        question=question,
+        plan=plan,
+        facts=facts,
+        prior_fact_set=prior_fact_set,
+    )
     if not sources:
         return None
-    requested_sources = _sources_for_requested_view(
-        sources,
-        plan.requested_view or question,
-    )
-    if requested_sources:
-        sources = requested_sources
     # 单一事实类型可以安全地直接展开明细；多类型综合分析仍交给现有确定性
     # 综合报告，避免把平台健康问题退化成多张缺少业务判断的原始表格。
     if len(sources) > 1:
@@ -283,26 +390,20 @@ def render_fact_answer(
             lines.append(
                 "| "
                 + " | ".join(
-                    _display_value(str(column["field"]), item.get(column["field"]))
-                    for column in columns
+                    _fact_display_value(source, item, str(column["field"])) for column in columns
                 )
                 + " |"
             )
         if source.get("items_truncated") or len(items) > 20:
             lines.extend(["", "- 明细数量较多，当前仅展示前 20 条。"])
 
-    conclusion_names = {
-        AnalysisConclusion.NORMAL: "现有事实未显示需要关注的异常。",
-        AnalysisConclusion.WARNING: "现有事实中存在需要关注的情况。",
-        AnalysisConclusion.ABNORMAL: "现有事实中存在异常或严重活动告警。",
-        AnalysisConclusion.UNKNOWN: "以上仅展示查询事实，现有证据不足以形成整体状态判断。",
-    }
-    lines.extend(["", "### 事实说明", "", conclusion_names[conclusion]])
+    lines.extend(["", "### 事实说明", "", _conclusion_description(conclusion)])
     return "\n".join(lines)
 
 
 __all__ = (
     "TOOL_PRESENTATIONS",
+    "build_fact_presentation",
     "build_fact_set",
     "presentation_for_tool",
     "references_prior_facts",

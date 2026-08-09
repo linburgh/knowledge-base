@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -52,6 +53,7 @@ from app.db.monitoring import (
 from app.db.platform import audit_log as audit_log_db
 from app.db.platform import evaluation_run as evaluation_run_db
 from app.db.platform import evaluation_task as evaluation_task_db
+from app.db.platform import tenant as tenant_db
 from app.db.platform import user as user_db
 from app.schemas.monitoring import (
     MetricRuleRequest,
@@ -376,7 +378,13 @@ _EVENT_TYPE_NAMES = {
 }
 
 
-def _event_resource_name(event: dict[str, Any]) -> str:
+def _event_resource_name(event: dict[str, Any], tenant_names: dict[int, str] | None = None) -> str:
+    if str(event.get("source_type") or "") == "alert":
+        tenant_id = event.get("tenant_id")
+        if tenant_id is None:
+            return "全平台"
+        normalized_tenant_id = int(tenant_id)
+        return (tenant_names or {}).get(normalized_tenant_id) or f"租户 {normalized_tenant_id}"
     source_code = str(event.get("source_code") or "")
     if source_code in _EVENT_RESOURCE_NAMES:
         return _EVENT_RESOURCE_NAMES[source_code]
@@ -411,12 +419,38 @@ def _sanitize_event_context(value: Any) -> Any:
     return value
 
 
-def _event_view(event: dict[str, Any], *, include_context: bool = False) -> dict[str, Any]:
+async def _event_tenant_names(events: list[dict[str, Any]]) -> dict[int, str]:
+    """批量解析告警事件租户名称；历史事件查不到租户时由展示层安全回退。"""
+    tenant_ids = sorted(
+        {
+            int(event["tenant_id"])
+            for event in events
+            if event.get("source_type") == "alert" and event.get("tenant_id") is not None
+        }
+    )
+    if not tenant_ids:
+        return {}
+    rows = await asyncio.gather(
+        *(tenant_db.get(DB.get(), id=tenant_id) for tenant_id in tenant_ids)
+    )
+    return {
+        tenant_id: str(row.get("name") or "").strip()
+        for tenant_id, row in zip(tenant_ids, rows, strict=True)
+        if row and str(row.get("name") or "").strip()
+    }
+
+
+def _event_view(
+    event: dict[str, Any],
+    *,
+    include_context: bool = False,
+    tenant_names: dict[int, str] | None = None,
+) -> dict[str, Any]:
     row = dict(event)
     event_type_code = _event_type_code(event)
     status = str(event.get("status") or "unknown")
     status_name = _EVENT_STATUS_NAMES.get(status, "未知状态")
-    resource_name = _event_resource_name(event)
+    resource_name = _event_resource_name(event, tenant_names)
     row.update(
         event_type_code=event_type_code,
         event_type_name=_EVENT_TYPE_NAMES[event_type_code],
@@ -2641,6 +2675,7 @@ async def analysis_overview(
             limit=10000,
         )
     )
+    event_tenant_names = await _event_tenant_names(event_rows)
     task_rows = [
         row
         for row in await _task_records(scope)
@@ -2821,7 +2856,7 @@ async def analysis_overview(
             }
         )
     for row in event_rows[:20]:
-        event = _event_view(row)
+        event = _event_view(row, tenant_names=event_tenant_names)
         event_id = str(row.get("event_id") or row.get("id") or "")
         is_abnormal = row in abnormal_event_rows
         evidence.append(
@@ -3250,6 +3285,7 @@ async def events_overview(current_user: CurrentUser, time_range: str = "1h") -> 
             occurred_at__gte=start_at,
         )
     )
+    tenant_names = await _event_tenant_names(events)
     abnormal_statuses = {"failed", "error", "timeout", "stopped"}
     abnormal_count = sum(1 for event in events if event.get("status") in abnormal_statuses)
     source_counts = {source: 0 for source in _EVENT_SOURCE_NAMES}
@@ -3282,7 +3318,7 @@ async def events_overview(current_user: CurrentUser, time_range: str = "1h") -> 
                 for field in association_fields
             )
         ]
-        focus_view = _event_view(focus_source)
+        focus_view = _event_view(focus_source, tenant_names=tenant_names)
         source_category = _event_source_category(focus_source)
         related_alert_count = sum(
             _event_source_category(event) == "alert" for event in related_events
@@ -3433,7 +3469,9 @@ async def event_page(
         **_scope_filter(await tenant_scope(current_user)),
         "occurred_at__gte": start_at,
     }
-    rows = [_event_view(row) for row in _visible_events(await event_db.list(DB.get(), **filters))]
+    events = _visible_events(await event_db.list(DB.get(), **filters))
+    tenant_names = await _event_tenant_names(events)
+    rows = [_event_view(row, tenant_names=tenant_names) for row in events]
     if event_type:
         rows = [
             row
@@ -3473,7 +3511,8 @@ async def event_detail(current_user: CurrentUser, event_id: str) -> dict[str, An
     )
     if not event or event.get("event_type") == "worker_idle":
         raise BusiException("事件不存在", status_code=404)
-    view = _event_view(event, include_context=True)
+    tenant_names = await _event_tenant_names([event])
+    view = _event_view(event, include_context=True, tenant_names=tenant_names)
     return {
         "event": view,
         "context": view.pop("payload", {}),

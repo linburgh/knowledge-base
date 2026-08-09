@@ -28,6 +28,8 @@
 
 针对“4条都是什么样子的告警”只返回数量的问题，监控 Harness 已进一步改为事实驱动回答。工具注册定义现在携带事实类型和安全展示协议；开放式 `requested_view` 与事实引用取代固定意图枚举对回答形态的控制；每轮服务端保存可追溯 `fact_set`，并只允许同一授权会话的后续指代读取。模型在事实查询后超时或供应商失败时，单类事实由通用渲染器直接展开真实明细，内部模型故障只保留在运行元数据，不再混入客户可见的判断边界。多类健康事实仍由确定性综合规则收敛。
 
+2026年08月09日进一步统一 Agent 告警明细与告警中心列表。后端在完整 Markdown 回答之外提供向后兼容的 `presentation + fact_set` 结构化展示协议；前端抽取 `src/components/monitoring/alert-list/comp.vue`，由告警中心和分析会话共同复用，统一展示告警信息、状态详情、统计样本、首次与最近触发时间、持续时长、触发次数和确认人员。分析会话不嵌入 iframe，也不从 Markdown 反向解析业务字段；历史消息没有结构化协议时继续使用原 Markdown 展示。
+
 ## 评测整改
 
 评测 Agent 使用受限 `create_deep_agent` 加载 `analysis` Skill，自主选择全量执行、结果检查、有限复核和结构化结束。Evaluation Worker 构造包含租户、组织、知识库、索引版本和问答配置快照的上下文，只调用新的结构化 Agent 入口；指标与门禁结论仍由确定性代码计算，模型不能覆盖。
@@ -58,7 +60,7 @@
 
 | 检查项 | 命令或范围 | 结果 |
 | --- | --- | --- |
-| 后端全量自动化 | `OS_CONFIG_DIR=etc .venv/bin/pytest -q` | 264 项通过 |
+| 后端全量自动化 | `OS_CONFIG_DIR=etc .venv/bin/pytest -q` | 265 项通过 |
 | Harness 专项 | `OS_CONFIG_DIR=etc .venv/bin/pytest -q tests/agents` | 49 项通过 |
 | unittest 基线 | `OS_CONFIG_DIR=etc .venv/bin/python -m unittest discover -s tests -p 'test_*.py'` | 119 项通过 |
 | Python 编译 | `OS_CONFIG_DIR=etc .venv/bin/python -m compileall -q app` | 通过 |
@@ -67,7 +69,7 @@
 | 前端格式检查 | `npm run format:check` | 通过 |
 | 前端类型检查 | `npm run type-check` | 通过 |
 | 前端生产构建 | `npm run build` | 通过，只有构建工具既有警告 |
-| 分析问答浏览器专项 | `npx playwright test tests/e2e/monitoring.spec.ts` | 23 项通过 |
+| 自主监控浏览器专项 | `npx playwright test tests/e2e/monitoring.spec.ts` | 30 项通过，7 项历史报告用例按现状跳过 |
 
 ### 真实链路
 
@@ -120,13 +122,21 @@
 
 使用真实数据库查询当天 4 条活动告警，输出标题为 2 条“指标异常：问答错误率”和 2 条“指标异常：问答成功率”，结果中不包含 `qa_error_rate` 或 `qa_success_rate`。自动化同时覆盖历史英文标题转换、新告警中文标题持久化和指标定义缺失不泄露编码。
 
+共享列表改造后再次执行真实数据库只读查询，当前窗口取得 6 条活动告警（数据已随监控采集继续变化）；6 条均包含列表所需的中文标题、级别、状态、监控域、资源、当前值、阈值、样本量、首次与最近触发时间、持续时长、触发次数和确认人员字段，展示协议列固定为“告警信息、状态详情、时间信息”。
+
+告警数值展示进一步增加统一精度控制。接口和 `fact_set` 保留原始数值，前端公共 `formatMonitoringValue`、告警中心列表、详情和 Agent 共享列表只在展示时固定保留两位小数；后端确定性 Markdown 回答应用相同规则。浏览器故障样例验证 `0.3333333333333333` 显示为 `0.33`、整数 `1` 显示为 `1.00`，完整机器精度不再出现在客户页面。
+
+事件中心告警影响对象不再回退内部 `alert_key`。查询层根据事件租户范围批量解析租户名称，解析失败时安全显示“租户 + ID”，平台范围显示“全平台”；该转换同时覆盖重要事件、事件列表、事件详情和分析证据，因此历史 `source_code=5:tenant:103` 无需迁移即可显示业务名称。
+
+真实数据库只读验证命中一条历史 `source_code=5:tenant:103` 告警事件，转换后的影响对象为“演示企业服务中心”，事件内容不再包含内部告警键。
+
 ### 范围说明
 
 前端全量 Playwright 套件还包含平台其他模块的凭证型测试和组织树压力测试，不作为本次后端 Harness 的验收门禁。本次相关的分析问答交互专项全部通过。额外发现既有“组织树连续展开到第十级”用例在第六级节点可定位但不可见，该问题与三个 Agent 的接口和运行链无调用关系，未在本次整改中扩大范围处理。
 
 ## 验收映射
 
-《三个 Agent Harness 整改测试用例》中的 82 项场景已全部标记通过。自动化覆盖分布如下：
+《三个 Agent Harness 整改测试用例》中的 85 项场景已全部标记通过。自动化覆盖分布如下：
 
 - 结构、Skill、唯一入口和跨 Agent 私有导入：`tests/agents/test_harness_structure.py`。
 - 知识权限、引用、Registry、简单模式和 Deep Agent：`tests/agents/test_knowledge_harness.py` 及原有 Agent Runtime/Policy 测试。

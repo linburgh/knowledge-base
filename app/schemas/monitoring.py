@@ -152,6 +152,8 @@ class AnalysisMessageResponse(BaseModel):
     tool_calls: list[AnalysisToolCall] = Field(default_factory=list)
     planning: AnalysisPlanning
     answering: AnalysisAnswering
+    fact_set: dict[str, Any] = Field(default_factory=dict)
+    presentation: dict[str, Any] = Field(default_factory=dict)
 
 
 class MonitoringTask(BaseModel):
@@ -211,6 +213,7 @@ class MonitoringResult(BaseModel):
     duration_ms: int = Field(default=0, ge=0)
     skill_refs: list[AgentSkillRef] = Field(default_factory=list)
     fact_set: dict[str, Any] = Field(default_factory=dict)
+    presentation: dict[str, Any] = Field(default_factory=dict)
 
 
 class AnalysisSemanticOverview(BaseModel):

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.agents.monitoring.tools.registry import MonitoringToolRegistry
 from app.db.base import DB
@@ -38,6 +39,15 @@ _STATUS_NAMES = {
     "completed": "已完成",
     "running": "运行中",
 }
+_METRIC_DOMAIN_NAMES = {
+    "qa": "知识库问答",
+    "platform": "平台运行",
+    "resource": "平台运行",
+    "task": "异步任务",
+    "evaluation": "自主评测",
+}
+_SEVERITY_NAMES = {"critical": "严重", "warning": "警告", "info": "提示"}
+_MONITORING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 def _scope_filter(scope: int | None) -> dict[str, Any]:
@@ -56,11 +66,41 @@ def _number(value: Any) -> int | float | None:
     return value
 
 
+def _display_number(value: Any) -> str:
+    number = _number(value)
+    if number is None:
+        return "—"
+    if not isinstance(number, (int, float)):
+        return str(number)
+    if abs(number) < 0.005:
+        number = 0
+    return str(Decimal(str(number)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _display_datetime(value: datetime | None) -> str:
+    if value is None:
+        return "—"
+    current = value
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=_MONITORING_TIMEZONE)
+    return current.astimezone(_MONITORING_TIMEZONE).strftime("%Y年%m月%d日 %H:%M:%S")
+
+
+def _duration_label(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}秒"
+    if seconds < 3600:
+        return f"{seconds // 60}分钟"
+    if seconds < 86400:
+        return f"{seconds // 3600}小时"
+    return f"{seconds // 86400}天"
+
+
 def _result(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"items": items[:50], "data_status": "ready" if items else "empty"}
 
 
-def _metric_names(rows: list[dict[str, Any]]) -> dict[str, str]:
+def _metric_definitions(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     latest: dict[str, dict[str, Any]] = {}
     for row in rows:
         code = str(row.get("metric_code") or "")
@@ -70,9 +110,13 @@ def _metric_names(rows: list[dict[str, Any]]) -> dict[str, str]:
             latest[code].get("version") or 0
         ):
             latest[code] = row
+    return latest
+
+
+def _metric_names(rows: list[dict[str, Any]]) -> dict[str, str]:
     return {
         code: str(row.get("metric_name") or "").strip()
-        for code, row in latest.items()
+        for code, row in _metric_definitions(rows).items()
         if str(row.get("metric_name") or "").strip()
     }
 
@@ -127,7 +171,9 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
         *, window_start: datetime, window_end: datetime, scope_key: str
     ) -> dict[str, Any]:
         del scope_key
-        metric_names = _metric_names(await definition_db.list(DB.get()))
+        definition_rows = await definition_db.list(DB.get())
+        definitions = _metric_definitions(definition_rows)
+        metric_names = _metric_names(definition_rows)
         rows = await alert_db.list(DB.get(), **_scope_filter(scope))
         items = []
         for row in rows:
@@ -142,25 +188,73 @@ def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegist
             if row["first_fired_at"] >= window_end or effective_end < window_start:
                 continue
             severity = str(row.get("severity") or "info")
+            title = _customer_alert_title(row, metric_names)
+            definition = definitions.get(str(row.get("metric_code") or "")) or {}
+            domain_name = _METRIC_DOMAIN_NAMES.get(
+                str(definition.get("metric_domain") or "platform"),
+                "平台运行",
+            )
+            resource_name = (
+                "当前知识库"
+                if row.get("kb_id") is not None
+                else "当前租户"
+                if row.get("tenant_id") is not None
+                else "全平台"
+            )
+            duration_end = effective_end if status not in {"firing", "acknowledged"} else window_end
+            duration_seconds = max(
+                0,
+                int((duration_end - row["first_fired_at"]).total_seconds()),
+            )
+            severity_name = _SEVERITY_NAMES.get(severity, "未知级别")
+            status_name = _STATUS_NAMES.get(status, status)
             items.append(
                 {
                     "id": f"alert-{row['id']}",
                     "evidence_type": "alert",
                     "evidence_type_name": "告警信息",
-                    "title": _customer_alert_title(row, metric_names),
+                    "title": title,
+                    "alert_title": title,
                     "summary": (
-                        f"{severity} · {_STATUS_NAMES.get(status, status)} · "
-                        f"当前值 {_number(row.get('current_value'))}"
+                        f"{severity_name} · {status_name} · "
+                        f"当前值 {_display_number(row.get('current_value'))}"
                     ),
                     "evidence_level": "direct",
                     "evidence_level_name": "直接证据",
                     "occurred_at": row.get("last_fired_at"),
                     "target_id": str(row["id"]),
                     "status": status,
+                    "status_name": status_name,
                     "severity": severity,
+                    "severity_name": severity_name,
+                    "monitor_domain": definition.get("metric_domain") or "platform",
+                    "monitor_domain_name": domain_name,
                     "resource_type": row.get("resource_type"),
                     "resource_code": row.get("resource_code"),
+                    "resource_name": resource_name,
                     "current_value": _number(row.get("current_value")),
+                    "threshold": _number(row.get("threshold")),
+                    "sample_count": int(row.get("sample_count") or 0),
+                    "first_fired_at": row.get("first_fired_at"),
+                    "last_fired_at": row.get("last_fired_at"),
+                    "duration_seconds": duration_seconds,
+                    "firing_count": int(row.get("firing_count") or 0),
+                    "acknowledged_by_name": row.get("acknowledged_by") or "暂无",
+                    "alert_info": (
+                        f"{title}；{severity_name} · {domain_name}；资源：{resource_name}"
+                    ),
+                    "status_detail": (
+                        f"{status_name}；当前值：{_display_number(row.get('current_value'))}；"
+                        f"阈值：{_display_number(row.get('threshold'))}；"
+                        f"样本：{int(row.get('sample_count') or 0)}"
+                    ),
+                    "time_detail": (
+                        f"最近：{_display_datetime(row.get('last_fired_at'))}；"
+                        f"首次：{_display_datetime(row.get('first_fired_at'))}；"
+                        f"持续：{_duration_label(duration_seconds)}；"
+                        f"触发：{int(row.get('firing_count') or 0)} 次；"
+                        f"确认：{row.get('acknowledged_by') or '暂无'}"
+                    ),
                 }
             )
         return _result(items)

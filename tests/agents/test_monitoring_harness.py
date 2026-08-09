@@ -130,11 +130,10 @@ def test_monitoring_registry_exposes_read_only_definition() -> None:
     assert definition.requires_tenant_scope is True
     assert definition.fact_type == "alert"
     assert definition.presentation["title"] == "告警明细"
-    assert {item["field"] for item in definition.presentation["columns"]} >= {
-        "title",
-        "severity",
-        "status",
-        "occurred_at",
+    assert {item["field"] for item in definition.presentation["columns"]} == {
+        "alert_info",
+        "status_detail",
+        "time_detail",
     }
 
 
@@ -302,7 +301,7 @@ async def test_model_timeout_preserves_collected_facts_and_converges() -> None:
                     "status": "firing",
                     "severity": "critical" if index == 1 else "warning",
                     "resource_type": "worker" if index == 1 else "service",
-                    "current_value": 100 + index,
+                    "current_value": 1 / 3 if index == 1 else 100 + index,
                     "occurred_at": _window()[1] - timedelta(minutes=index),
                 }
                 for index, title in enumerate(
@@ -361,14 +360,16 @@ async def test_model_timeout_preserves_collected_facts_and_converges() -> None:
     ]
     assert result["tool_calls"][0]["status"] == "completed"
     assert "### 告警明细" in result["answer"]
-    assert (
-        "| 告警名称 | 告警级别 | 当前状态 | 资源类型 | 当前值 | 最近触发时间 |" in result["answer"]
-    )
+    assert "| 告警信息 | 状态详情 | 时间信息 |" in result["answer"]
     for title in ("Worker 心跳过期", "问答延迟过高", "数据库连接紧张", "索引任务积压"):
         assert title in result["answer"]
     assert "API 健康检查" not in result["answer"]
     assert "外部模型响应超时" not in result["answer"]
+    assert "当前值：0.33" in result["answer"]
+    assert "0.3333333333333333" not in result["answer"]
     assert result["fact_set"]["sources"][0]["fact_type"] == "alert"
+    assert result["presentation"]["type"] == "alert_list"
+    assert "共取得 4 条告警" in result["presentation"]["summary_markdown"]
 
 
 @pytest.mark.asyncio

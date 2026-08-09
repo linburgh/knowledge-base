@@ -237,6 +237,7 @@ async def send_message(
             "answering": {"mode": "fallback", "error": type(exc).__name__},
             "error": type(exc).__name__,
             "fact_set": {},
+            "presentation": {},
         }
     incident_id = (
         conversation_context.get("incident_id")
@@ -266,6 +267,7 @@ async def send_message(
                 "planning": result.get("planning") or {},
                 "answering": result.get("answering") or {},
                 "fact_set": result.get("fact_set") or {},
+                "presentation": result.get("presentation") or {},
             },
         )
         await conversation_db.update_(db, {"updated_at": utils.utc_now()}, id=conversation_id)
