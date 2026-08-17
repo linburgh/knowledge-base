@@ -1,8 +1,10 @@
+"""自主评测 Agent 调用知识问答 Agent 的公开协议工具。"""
+
 from __future__ import annotations
 
 from typing import Any
 
-from app.agents.knowledge import run_knowledge_agent
+from app.agents.knowledge import run
 from app.schemas.agent import AgentContext, AgentTask
 from app.schemas.evaluation import (
     EvaluationAgentContext,
@@ -15,10 +17,11 @@ async def call_knowledge_agent(
     payload: dict[str, Any],
     context: EvaluationAgentContext,
 ) -> KnowledgeAgentCallResult:
+    """使用可信评测上下文构造知识问答任务并返回公开结果。"""
     # 两个 Agent 只通过 app.schemas 下的公开协议协作，禁止导入知识库 Agent 的
     # 私有 Runtime、Prompt、工具或状态，否则两个 Harness 的权限和预算会互相渗透。
     call = KnowledgeAgentCall.model_validate(payload)
-    result = await run_knowledge_agent(
+    result = await run(
         AgentTask(
             kb_id=context.kb_id,
             question=call.question,

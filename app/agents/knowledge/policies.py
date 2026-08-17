@@ -1,3 +1,5 @@
+"""知识库问答 Agent 的确定性权限与结果安全策略。"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -17,6 +19,7 @@ def authorize_tool(
     call: ToolCall,
     registry: ToolRegistry,
 ) -> None:
+    """确认工具已注册且只读，并禁止模型覆盖可信上下文字段。"""
     if call.name not in READ_ONLY_TOOLS or call.name not in registry.names():
         raise BusiException("工具未授权", status_code=403)
 
@@ -26,6 +29,7 @@ def authorize_tool(
 
 
 def validate_agent_context(task_kb_id: int, task_user_id: str, context: AgentContext) -> None:
+    """校验任务标识与 Service 注入的用户、组织及知识库范围一致。"""
     if task_kb_id != context.kb_id or task_user_id != context.user_id:
         raise BusiException("Agent 上下文与问答任务不一致", status_code=403)
     if context.conversation_id is not None and context.conversation_id <= 0:
@@ -39,6 +43,7 @@ def validate_agent_context(task_kb_id: int, task_user_id: str, context: AgentCon
 
 
 def validate_agent_result(result: AgentResult, retrieved_chunks: list[dict]) -> None:
+    """确保最终引用全部来自本轮实际检索到的分块。"""
     allowed = {int(chunk["id"]) for chunk in retrieved_chunks if chunk.get("id") is not None}
     for citation in result.citations:
         if citation.chunk_id not in allowed:

@@ -1,3 +1,5 @@
+"""供 Deep Agent 调用的监控事实工具包装层。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -13,6 +15,7 @@ async def _query(
     runtime: ToolRuntime[MonitoringHarnessContext],
     arguments: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """注入可信时间和范围、调用注册工具并保存授权事实。"""
     session = runtime.context.session
     selected_range = session.require_time_range()
     try:

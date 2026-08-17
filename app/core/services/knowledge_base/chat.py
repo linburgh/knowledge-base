@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agents.knowledge.agent import run_knowledge_agent
+from app.agents.knowledge.agent import run
 from app.agents.knowledge.runtime import AgentError
 from app.core.common import form_limits
 from app.core.common import utils as common_utils
 from app.core.common import validation as common_validation
 from app.core.common.exception import BusiException
 from app.core.services.knowledge_base import qa_config as qa_config_service
-from app.db.knowledge_base import conversation as conversation_db
-from app.db.knowledge_base import conversation_message as conversation_message_db
-from app.db.knowledge_base import mgr as knowledge_base_db
-from app.db.knowledge_base import qa_config as qa_config_db
-from app.db.knowledge_base import message_citation as message_citation_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.db.knowledge_base import conversation as conversation_db
+from app.db.knowledge_base import conversation_message as conversation_message_db
+from app.db.knowledge_base import message_citation as message_citation_db
+from app.db.knowledge_base import mgr as knowledge_base_db
+from app.db.knowledge_base import qa_config as qa_config_db
 from app.schemas.agent import AgentContext, AgentResult, AgentTask
 from app.schemas.chat import ChatResponse, CitationDto, RetrievalInfoDto
 
@@ -253,7 +253,7 @@ async def chat(
         access_level=access_level,
     )
     try:
-        result = await run_knowledge_agent(
+        result = await run(
             AgentTask(
                 kb_id=kb_id,
                 question=question,

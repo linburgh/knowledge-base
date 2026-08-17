@@ -1,3 +1,5 @@
+"""自主评测 Harness 内部配置、问题、结果与指标模型。"""
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -11,11 +13,13 @@ CaseStatus = Literal["completed", "error", "timeout", "fallback"]
 
 
 class Gate(BaseModel):
+    """单项指标的比较运算符和通过阈值。"""
     operator: Literal[">=", "<=", ">", "<", "=="]
     value: float
 
 
 class EvaluationQuestion(BaseModel):
+    """一条可执行且可追溯的评测问题。"""
     question: str = Field(min_length=1, max_length=8000)
     case_id: str | None = Field(default=None, max_length=128)
     source: QuestionSource = "imported"
@@ -27,12 +31,14 @@ class EvaluationQuestion(BaseModel):
     @field_validator("question")
     @classmethod
     def non_blank(cls, value: str) -> str:
+        """去除问题首尾空白并拒绝纯空白输入。"""
         if not value.strip():
             raise ValueError("question cannot be blank")
         return value.strip()
 
 
 class EvaluationConfig(BaseModel):
+    """单次自主评测的范围、预算、问题来源与门禁配置。"""
     kb_id: int = Field(gt=0)
     questions_source: QuestionSource = "imported"
     questions_count: int = Field(default=20, ge=1, le=1000)
@@ -54,6 +60,7 @@ class EvaluationConfig(BaseModel):
 
 
 class CaseResult(BaseModel):
+    """单题问答执行结果及其检索、引用和终止元数据。"""
     case_no: int = Field(gt=0)
     question: str
     question_source: QuestionSource
@@ -70,6 +77,7 @@ class CaseResult(BaseModel):
 
 
 class EvaluationAgentOutput(BaseModel):
+    """Deep Agent 对评测过程给出的结构化分析结论。"""
     goal: str = Field(min_length=1, max_length=1000)
     rationale: str = Field(min_length=1, max_length=2000)
     findings: list[str] = Field(default_factory=list, max_length=50)
@@ -80,6 +88,7 @@ class EvaluationAgentOutput(BaseModel):
 
 
 class MetricValue(BaseModel):
+    """单项评测指标的数值、样本量和可用状态。"""
     value: float | None = None
     sample_count: int = 0
     available: bool = True
@@ -87,6 +96,7 @@ class MetricValue(BaseModel):
 
 
 class EvaluationMetrics(BaseModel):
+    """完整指标集、失败门禁及确定性总体结论。"""
     metrics: dict[str, MetricValue] = Field(default_factory=dict)
     failed_gates: list[str] = Field(default_factory=list)
     conclusion: Conclusion = "indeterminate"

@@ -1,3 +1,5 @@
+"""自主评测确定性指标计算与质量门禁判定。"""
+
 from __future__ import annotations
 
 import operator
@@ -16,6 +18,7 @@ OPS: dict[str, Callable[[float, float], bool]] = {
 
 
 def _percentile(values: list[int], percentile: int) -> float | None:
+    """使用线性插值计算整数样本的指定百分位值。"""
     if not values:
         return None
     if len(values) == 1:
@@ -25,6 +28,7 @@ def _percentile(values: list[int], percentile: int) -> float | None:
 
 
 def calculate_metrics(results: list[CaseResult], gates: dict[str, Gate]) -> EvaluationMetrics:
+    """从逐题结果计算指标，并按配置门禁生成最终结论。"""
     total = len(results)
     if not total:
         return EvaluationMetrics(

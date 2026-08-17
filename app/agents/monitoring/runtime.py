@@ -1,3 +1,5 @@
+"""自主监控 Agent 的模型、工具预算、取消、超时与审计运行时。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -18,14 +20,17 @@ from .tools.registry import MonitoringToolRegistry
 
 
 class MonitoringAgentError(BusiException):
+    """可由监控 Agent 入口统一收敛的业务异常。"""
     code = "MONITORING_AGENT_ERROR"
 
 
 class MonitoringBudgetExceeded(MonitoringAgentError):
+    """模型、工具或步骤调用超过单轮调查预算。"""
     code = "MONITORING_BUDGET_EXCEEDED"
 
 
 class MonitoringCancelled(MonitoringAgentError):
+    """监控调查被上游取消。"""
     code = "MONITORING_CANCELLED"
 
 
@@ -36,12 +41,14 @@ class MonitoringModelCallAccountingMiddleware(AgentMiddleware):
         self.monitoring_runtime = monitoring_runtime
 
     async def abefore_model(self, state, runtime) -> None:
+        """在模型执行前递增计数，确保失败和取消调用同样计入预算。"""
         del state, runtime
         self.monitoring_runtime.model_call_count += 1
 
 
 @dataclass
 class MonitoringRuntime:
+    """维护单轮监控调查的预算计数、Skill 版本和工具轨迹。"""
     timeout_seconds: float = 30.0
     max_context_items: int = 50
     max_steps: int = 8
@@ -57,6 +64,7 @@ class MonitoringRuntime:
     skill_refs: list[AgentSkillRef] = field(default_factory=list)
 
     async def run(self, operation):
+        """在总超时范围内执行顶层监控操作。"""
         try:
             return await asyncio.wait_for(operation(), timeout=self.timeout_seconds)
         except TimeoutError as exc:
@@ -64,17 +72,20 @@ class MonitoringRuntime:
             raise MonitoringAgentError("自主监控 Agent 执行超时", status_code=504) from exc
 
     def reset(self) -> None:
+        """重置单轮运行计数和审计状态，保留静态配置。"""
         self.tool_call_count = 0
         self.model_call_count = 0
         self.stop_reason = ""
         self.skill_refs = []
 
     def register_skill(self, skill: AgentSkillRef) -> None:
+        """登记本轮加载的 Skill 名称与内容版本。"""
         if all(item.name != skill.name for item in self.skill_refs):
             self.skill_refs.append(skill)
             LOG.info("自主监控Agent skill loaded name={} version={}", skill.name, skill.version)
 
     async def check_cancelled(self) -> None:
+        """执行可选取消检查并转换为稳定业务异常。"""
         if self.cancel_check is None:
             return
         result = self.cancel_check()
@@ -91,6 +102,7 @@ class MonitoringRuntime:
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """授权并限时调用事实工具，返回结构化结果与脱敏轨迹。"""
         await self.check_cancelled()
         # 官方 ToolCallLimitMiddleware 还会统计 Skill 读取等内置工具；
         # 这里只限制监控数据查询，属于项目特有的资源预算。

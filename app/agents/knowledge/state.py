@@ -1,3 +1,5 @@
+"""知识库问答 Deep Agent 的单次会话状态与可信上下文。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -20,12 +22,14 @@ class KnowledgeSession:
     retrieved_chunks: dict[int, dict[str, Any]] = field(default_factory=dict)
 
     def store_chunks(self, chunks: list[dict[str, Any]]) -> None:
+        """按分块 ID 保存实际检索事实，重复结果保留首次内容。"""
         for chunk in chunks:
             chunk_id = chunk.get("id")
             if chunk_id is not None:
                 self.retrieved_chunks.setdefault(int(chunk_id), chunk)
 
     def chunks(self) -> list[dict[str, Any]]:
+        """返回本轮登记的去重检索分块。"""
         return list(self.retrieved_chunks.values())
 
 

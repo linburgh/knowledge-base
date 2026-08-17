@@ -10,7 +10,7 @@
 
 | Agent | 生产入口 | 运行编排 | 工具边界 | Skill | 完成结果 |
 | --- | --- | --- | --- | --- | --- |
-| 知识库问答 | `run_knowledge_agent(task, context)` | 简单问题使用同一 Runtime 下的确定性检索；复杂问题进入受限 Deep Agent | 检索、历史和引用均经 Registry、Policy 与预算校验 | `query-analysis`、`answer-writing` | Runtime 前置生效，复杂模式真实调用只读工具，引用仅接受本轮分块 |
+| 知识库问答 | `run(task, context)` | 简单问题使用同一 Runtime 下的确定性检索；复杂问题进入受限 Deep Agent | 检索、历史和引用均经 Registry、Policy 与预算校验 | `query-analysis`、`answer-writing` | Runtime 前置生效，复杂模式真实调用只读工具，引用仅接受本轮分块 |
 | 自主监控 | `MonitoringAgent.analyze(task, context)` | 受限 `create_deep_agent` 自主工具循环；确定性代码只负责协议与失败收敛 | 健康、告警、指标、事件、任务工具归入监控 Harness | `monitoring-analysis`、`answer-writing` | 五类事实统一校验，无数据不再推导为正常，结果通过 Monitoring Schema |
 | 自主评测 | `EvaluationAgent.run(task, context)` | 受限 `create_deep_agent` 自主评测循环；确定性门禁负责最终结论 | Registry 仅注册 `call_knowledge_agent`，Harness 暴露执行、检查和有限复核工具 | `analysis` | Worker 只调用结构化入口，逐题结果、指标和报告进入同一可信会话状态 |
 

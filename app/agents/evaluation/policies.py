@@ -1,3 +1,5 @@
+"""自主评测 Agent 的配置、角色、上下文和工具授权策略。"""
+
 from __future__ import annotations
 
 from app.core.common.exception import BusiException
@@ -7,6 +9,7 @@ from .models import EvaluationConfig
 
 
 def validate_config(config: EvaluationConfig) -> None:
+    """校验评测用户、业务范围和问题来源等必需配置。"""
     if config.user_id is None:
         raise BusiException("CONFIG_INVALID: 评测执行用户尚未解析")
     if config.business_scope_source == "description" and not config.business_description:
@@ -23,6 +26,7 @@ def validate_config(config: EvaluationConfig) -> None:
 
 
 def authorize_evaluation(*, is_super_admin: bool) -> None:
+    """限制自主评测管理能力仅供超级管理员使用。"""
     if not is_super_admin:
         raise BusiException("无权操作自主评测", status_code=403)
 
@@ -31,6 +35,7 @@ def validate_evaluation_context(
     config: EvaluationConfig,
     context: EvaluationAgentContext,
 ) -> None:
+    """确认配置范围与 Service 注入的可信评测上下文一致。"""
     # config 来自持久化任务，context 来自当前 Worker 的可信查询结果。即使任务配置
     # 被篡改，也不能借此切换知识库或执行用户。
     authorize_evaluation(is_super_admin=context.is_super_admin)
@@ -45,6 +50,7 @@ def authorize_evaluation_tool(
     context: EvaluationAgentContext,
     registered_tools: frozenset[str],
 ) -> None:
+    """校验工具白名单，并阻止载荷覆盖租户、用户和知识库范围。"""
     # 这些字段只能由可信 context 注入工具，禁止模型或题目 payload 自行覆盖，
     # 否则会形成跨租户、跨组织或跨知识库读取通道。
     validate_context_fields = {

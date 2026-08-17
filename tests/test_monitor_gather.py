@@ -44,7 +44,7 @@ EXPECTED_TARGETS = {
     "worker.lifecycle",
 }
 METHOD_TARGETS = {
-    "knowledge.qa": ("app.agents.knowledge.agent", "run_knowledge_agent"),
+    "knowledge.qa": ("app.agents.knowledge.agent", "run"),
     "evaluation.run": ("app.workers.evaluation", "run_evaluation"),
     "document.ingestion": ("app.core.services.knowledge_base.document", "upload"),
     "document.indexing": ("app.core.services.knowledge_base.ingestion", "run_claimed_task"),

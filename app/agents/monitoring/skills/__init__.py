@@ -1,3 +1,5 @@
+"""自主监控 Skill 的完整性校验、内容加载与版本标识。"""
+
 from __future__ import annotations
 
 import hashlib
@@ -9,6 +11,7 @@ _ROOT = Path(__file__).parent
 
 
 def load_skill(name: str) -> tuple[str, AgentSkillRef]:
+    """读取指定 Skill，并返回内容及可审计哈希版本。"""
     path = _ROOT / name / "SKILL.md"
     if not path.is_file():
         raise RuntimeError(f"自主监控 Agent Skill 不存在: {name}")

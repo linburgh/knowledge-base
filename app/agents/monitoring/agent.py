@@ -1,3 +1,5 @@
+"""自主监控 Agent 的 Harness 创建、调查执行与安全结果收敛入口。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -99,6 +101,7 @@ EXCLUDED_BUILTIN_TOOLS = frozenset(
 
 @lru_cache(maxsize=1)
 def _register_monitoring_harness_profile() -> None:
+    """注册禁用写入、命令执行和子 Agent 的监控 Harness 配置。"""
     register_harness_profile(
         "openai",
         HarnessProfile(
@@ -110,6 +113,7 @@ def _register_monitoring_harness_profile() -> None:
 
 
 def _monitoring_permissions() -> list[FilesystemPermission]:
+    """仅允许读取监控 Skill，拒绝其他文件系统操作。"""
     return [
         FilesystemPermission(operations=["read"], paths=["/skills/**"], mode="allow"),
         FilesystemPermission(operations=["read", "write"], paths=["/**"], mode="deny"),
@@ -161,14 +165,17 @@ def build_monitoring_deep_agent(
 
 
 def _skill_files(skills: dict[str, str]) -> dict[str, dict[str, str]]:
+    """将已校验 Skill 映射为 Deep Agent 可读取的状态文件。"""
     return {f"/skills/{name}/SKILL.md": {"content": content} for name, content in skills.items()}
 
 
 def _model_call_count(result: dict[str, Any]) -> int:
+    """统计 Deep Agent 结果中的实际模型响应次数。"""
     return sum(getattr(message, "type", None) == "ai" for message in result.get("messages", []))
 
 
 def _prior_fact_prompt(value: Any) -> str:
+    """限长序列化上一轮授权事实，并明确其不可信数据边界。"""
     if not isinstance(value, dict) or not value.get("sources"):
         return "上一轮事实：无"
     # 上一轮事实来自同一授权监控会话，但仍作为不可信业务文本提供给模型。
@@ -194,6 +201,7 @@ _TOOL_DISPLAY_NAMES = {
 
 
 def _serialize_evidence(item: dict[str, Any]) -> dict[str, Any]:
+    """复制证据并将时间字段转换为可序列化格式。"""
     result = dict(item)
     for key in ("occurred_at", "expires_at"):
         value = result.get(key)
@@ -203,6 +211,7 @@ def _serialize_evidence(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _legacy_facts(context: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """将旧版上下文证据适配为当前按工具分组的事实集合。"""
     evidence = [_serialize_evidence(item) for item in context.get("evidence", [])]
     alerts = []
     for item in context.get("alerts", []):
@@ -227,6 +236,7 @@ def _legacy_facts(context: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _fact_items(facts: dict[str, dict[str, Any]], name: str) -> list[dict[str, Any]]:
+    """安全取得指定工具事实中的条目列表。"""
     return list((facts.get(name) or {}).get("items") or [])
 
 
@@ -442,6 +452,7 @@ class MonitoringAgent:
         agent_factory: Callable[[MonitoringRuntime], Any] | None = None,
         structured_output_repair: Callable[..., Any] = repair_structured_output,
     ) -> None:
+        """注入工具注册表、模型和结构化输出修复器。"""
         self.runtime = runtime or MonitoringRuntime()
         self.tools = tools or MonitoringToolRegistry()
         self.agent_factory = agent_factory
@@ -543,6 +554,7 @@ class MonitoringAgent:
     async def analyze(
         self, *, question: str, context: dict[str, Any] | MonitoringContext
     ) -> dict[str, Any]:
+        """在授权时间和数据范围内完成一次监控调查并返回可追溯结果。"""
         started_at = perf_counter()
         if isinstance(context, MonitoringContext):
             context = context.model_dump()

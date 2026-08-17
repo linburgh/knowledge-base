@@ -8,21 +8,21 @@ from typing import Any
 import httpx
 import sqlalchemy as sa
 
-from app.agents.knowledge.agent import run_knowledge_agent
+from app.agents.knowledge.agent import run
 from app.config import CONF
 from app.core import storage
 from app.core.common import utils
 from app.core.common.log import LOG
 from app.core.monitoring import emit_gather_event, flush_gather_failures
 from app.core.services.knowledge_base import qa_config as qa_config_service
-from app.db.platform import evaluation_run as evaluation_run_db
+from app.db.api import check_db_connected
+from app.db.base import DB, database_instance_stats
 from app.db.knowledge_base import indexing_task as indexing_task_db
 from app.db.knowledge_base import mgr as knowledge_base_db
 from app.db.monitoring import event as event_db
 from app.db.monitoring import gather_target as target_db
 from app.db.monitoring import state_snapshot as snapshot_db
-from app.db.api import check_db_connected
-from app.db.base import DB, database_instance_stats
+from app.db.platform import evaluation_run as evaluation_run_db
 from app.rag.rerank import rerank as rerank_chunks
 from app.schemas.agent import AgentContext, AgentTask
 
@@ -276,7 +276,7 @@ async def _probe_knowledge_qa(
         knowledge_base.get("system_prompt") or "",
     )
     result = await asyncio.wait_for(
-        run_knowledge_agent(
+        run(
             AgentTask(
                 kb_id=kb_id,
                 question=question,

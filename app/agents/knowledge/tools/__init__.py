@@ -1,3 +1,5 @@
+"""知识库问答 Agent 可注册的只读工具公共出口。"""
+
 from .citations import build_citations
 from .history import load_conversation_history
 from .registry import ToolRegistry, build_default_registry

@@ -1,3 +1,5 @@
+"""自主监控事实的客户安全展示、确定性调查分析与回答渲染。"""
+
 from __future__ import annotations
 
 import hashlib
@@ -165,6 +167,7 @@ _REFERENCE_PATTERN = re.compile(
 
 
 def presentation_for_tool(name: str) -> dict[str, Any]:
+    """返回工具对应的事实类型、标题和安全展示列定义。"""
     return dict(TOOL_PRESENTATIONS.get(name) or {})
 
 
@@ -268,6 +271,7 @@ def build_fact_set(
     facts: dict[str, dict[str, Any]],
     plan: AnalysisPlan,
 ) -> dict[str, Any]:
+    """把本轮工具事实整理为可跨轮引用的限长事实集合。"""
     sources = _sources_from_facts(facts)
     identity = json.dumps(
         [
@@ -570,6 +574,7 @@ def render_investigation_answer(
     plan: AnalysisPlan,
     conclusion: AnalysisConclusion,
 ) -> str | None:
+    """将原因调查分析渲染为客户可见的中文 Markdown。"""
     if plan.intent != AnalysisIntent.INCIDENT_CAUSE:
         return None
     direct_causes = list((analysis.get("causal_assessment") or {}).get("direct_causes") or [])

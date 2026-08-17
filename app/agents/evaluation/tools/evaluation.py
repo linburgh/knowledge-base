@@ -1,3 +1,5 @@
+"""供自主评测 Deep Agent 调用的执行、复核和结果检查工具。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,6 +12,7 @@ from ..state import EvaluationHarnessContext
 
 
 def _compact_result(item) -> dict[str, Any]:
+    """生成适合模型检查且限制答案长度的逐题摘要。"""
     return {
         "case_no": item.case_no,
         "question": item.question,
@@ -24,6 +27,7 @@ def _compact_result(item) -> dict[str, Any]:
 
 
 async def _run_cases(session, selected: list[int], *, review: bool) -> dict[str, Any]:
+    """执行选中题目并将复核元数据合并回会话状态。"""
     await session.runtime.check_cancelled()
     questions = [session.questions[case_no - 1] for case_no in selected]
     results = await session.runtime.run(

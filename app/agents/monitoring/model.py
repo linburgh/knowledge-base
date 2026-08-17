@@ -1,3 +1,5 @@
+"""自主监控 Agent 专用对话模型工厂。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -9,6 +11,7 @@ from app.core.common.exception import BusiException
 
 
 def build_monitoring_chat_model() -> ChatOpenAI:
+    """按项目配置创建监控模型并应用供应商兼容设置。"""
     if not CONF.chat.model:
         raise BusiException("对话模型未配置")
     if not CONF.chat.api_key:

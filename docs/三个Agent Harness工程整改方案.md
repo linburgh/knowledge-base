@@ -45,7 +45,7 @@
 
 ### 问答现状
 
-知识库问答 Agent 已配置 `create_deep_agent()`、受限文件权限、禁用子 Agent、结构化回答和两个 Skill，但生产入口 `run_knowledge_agent()` 没有调用该 Deep Agent。当前生产路径直接执行检索函数、直接调用单次回答模型，最后才创建 Runtime 检查已经发生的调用次数。
+知识库问答 Agent 已配置 `create_deep_agent()`、受限文件权限、禁用子 Agent、结构化回答和两个 Skill，但生产入口 `run()` 没有调用该 Deep Agent。当前生产路径直接执行检索函数、直接调用单次回答模型，最后才创建 Runtime 检查已经发生的调用次数。
 
 具体差距：
 
@@ -94,7 +94,7 @@
 
 | Agent | 公开入口 | 调用者 |
 | --- | --- | --- |
-| 知识库问答 | `run_knowledge_agent(task, context)` | Chat Service、评测 Agent 的公开适配工具、受控监控探针 |
+| 知识库问答 | `run(task, context)` | Chat Service、评测 Agent 的公开适配工具、受控监控探针 |
 | 自主评测 | `EvaluationAgent.run(task, context)` | Evaluation Worker |
 | 自主监控 | `MonitoringAgent.analyze(task, context)`、同入口下的总览操作 | Monitoring Service |
 
@@ -226,7 +226,7 @@ app/agents/<agent_name>/
 
 ```text
 Chat Service
-  → run_knowledge_agent
+  → run
   → KnowledgeRuntime 初始化预算
   → 加载 query-analysis / answer-writing Skill
   → 选择 single_retrieval 或 tool_loop
@@ -387,7 +387,7 @@ Worker 继续负责领取任务、数据库状态、事务、结果持久化和�
 
 ### 验收标准
 
-- Worker 不再直接调用 `EvaluationAgent.run(config, questions)` 旧签名，也不直接注入裸 `run_knowledge_agent` 函数。
+- Worker 不再直接调用 `EvaluationAgent.run(config, questions)` 旧签名，也不直接注入裸 `run` 函数。
 - `create_deep_agent` 是生产自主决策主链，有 Skill、模型、工具和终态日志，不存在未调用的包装 Graph 或固定顺序工作流。
 - `authorize_evaluation()` 在 Agent 入口真实执行。
 - `EvaluationToolRegistry.invoke()` 是调用知识 Agent 的唯一通路。

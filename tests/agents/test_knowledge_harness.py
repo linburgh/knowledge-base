@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agents.knowledge.agent import _select_citations, _skill_refs, run_knowledge_agent
+from app.agents.knowledge.agent import _select_citations, _skill_refs, run
 from app.agents.knowledge.runtime import AgentOutputInvalid, AgentRuntime
 from app.agents.knowledge.tools import (
     build_citations,
@@ -153,7 +153,7 @@ async def test_simple_question_uses_runtime_registry_model_and_skills(monkeypatc
         "app.agents.knowledge.agent.emit_gather_event",
         AsyncMock(return_value=None),
     )
-    target = run_knowledge_agent
+    target = run
     while hasattr(target, "__wrapped__"):
         target = target.__wrapped__
     result = await target(
@@ -283,7 +283,7 @@ async def test_deep_agent_timeout_preserves_agent_retrieval_and_tool_traces(monk
         "app.agents.knowledge.agent.emit_gather_event",
         AsyncMock(return_value=None),
     )
-    target = run_knowledge_agent
+    target = run
     while hasattr(target, "__wrapped__"):
         target = target.__wrapped__
     result = await target(

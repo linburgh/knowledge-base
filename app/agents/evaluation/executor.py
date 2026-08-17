@@ -1,3 +1,5 @@
+"""知识库问答 Agent 到逐题评测结果的公开协议适配器。"""
+
 from __future__ import annotations
 
 from time import monotonic
@@ -18,6 +20,7 @@ class KnowledgeAgentExecutor:
     """
 
     def __init__(self, registry: EvaluationToolRegistry) -> None:
+        """绑定本次 Harness 使用的显式评测工具注册表。"""
         self.registry = registry
 
     async def execute(
@@ -29,6 +32,7 @@ class KnowledgeAgentExecutor:
         context: EvaluationAgentContext | None = None,
         runtime: EvaluationRuntime | None = None,
     ) -> CaseResult:
+        """调用知识库 Agent，并将答案、引用和错误映射为逐题结果。"""
         started = monotonic()
         LOG.info(
             "自主评测Agent knowledge agent start case_no={} kb_id={} question_length={}",

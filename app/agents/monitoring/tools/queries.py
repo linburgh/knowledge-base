@@ -1,3 +1,5 @@
+"""自主监控只读事实工具的数据库查询与客户安全数据组装。"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -52,10 +54,12 @@ _MONITORING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 def _scope_filter(scope: int | None) -> dict[str, Any]:
+    """将可选租户范围转换为 Repository 关键字过滤条件。"""
     return {"tenant_id": scope} if scope is not None else {}
 
 
 def _in_window(value: datetime | None, start: datetime, end: datetime) -> bool:
+    """判断时间是否落在左闭右开的授权窗口内。"""
     return value is not None and start <= value < end
 
 
@@ -79,6 +83,7 @@ def _display_number(value: Any) -> str:
 
 
 def _display_datetime(value: datetime | None) -> str:
+    """按客户统一格式展示中国标准时间。"""
     if value is None:
         return "—"
     current = value
@@ -98,10 +103,12 @@ def _duration_label(seconds: int) -> str:
 
 
 def _result(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """限制单次事实条数并标记数据是否为空。"""
     return {"items": items[:50], "data_status": "ready" if items else "empty"}
 
 
 def _metric_definitions(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """按指标编码选取最新的启用定义。"""
     latest: dict[str, dict[str, Any]] = {}
     for row in rows:
         code = str(row.get("metric_code") or "")
@@ -115,6 +122,7 @@ def _metric_definitions(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
 
 
 def _metric_names(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """提取可用于客户展示的指标中文业务名称。"""
     return {
         code: str(row.get("metric_name") or "").strip()
         for code, row in _metric_definitions(rows).items()
@@ -135,6 +143,7 @@ def _customer_alert_title(row: dict[str, Any], metric_names: dict[str, str]) -> 
 
 
 def build_monitoring_tool_registry(*, scope: int | None) -> MonitoringToolRegistry:
+    """为指定租户范围构建显式只读监控工具注册表。"""
     registry = MonitoringToolRegistry()
 
     async def query_health_snapshots(

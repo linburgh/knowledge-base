@@ -1,3 +1,5 @@
+"""自主监控调查的证据去重、容量限制与查询签名工作区。"""
+
 from __future__ import annotations
 
 import hashlib
@@ -18,16 +20,20 @@ class EvidenceWorkspace:
 
     @staticmethod
     def signature(name: str, arguments: dict[str, Any]) -> str:
+        """为工具名称和规范化参数生成稳定查询摘要。"""
         serialized = json.dumps(arguments, sort_keys=True, ensure_ascii=False, default=str)
         return hashlib.sha256(f"{name}:{serialized}".encode()).hexdigest()
 
     def has_query(self, name: str, arguments: dict[str, Any]) -> bool:
+        """判断相同工具及参数是否已成功查询。"""
         return self.signature(name, arguments) in self.query_signatures
 
     def record_query(self, name: str, arguments: dict[str, Any]) -> None:
+        """登记成功查询签名，阻止模型无意义重复调用。"""
         self.query_signatures.add(self.signature(name, arguments))
 
     def add_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        """接收带有效标识的事实，并按工作区容量裁剪结果。"""
         accepted = []
         for item in result.get("items") or []:
             raw_fact_id = item.get("id")
@@ -46,6 +52,7 @@ class EvidenceWorkspace:
         }
 
     def metadata(self) -> dict[str, Any]:
+        """返回不包含事实正文的工作区统计信息。"""
         return {
             "fact_count": len(self.facts),
             "relation_count": len(self.relations),

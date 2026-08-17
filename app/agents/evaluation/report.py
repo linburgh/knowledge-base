@@ -1,3 +1,5 @@
+"""自主评测报告对象构建及 Markdown、JSON 渲染。"""
+
 from __future__ import annotations
 
 import json
@@ -19,6 +21,7 @@ def build_report(
     *,
     analysis: EvaluationAgentOutput | None = None,
 ) -> dict[str, Any]:
+    """汇总配置快照、逐题结果、指标和 Agent 审计元数据。"""
     failures = [item for item in results if item.status != "completed"]
     citation_anomalies = [
         item for item in results if item.status == "completed" and item.citation_count == 0
@@ -52,6 +55,7 @@ def build_report(
 
 
 def render_markdown(report: dict[str, Any]) -> str:
+    """将结构化报告渲染为便于人工评审的中文 Markdown。"""
     metrics = report["metrics"]["metrics"]
     lines = [
         "# 自主评测报告",
@@ -73,4 +77,5 @@ def render_markdown(report: dict[str, Any]) -> str:
 
 
 def render_json(report: dict[str, Any]) -> str:
+    """将结构化报告渲染为保留中文字符的缩进 JSON。"""
     return json.dumps(report, ensure_ascii=False, indent=2)

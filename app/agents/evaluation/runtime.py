@@ -1,3 +1,5 @@
+"""自主评测 Agent 的并发、取消、超时、预算与部分结果运行时。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,14 +19,17 @@ from .tools.registry import EvaluationToolRegistry
 
 
 class EvaluationAgentError(Exception):
+    """自主评测运行时可识别异常的基类。"""
     code = "EVALUATION_AGENT_ERROR"
 
 
 class EvaluationCancelled(EvaluationAgentError):
+    """评测任务被上游取消。"""
     code = "EVALUATION_CANCELLED"
 
 
 class EvaluationBudgetExceeded(EvaluationAgentError):
+    """评测工具调用或总执行时间超过预算。"""
     code = "EVALUATION_BUDGET_EXCEEDED"
 
 
@@ -50,11 +55,13 @@ class EvaluationRuntime:
     partial_results: list[CaseResult] = field(default_factory=list)
 
     def register_skill(self, skill: AgentSkillRef) -> None:
+        """登记本轮加载的 Skill 版本并写入结构化日志。"""
         if all(item.name != skill.name for item in self.skill_refs):
             self.skill_refs.append(skill)
             LOG.info("自主评测Agent skill loaded name={} version={}", skill.name, skill.version)
 
     async def check_cancelled(self) -> None:
+        """调用可选取消探针，并以稳定异常终止任务。"""
         if self.cancel_check is not None and await self.cancel_check():
             self.stop_reason = "cancelled"
             raise EvaluationCancelled("自主评测任务已取消")
@@ -67,6 +74,7 @@ class EvaluationRuntime:
         payload: dict[str, Any],
         context: EvaluationAgentContext,
     ):
+        """授权、限时执行评测工具并记录成功或失败轨迹。"""
         # 授权必须发生在 Registry 调用之前；Registry 只证明工具已注册，并不代表
         # 当前用户、租户和知识库上下文有权调用它。
         await self.check_cancelled()
@@ -126,6 +134,7 @@ class EvaluationRuntime:
         monitoring_fields: dict | None = None,
         case_numbers: list[int] | None = None,
     ) -> list[CaseResult]:
+        """并发执行指定题目，逐题重试并保留超时前的部分结果。"""
         # 信号量限制的是同时执行的题目数，而不是预先分批；这样既保留吞吐量，
         # 又能让取消检查在每题获取执行槽后及时生效。
         semaphore = asyncio.Semaphore(self.concurrency)

@@ -1,3 +1,5 @@
+"""自主评测问题集的文件读取与格式解析。"""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +12,7 @@ from .models import EvaluationQuestion
 
 
 def load_questions(path: str | Path) -> list[EvaluationQuestion]:
+    """读取 UTF-8 问题集文件，并按扩展名解析内容。"""
     file_path = Path(path)
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -21,6 +24,7 @@ def load_questions(path: str | Path) -> list[EvaluationQuestion]:
 
 
 def load_questions_content(content: str, suffix: str) -> list[EvaluationQuestion]:
+    """解析 TXT、JSON 或 JSONL 内容并返回校验后的问题列表。"""
     try:
         normalized_suffix = Path(suffix).suffix.lower() or suffix.lower()
         if normalized_suffix == ".txt":

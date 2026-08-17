@@ -1,3 +1,5 @@
+"""自主评测 Deep Agent 的单次会话状态与可信上下文。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -23,12 +25,15 @@ class EvaluationSession:
     reviewed_case_numbers: list[int] = field(default_factory=list)
 
     def ordered_results(self) -> list[CaseResult]:
+        """按题号返回稳定排序的当前结果。"""
         return [self.results[case_no] for case_no in sorted(self.results)]
 
     def metrics(self) -> EvaluationMetrics:
+        """根据当前结果和配置门禁计算确定性指标。"""
         return calculate_metrics(self.ordered_results(), self.config.gates)
 
     def all_cases_completed(self) -> bool:
+        """判断全量初次题目是否均已有结果。"""
         return set(self.results) == set(range(1, len(self.questions) + 1))
 
 

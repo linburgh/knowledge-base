@@ -487,6 +487,9 @@ create index if not exists idx_t_document_chunk_kb_index on t_document_chunk (kb
 create index if not exists idx_t_document_chunk_content_hash on t_document_chunk (content_hash);
 
 create index if not exists idx_t_document_chunk_metadata_gin on t_document_chunk using gin (metadata);
+
+-- 兼容 index_version_id 字段上线前已经创建的文档分块表；重复执行安全。
+alter table t_document_chunk add column if not exists index_version_id bigint;
 create index if not exists idx_t_document_chunk_kb_index_version on t_document_chunk (kb_id, index_version_id);
 
 -- Create the vector index after the embedding dimension and distance metric are finalized.

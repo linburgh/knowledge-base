@@ -1,3 +1,5 @@
+"""自主评测问题生成器的受控扩展协议。"""
+
 from __future__ import annotations
 
 from app.core.common.log import LOG

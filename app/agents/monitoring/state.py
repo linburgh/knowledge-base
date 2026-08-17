@@ -1,3 +1,5 @@
+"""自主监控 Deep Agent 的会话状态、证据工作区与可信上下文。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -69,6 +71,7 @@ class MonitoringSession:
 
 @dataclass(frozen=True, slots=True)
 class MonitoringHarnessContext:
+    """通过 ToolRuntime 注入且不暴露为模型参数的可信会话。"""
     # Any 用于防止工具 Schema 生成器展开 Session 并向模型暴露可信字段。
     session: Any
 

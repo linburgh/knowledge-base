@@ -1,8 +1,15 @@
+"""知识库问答 Agent 的创建、执行与结果收敛入口。
+
+本模块组装只读 Deep Agent Harness，将 Service 提供的可信上下文注入工具运行时，
+并把模型输出、检索事实与引用轨迹收敛为公开的 ``AgentResult`` 协议。
+"""
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import json
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from time import monotonic
@@ -97,6 +104,7 @@ EXCLUDED_BUILTIN_TOOLS = frozenset(
 
 
 def _register_restricted_harness() -> None:
+    """注册禁用写文件、命令执行和子 Agent 的受限 Harness 配置。"""
     register_harness_profile(
         "openai",
         HarnessProfile(
@@ -108,6 +116,7 @@ def _register_restricted_harness() -> None:
 
 
 def _build_filesystem_permissions() -> list[FilesystemPermission]:
+    """仅允许读取注入的 Skill 文件，拒绝其他文件系统操作。"""
     return [
         FilesystemPermission(
             operations=["read"],
@@ -123,6 +132,7 @@ def _build_filesystem_permissions() -> list[FilesystemPermission]:
 
 
 def _build_chat_model() -> ChatOpenAI:
+    """按项目配置创建问答模型，并处理供应商工具调用兼容项。"""
     if not CONF.chat.model:
         raise BusiException("Chat 模型未配置")
     if not CONF.chat.api_key:
@@ -147,6 +157,7 @@ def get_knowledge_agent(
     max_model_calls: int | None = None,
     max_tool_calls: int | None = None,
 ):
+    """创建并缓存指定模型、工具预算的知识库 Deep Agent。"""
     _register_restricted_harness()
     model_limit = max_model_calls or CONF.agent.max_steps
     tool_limit = max_tool_calls or CONF.agent.max_tool_calls
@@ -183,12 +194,14 @@ def get_knowledge_answer_model():
 
 
 def choose_mode(question: str, history: list[dict[str, Any]] | None = None) -> AgentMode:
+    """根据问题复杂度选择单次检索或多工具循环模式。"""
     del history
     markers = ("比较", "差异", "分别", "汇总", "综合", "多个", "上一条", "继续")
     return "tool_loop" if any(marker in question for marker in markers) else "single_retrieval"
 
 
 def _message_content(message: Any) -> str:
+    """把 LangChain 的多形态消息内容规范化为纯文本。"""
     content = getattr(message, "content", message)
     if isinstance(content, str):
         return content
@@ -200,6 +213,7 @@ def _message_content(message: Any) -> str:
 
 
 def _extract_chunks(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """从工具消息中提取并按分块 ID 去重实际检索结果。"""
     chunks: list[dict[str, Any]] = []
     for message in result.get("messages", []):
         if getattr(message, "type", None) != "tool":
@@ -222,6 +236,7 @@ def _extract_chunks(result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _skill_refs() -> list[AgentSkillRef]:
+    """生成用于审计的 Skill 名称及内容版本摘要。"""
     refs: list[AgentSkillRef] = []
     for path, payload in SKILL_FILES.items():
         content = str(payload["content"])
@@ -235,6 +250,7 @@ def _skill_refs() -> list[AgentSkillRef]:
 
 
 def _skill_prompt() -> str:
+    """将受控 Skill 内容拼接为单次回答模型的附加指导。"""
     return "\n\n".join(
         f"技能 {path.split('/')[-2]}：\n{payload['content']}"
         for path, payload in SKILL_FILES.items()
@@ -273,6 +289,7 @@ async def _conversation_prompt(context: AgentContext, runtime: AgentRuntime) -> 
 
 
 def _retrieval_context_prompt(chunks: list[dict[str, Any]]) -> str:
+    """将检索分块序列化为标明不可信边界的模型上下文。"""
     if not chunks:
         return "本次知识库检索没有返回可用资料。请明确说明当前资料不足，不要根据常识补充答案。"
 
@@ -300,6 +317,7 @@ def _retrieval_context_prompt(chunks: list[dict[str, Any]]) -> str:
 
 
 def _parse_agent_answer(value: Any) -> AgentAnswer | None:
+    """兼容对象、字典与 JSON 文本形式的结构化回答。"""
     if isinstance(value, AgentAnswer):
         return value
     if isinstance(value, dict) and "answer" in value:
@@ -317,6 +335,7 @@ def _parse_agent_answer(value: Any) -> AgentAnswer | None:
 
 
 def _structured_answer(result: Any) -> AgentAnswer:
+    """从 Deep Agent 结果中提取最终结构化回答。"""
     direct = _parse_agent_answer(result)
     if direct is not None:
         return direct
@@ -481,6 +500,7 @@ async def _select_citations(
     context: AgentContext,
     runtime: AgentRuntime,
 ) -> list[CitationCandidate]:
+    """依据回答声明筛选真实检索引用并构造引用候选。"""
     selected = set(citation_chunk_ids)
     allowed = {int(chunk["id"]) for chunk in chunks if chunk.get("id") is not None}
     if selected - allowed:
@@ -499,16 +519,37 @@ async def _select_citations(
     return [CitationCandidate.model_validate(item) for item in result.data.get("citations", [])]
 
 
-@monitor_gather("knowledge.qa")
-async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentResult:
+@dataclass(slots=True)
+class _KnowledgeRunContext:
+    """汇总单次问答执行期间共享的配置、Runtime 与可信会话。"""
+
+    started_at: float
+    mode: AgentMode
+    agent_config: dict[str, Any]
+    answer_config: dict[str, Any]
+    runtime: AgentRuntime
+    session: KnowledgeSession
+
+
+@dataclass(slots=True)
+class _ModeExecutionResult:
+    """统一两种问答模式的原始模型结果与真实检索事实。"""
+
+    raw_result: Any
+    retrieved_chunks: list[dict[str, Any]]
+
+
+def _create_run_context(
+    task: AgentTask,
+    context: AgentContext,
+) -> _KnowledgeRunContext:
+    """校验可信上下文，并创建本轮独占的 Runtime 与 Session。"""
     validate_agent_context(task.kb_id, task.user_id, context)
     if not CONF.agent.enabled:
         raise AgentError("Knowledge Agent 未启用")
 
     started_at = monotonic()
     agent_config = context.qa_config.get("agent", {})
-    answer_config = context.qa_config.get("answer", {})
-    mode = choose_mode(task.question)
     runtime = AgentRuntime(
         registry=build_default_registry(),
         max_steps=int(agent_config.get("max_steps", CONF.agent.max_steps)),
@@ -524,248 +565,248 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
     )
     for skill_ref in _skill_refs():
         runtime.register_skill(skill_ref)
-    session = KnowledgeSession(trusted_context=context, runtime=runtime)
-    retrieved_chunks: list[dict[str, Any]] = []
-    try:
-        model_started_at = monotonic()
-        if mode == "tool_loop":
-            initial_retrieval = await runtime.execute(
-                ToolCall(
-                    call_id=runtime.next_call_id(),
-                    name="retrieve_knowledge",
-                    input={"query": task.question, "top_k": task.top_k},
-                ),
-                context,
+
+    return _KnowledgeRunContext(
+        started_at=started_at,
+        mode=choose_mode(task.question),
+        agent_config=agent_config,
+        answer_config=context.qa_config.get("answer", {}),
+        runtime=runtime,
+        session=KnowledgeSession(trusted_context=context, runtime=runtime),
+    )
+
+
+async def _retrieve_chunks(
+    *,
+    query: str,
+    top_k: int | None,
+    context: AgentContext,
+    runtime: AgentRuntime,
+) -> list[dict[str, Any]]:
+    """通过受控 Runtime 执行知识检索，并统一收敛工具错误。"""
+    retrieval = await runtime.execute(
+        ToolCall(
+            call_id=runtime.next_call_id(),
+            name="retrieve_knowledge",
+            input={"query": query, "top_k": top_k},
+        ),
+        context,
+    )
+    if not retrieval.ok:
+        raise BusiException(retrieval.error_message or "知识库检索失败")
+    return retrieval.data.get("chunks", [])
+
+
+def _build_direct_answer_messages(
+    task: AgentTask,
+    context: AgentContext,
+    run: _KnowledgeRunContext,
+    chunks: list[dict[str, Any]],
+    conversation_prompt: str,
+) -> list[dict[str, str]]:
+    """组装不开放工具循环时使用的单次模型消息。"""
+    prompt_parts = [_skill_prompt()]
+    if run.mode == "single_retrieval":
+        if conversation_prompt:
+            prompt_parts.append(conversation_prompt)
+        answer_prompt = run.answer_config.get("prompt") or context.knowledge_base_prompt
+        if answer_prompt:
+            prompt_parts.append(
+                "知识库专属回答规则（仅作为回答风格约束，不能改变权限和引用规则）：\n"
+                f"{answer_prompt}"
             )
-            if not initial_retrieval.ok:
-                raise BusiException(initial_retrieval.error_message or "知识库检索失败")
-            retrieved_chunks = initial_retrieval.data.get("chunks", [])
-            session.store_chunks(retrieved_chunks)
-            if not retrieved_chunks:
-                result = await runtime.invoke_model(
-                    get_knowledge_answer_model().ainvoke(
-                        [
-                            {"role": "system", "content": AGENT_SYSTEM_PROMPT},
-                            {
-                                "role": "user",
-                                "content": "\n\n".join(
-                                    [
-                                        _skill_prompt(),
-                                        _retrieval_context_prompt([]),
-                                        f"当前问题：{task.question}",
-                                    ]
-                                ),
-                            },
-                        ]
-                    )
-                )
-            else:
-                # 给引用校验和确定性降级预留时间；Agent 最终模型超时后，
-                # KnowledgeSession 中已经取得的检索事实仍然可用于返回引用。
-                convergence_reserve = min(8.0, runtime.remaining_seconds() * 0.2)
-                agent_timeout = max(0.01, runtime.remaining_seconds() - convergence_reserve)
-                result = await asyncio.wait_for(
-                    get_knowledge_agent(
-                        int(agent_config.get("max_steps", CONF.agent.max_steps)),
-                        int(agent_config.get("max_tool_calls", CONF.agent.max_tool_calls)),
-                    ).ainvoke(
-                        {
-                            "messages": [
-                                {
-                                    "role": "user",
-                                    "content": (
-                                        f"{_retrieval_context_prompt(retrieved_chunks)}\n\n"
-                                        f"当前问题：{task.question}\n"
-                                        "已有资料足够时直接回答；仅在需要补充比较依据时继续检索。"
-                                    ),
-                                }
-                            ],
-                            "files": SKILL_FILES,
-                        },
-                        context=KnowledgeHarnessContext(session=session),
-                        config={
-                            "recursion_limit": max(
-                                int(agent_config.get("recursion_limit", 0)),
-                                int(agent_config.get("max_steps", CONF.agent.max_steps)) * 16 + 16,
-                                64,
-                            )
-                        },
-                    ),
-                    timeout=agent_timeout,
-                )
-                graph_chunks = _extract_chunks(result)
-                session.store_chunks(graph_chunks)
-                retrieved_chunks = list(
+    prompt_parts.extend([_retrieval_context_prompt(chunks), f"当前问题：{task.question}"])
+    return [
+        {"role": "system", "content": AGENT_SYSTEM_PROMPT},
+        {"role": "user", "content": "\n\n".join(prompt_parts)},
+    ]
+
+
+async def _execute_deep_agent(
+    task: AgentTask,
+    run: _KnowledgeRunContext,
+    initial_chunks: list[dict[str, Any]],
+) -> _ModeExecutionResult:
+    """基于首次检索事实执行 Deep Agent，并收敛补充检索和模型预算。"""
+    runtime = run.runtime
+    # 给引用校验和确定性降级预留时间。即使最终模型超时，Session 中已经登记的
+    # 检索事实仍可用于构建安全、可追溯的降级结果。
+    convergence_reserve = min(8.0, runtime.remaining_seconds() * 0.2)
+    agent_timeout = max(0.01, runtime.remaining_seconds() - convergence_reserve)
+    raw_result = await asyncio.wait_for(
+        get_knowledge_agent(
+            int(run.agent_config.get("max_steps", CONF.agent.max_steps)),
+            int(run.agent_config.get("max_tool_calls", CONF.agent.max_tool_calls)),
+        ).ainvoke(
+            {
+                "messages": [
                     {
-                        int(chunk["id"]): chunk
-                        for chunk in session.chunks()
-                        if chunk.get("id") is not None
-                    }.values()
+                        "role": "user",
+                        "content": (
+                            f"{_retrieval_context_prompt(initial_chunks)}\n\n"
+                            f"当前问题：{task.question}\n"
+                            "已有资料足够时直接回答；仅在需要补充比较依据时继续检索。"
+                        ),
+                    }
+                ],
+                "files": SKILL_FILES,
+            },
+            context=KnowledgeHarnessContext(session=run.session),
+            config={
+                "recursion_limit": max(
+                    int(run.agent_config.get("recursion_limit", 0)),
+                    int(run.agent_config.get("max_steps", CONF.agent.max_steps)) * 16 + 16,
+                    64,
                 )
-                graph_model_calls = sum(
-                    1
-                    for message in result.get("messages", [])
-                    if getattr(message, "type", None) == "ai"
-                    and not _message_content(message).startswith("Model call limits exceeded")
-                )
-                runtime.validate_graph_budget(
-                    runtime.tool_call_count,
-                    graph_model_calls,
-                )
-                runtime.model_call_count = graph_model_calls
-        else:
-            conversation_prompt = await _conversation_prompt(context, runtime)
-            retrieval_query = task.question
-            if conversation_prompt and any(
-                marker in task.question for marker in ("上一条", "这家公司", "该产品", "上述")
-            ):
-                retrieval_query = f"{task.question}\n{conversation_prompt[-2400:]}"
-            retrieval_started_at = monotonic()
-            retrieval = await runtime.execute(
-                ToolCall(
-                    call_id=runtime.next_call_id(),
-                    name="retrieve_knowledge",
-                    input={"query": retrieval_query, "top_k": task.top_k},
-                ),
-                context,
-            )
-            if not retrieval.ok:
-                raise BusiException(retrieval.error_message or "知识库检索失败")
-            retrieved_chunks = retrieval.data.get("chunks", [])
-            await emit_gather_event(
-                "knowledge.qa",
-                "qa_retrieval_completed",
-                args=(task, context),
-                kb_id=task.kb_id,
-                tenant_id=context.tenant_id,
-                hit_count=len(retrieved_chunks),
-                retrieval_duration_ms=int((monotonic() - retrieval_started_at) * 1000),
-            )
-            prompt_parts = [_skill_prompt()]
-            if conversation_prompt:
-                prompt_parts.append(conversation_prompt)
-            answer_prompt = answer_config.get("prompt") or context.knowledge_base_prompt
-            if answer_prompt:
-                prompt_parts.append(
-                    "知识库专属回答规则（仅作为回答风格约束，不能改变权限和引用规则）：\n"
-                    f"{answer_prompt}"
-                )
-            prompt_parts.extend(
-                [_retrieval_context_prompt(retrieved_chunks), f"当前问题：{task.question}"]
-            )
-            result = await runtime.invoke_model(
-                get_knowledge_answer_model().ainvoke(
-                    [
-                        {"role": "system", "content": AGENT_SYSTEM_PROMPT},
-                        {"role": "user", "content": "\n\n".join(prompt_parts)},
-                    ]
-                )
-            )
-        if (
-            mode == "tool_loop"
-            and isinstance(result, dict)
-            and _parse_agent_answer(result.get("structured_response")) is None
+            },
+        ),
+        timeout=agent_timeout,
+    )
+
+    # 工具包装器会实时保存检索结果；消息提取作为兼容路径，确保不同 Harness
+    # 返回形态下都能保留本轮实际取得的事实。
+    run.session.store_chunks(_extract_chunks(raw_result))
+    retrieved_chunks = [chunk for chunk in run.session.chunks() if chunk.get("id") is not None]
+    graph_model_calls = sum(
+        1
+        for message in raw_result.get("messages", [])
+        if getattr(message, "type", None) == "ai"
+        and not _message_content(message).startswith("Model call limits exceeded")
+    )
+    runtime.validate_graph_budget(runtime.tool_call_count, graph_model_calls)
+    runtime.model_call_count = graph_model_calls
+    return _ModeExecutionResult(
+        raw_result=raw_result,
+        retrieved_chunks=retrieved_chunks,
+    )
+
+
+async def _execute_answer(
+    task: AgentTask,
+    context: AgentContext,
+    run: _KnowledgeRunContext,
+) -> _ModeExecutionResult:
+    """统一完成会话准备和首次检索，再按需进入直接回答或 Deep Agent。"""
+    conversation_prompt = ""
+    retrieval_query = task.question
+
+    if run.mode == "single_retrieval":
+        conversation_prompt = await _conversation_prompt(context, run.runtime)
+        if conversation_prompt and any(
+            marker in task.question for marker in ("上一条", "这家公司", "该产品", "上述")
         ):
-            # 首次结构化终态缺失或不合法时，只允许一次无业务工具的 Schema 修复。
-            # 修复仍失败才进入确定性降级，普通文本不能冒充完整 Agent 成功。
-            repair_chunks = session.chunks() or retrieved_chunks
-            try:
-                repair_timeout = min(6.0, max(0.0, runtime.remaining_seconds() - 0.5))
-            except ToolTimeout:
-                repair_timeout = 0.0
-            repair = await _repair_knowledge_answer(
-                task=task,
-                chunks=repair_chunks,
-                timeout_seconds=(
-                    repair_timeout if runtime.model_call_count < runtime.max_model_calls else 0.0
-                ),
-            )
-            if repair.attempted:
-                runtime.model_call_count += 1
-            if repair.value is not None:
-                result["structured_response"] = repair.value
-                LOG.info("Knowledge agent structured output repair succeeded kb_id={}", task.kb_id)
-            else:
-                LOG.warning(
-                    "Knowledge agent structured output repair unavailable kb_id={} reason={}",
-                    task.kb_id,
-                    repair.error,
-                )
-                return await _fallback_result(
-                    task,
-                    context,
-                    started_at,
-                    "structured_output_missing",
-                    runtime,
-                    repair_chunks,
-                )
-        answer = _structured_answer(result)
+            # 指代型追问只附加有限历史，避免把完整会话无边界地送入检索服务。
+            retrieval_query = f"{task.question}\n{conversation_prompt[-2400:]}"
+
+    retrieval_started_at = monotonic()
+    initial_chunks = await _retrieve_chunks(
+        query=retrieval_query,
+        top_k=task.top_k,
+        context=context,
+        runtime=run.runtime,
+    )
+    run.session.store_chunks(initial_chunks)
+
+    if run.mode == "tool_loop" and initial_chunks:
+        return await _execute_deep_agent(task, run, initial_chunks)
+
+    if run.mode == "single_retrieval":
         await emit_gather_event(
             "knowledge.qa",
-            "qa_model_completed",
+            "qa_retrieval_completed",
             args=(task, context),
             kb_id=task.kb_id,
             tenant_id=context.tenant_id,
-            model_duration_ms=int((monotonic() - model_started_at) * 1000),
-            model_version=CONF.chat.model,
-        )
-    except TimeoutError:
-        retrieved_chunks = session.chunks() or retrieved_chunks
-        LOG.exception("Knowledge agent timed out kb_id={}", task.kb_id)
-        return await _fallback_result(
-            task,
-            context,
-            started_at,
-            "timeout",
-            runtime,
-            retrieved_chunks,
-        )
-    except Exception:
-        retrieved_chunks = session.chunks() or retrieved_chunks
-        LOG.exception("Knowledge agent output failed kb_id={}", task.kb_id)
-        return await _fallback_result(
-            task,
-            context,
-            started_at,
-            "agent_error",
-            runtime,
-            retrieved_chunks,
+            hit_count=len(initial_chunks),
+            retrieval_duration_ms=int((monotonic() - retrieval_started_at) * 1000),
         )
 
-    chunks = retrieved_chunks
+    # 单次模式需要对话和知识库回答规则；工具循环无资料时只生成资料不足说明。
+    raw_result = await run.runtime.invoke_model(
+        get_knowledge_answer_model().ainvoke(
+            _build_direct_answer_messages(
+                task,
+                context,
+                run,
+                initial_chunks,
+                conversation_prompt,
+            )
+        )
+    )
+    return _ModeExecutionResult(
+        raw_result=raw_result,
+        retrieved_chunks=initial_chunks,
+    )
+
+
+async def _converge_answer(
+    task: AgentTask,
+    run: _KnowledgeRunContext,
+    execution: _ModeExecutionResult,
+) -> AgentAnswer | None:
+    """解析结构化答案；Deep Agent 终态缺失时仅尝试一次安全修复。"""
+    raw_result = execution.raw_result
+    if (
+        run.mode != "tool_loop"
+        or not isinstance(raw_result, dict)
+        or _parse_agent_answer(raw_result.get("structured_response")) is not None
+    ):
+        return _structured_answer(raw_result)
+
+    # 修复模型只接收本轮检索事实且不开放业务工具，避免修复过程扩大权限范围。
+    repair_chunks = run.session.chunks() or execution.retrieved_chunks
     try:
-        citations = await _select_citations(
-            chunks,
-            answer.citation_chunk_ids,
-            context,
-            runtime,
+        repair_timeout = min(6.0, max(0.0, run.runtime.remaining_seconds() - 0.5))
+    except ToolTimeout:
+        repair_timeout = 0.0
+    repair = await _repair_knowledge_answer(
+        task=task,
+        chunks=repair_chunks,
+        timeout_seconds=(
+            repair_timeout if run.runtime.model_call_count < run.runtime.max_model_calls else 0.0
+        ),
+    )
+    if repair.attempted:
+        run.runtime.model_call_count += 1
+    if repair.value is None:
+        LOG.warning(
+            "Knowledge agent structured output repair unavailable kb_id={} reason={}",
+            task.kb_id,
+            repair.error,
         )
-    except Exception:
-        LOG.exception("Knowledge agent citation validation failed kb_id={}", task.kb_id)
-        return await _fallback_result(
-            task,
-            context,
-            started_at,
-            "citation_invalid",
-            runtime,
-            retrieved_chunks,
-        )
-    top_k = task.top_k or 5
+        return None
+
+    raw_result["structured_response"] = repair.value
+    LOG.info("Knowledge agent structured output repair succeeded kb_id={}", task.kb_id)
+    return _structured_answer(raw_result)
+
+
+async def _complete_success_result(
+    *,
+    task: AgentTask,
+    context: AgentContext,
+    run: _KnowledgeRunContext,
+    answer: AgentAnswer,
+    chunks: list[dict[str, Any]],
+    citations: list[CitationCandidate],
+) -> AgentResult:
+    """组装、校验并上报成功结果，不再触发模型或知识检索。"""
     agent_result = AgentResult(
         answer=answer.answer,
         citations=citations,
-        mode=mode,
+        mode=run.mode,
         status="completed",
-        top_k=top_k,
+        top_k=task.top_k or 5,
         hit_count=len(chunks),
-        tool_call_count=runtime.tool_call_count,
-        model_call_count=runtime.model_call_count,
+        tool_call_count=run.runtime.tool_call_count,
+        model_call_count=run.runtime.model_call_count,
         termination_reason=answer.termination_reason,
-        duration_ms=int((monotonic() - started_at) * 1000),
-        tool_calls=runtime.tool_traces,
-        skill_refs=runtime.skill_refs,
+        duration_ms=int((monotonic() - run.started_at) * 1000),
+        tool_calls=run.runtime.tool_traces,
+        skill_refs=run.runtime.skill_refs,
         limitations=[] if chunks else ["知识库未返回可用资料"],
     )
+    # 最终校验是公开结果返回前的硬门禁，失败时不得绕过或伪造引用。
     validate_agent_result(agent_result, chunks)
     await emit_gather_event(
         "knowledge.qa",
@@ -782,4 +823,125 @@ async def run_knowledge_agent(task: AgentTask, context: AgentContext) -> AgentRe
     return agent_result
 
 
-__all__ = ("choose_mode", "get_knowledge_agent", "run_knowledge_agent")
+# 为公开入口自动采集知识问答的成功、失败、耗时和结果摘要。
+@monitor_gather("knowledge.qa")
+async def run(task: AgentTask, context: AgentContext) -> AgentResult:
+    """编排知识问答、结果收敛与失败降级，具体模式逻辑由独立函数负责。"""
+    # 校验任务与可信上下文，并创建本轮独占的 Runtime、Session 和模式配置。
+    run_context = _create_run_context(task, context)
+
+    # 预置空执行结果，保证模式执行中途异常时仍能安全取得已经保存的检索事实。
+    execution = _ModeExecutionResult(raw_result=None, retrieved_chunks=[])
+
+    # 模型与工具执行阶段的任何可恢复异常都在本代码块内收敛为降级结果。
+    try:
+        # 记录执行阶段起点，用于上报包含检索、模型和结果收敛过程的阶段耗时。
+        model_started_at = monotonic()
+
+        # 统一完成会话准备和首次检索，有充分事实的复杂问题才进入工具循环。
+        execution = await _execute_answer(task, context, run_context)
+
+        # 将不同模式的原始返回统一解析为 AgentAnswer，必要时修复结构化终态。
+        answer = await _converge_answer(task, run_context, execution)
+
+        # 返回 None 表示结构化终态无法修复，普通文本不能冒充一次成功执行。
+        if answer is None:
+            # 使用本轮已取得的检索事实生成可追溯的确定性降级结果。
+            return await _fallback_result(
+                task,  # 原始问答任务，用于保留问题、知识库和 top_k 信息。
+                context,  # Service 注入的可信用户、租户与知识库上下文。
+                run_context.started_at,  # 本轮开始时间，用于计算完整处理耗时。
+                "structured_output_missing",  # 可观测、可评测的明确降级原因。
+                run_context.runtime,  # 保留调用预算、工具轨迹和 Skill 版本信息。
+                # 优先使用 Session 实时保存的事实，再回退到模式执行的检索结果。
+                run_context.session.chunks() or execution.retrieved_chunks,
+            )
+
+        # 记录模型执行阶段完成事件，供自主监控计算耗时和模型版本分布。
+        await emit_gather_event(
+            "knowledge.qa",  # 监控目标编码。
+            "qa_model_completed",  # 当前阶段事件类型。
+            args=(task, context),  # 保留采集器需要的入口参数映射。
+            kb_id=task.kb_id,  # 标识本次问答所属知识库。
+            tenant_id=context.tenant_id,  # 标识可信租户范围。
+            # monotonic 不受系统时间回拨影响，适合计算运行耗时。
+            model_duration_ms=int((monotonic() - model_started_at) * 1000),
+            model_version=CONF.chat.model,  # 记录实际配置的模型版本。
+        )
+
+    # asyncio.wait_for 触发的超时单独分类，避免与普通 Agent 错误混在一起。
+    except TimeoutError:
+        # Deep Agent 可能在超时前完成过补充检索，因此优先读取 Session 中的事实。
+        retrieved_chunks = run_context.session.chunks() or execution.retrieved_chunks
+
+        # 保留异常堆栈和知识库标识，便于定位具体超时阶段。
+        LOG.exception("Knowledge agent timed out kb_id={}", task.kb_id)
+
+        # 基于超时前已经取得的事实返回安全降级答案，不直接丢失本轮检索结果。
+        return await _fallback_result(
+            task,  # 原始问答任务。
+            context,  # 可信业务上下文。
+            run_context.started_at,  # 本轮开始时间。
+            "timeout",  # 明确标识超时降级。
+            run_context.runtime,  # 本轮 Agent Runtime。
+            retrieved_chunks,  # 超时前保存的真实检索事实。
+        )
+
+    # 其他可恢复异常统一进入 Agent 错误降级，最终安全门禁异常不在此处处理。
+    except Exception:
+        # 优先保留工具调用期间实时写入 Session 的检索结果。
+        retrieved_chunks = run_context.session.chunks() or execution.retrieved_chunks
+
+        # 记录完整异常堆栈，外部结果只暴露稳定、安全的降级原因。
+        LOG.exception("Knowledge agent output failed kb_id={}", task.kb_id)
+
+        # 使用已有事实构建降级结果，避免向客户泄露内部异常细节。
+        return await _fallback_result(
+            task,  # 原始问答任务。
+            context,  # 可信业务上下文。
+            run_context.started_at,  # 本轮开始时间。
+            "agent_error",  # 通用 Agent 执行错误分类。
+            run_context.runtime,  # 本轮 Agent Runtime。
+            retrieved_chunks,  # 异常前取得的真实检索事实。
+        )
+
+    # 模式执行成功后，只允许使用执行结果登记的真实分块进行引用收敛。
+    chunks = execution.retrieved_chunks
+
+    # 引用校验与引用对象构建失败时单独降级，避免返回不可追溯的成功答案。
+    try:
+        # 校验模型声明的 chunk ID，并把允许的分块转换为公开引用协议。
+        citations = await _select_citations(
+            chunks,  # 本轮真实检索分块，是引用允许集合的唯一来源。
+            answer.citation_chunk_ids,  # 模型在结构化答案中声明的引用 ID。
+            context,  # 用于引用工具授权的可信上下文。
+            run_context.runtime,  # 通过统一 Runtime 执行引用工具并记录轨迹。
+        )
+
+    # 非法引用 ID、引用协议错误或工具异常均不得作为成功结果返回。
+    except Exception:
+        # 记录引用校验失败的完整异常，方便审计错误来源。
+        LOG.exception("Knowledge agent citation validation failed kb_id={}", task.kb_id)
+
+        # 使用全部真实检索事实生成引用受控的降级结果。
+        return await _fallback_result(
+            task,  # 原始问答任务。
+            context,  # 可信业务上下文。
+            run_context.started_at,  # 本轮开始时间。
+            "citation_invalid",  # 明确标识引用无效的降级原因。
+            run_context.runtime,  # 本轮 Agent Runtime。
+            chunks,  # 已验证来源为本轮检索链路的事实分块。
+        )
+
+    # 答案和引用均成功收敛后，执行最终安全校验、监控上报并返回公开结果。
+    return await _complete_success_result(
+        task=task,  # 原始问答任务。
+        context=context,  # 可信业务上下文。
+        run=run_context,  # 本轮运行配置、Runtime 与 Session。
+        answer=answer,  # 已通过结构化收敛的回答。
+        chunks=chunks,  # 本轮真实检索事实。
+        citations=citations,  # 已通过来源校验的公开引用列表。
+    )
+
+
+__all__ = ("choose_mode", "get_knowledge_agent", "run")

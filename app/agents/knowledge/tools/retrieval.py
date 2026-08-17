@@ -1,3 +1,5 @@
+"""知识库问答 Agent 的只读、权限前置检索工具。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -20,6 +22,7 @@ from ..state import KnowledgeHarnessContext
 
 
 async def retrieve_knowledge_result(call: ToolCall, context: AgentContext) -> ToolResult:
+    """在可信知识库范围内检索分块并转换为统一工具结果。"""
     try:
         payload = RetrievalToolInput.model_validate(call.input)
     except ValueError as exc:

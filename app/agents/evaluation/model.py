@@ -1,3 +1,5 @@
+"""自主评测 Agent 专用对话模型工厂。"""
+
 from __future__ import annotations
 
 from typing import Any

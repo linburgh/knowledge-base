@@ -1,3 +1,5 @@
+"""自主评测 Agent Harness 的创建、调度、复核与报告收敛入口。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -93,6 +95,7 @@ def _register_evaluation_harness_profile() -> None:
 
 
 def _build_filesystem_permissions() -> list[FilesystemPermission]:
+    """仅允许读取评测 Skill，拒绝 Harness 的其他文件系统操作。"""
     return [
         FilesystemPermission(operations=["read"], paths=["/skills/**"], mode="allow"),
         FilesystemPermission(
@@ -161,10 +164,12 @@ def build_evaluation_deep_agent(
 
 
 def _skill_files(content: str) -> dict[str, dict[str, str]]:
+    """将已校验的 Skill 内容映射为 Deep Agent 状态文件。"""
     return {"/skills/analysis/SKILL.md": {"content": content}}
 
 
 def _agent_tool_traces(result: dict[str, Any]) -> list[AgentToolTrace]:
+    """从 Deep Agent 消息中提取 Harness 工具调用轨迹。"""
     traces: list[AgentToolTrace] = []
     for message in result.get("messages", []):
         if getattr(message, "type", None) != "tool":
@@ -181,6 +186,7 @@ def _agent_tool_traces(result: dict[str, Any]) -> list[AgentToolTrace]:
 
 
 def _model_call_count(result: dict[str, Any]) -> int:
+    """统计结果消息中实际产生的模型响应次数。"""
     return sum(getattr(message, "type", None) == "ai" for message in result.get("messages", []))
 
 
@@ -223,6 +229,7 @@ class EvaluationAgent:
         agent_factory: Callable[[EvaluationConfig], Any] | None = None,
         structured_output_repair: Callable[..., Any] = repair_structured_output,
     ) -> None:
+        """注入显式工具注册表、执行适配器与可替换模型。"""
         self.registry = registry or build_default_registry()
         self.cancel_check = cancel_check
         self.agent_factory = agent_factory
@@ -233,6 +240,7 @@ class EvaluationAgent:
         task: EvaluationAgentTask,
         context: EvaluationAgentContext,
     ) -> EvaluationAgentResult:
+        """校验上下文并执行一次完整评测、复核和报告生成流程。"""
         agent_task = EvaluationAgentTask.model_validate(task)
         trusted_context = EvaluationAgentContext.model_validate(context)
         config = EvaluationConfig.model_validate(agent_task.config)
@@ -561,6 +569,7 @@ class EvaluationAgent:
 
     @staticmethod
     def load_questions(config: EvaluationConfig) -> list[EvaluationQuestion]:
+        """从配置指定文件加载导入型评测问题。"""
         if not config.questions_file:
             raise ValueError("generated questions require a generator")
         return load_questions(config.questions_file)

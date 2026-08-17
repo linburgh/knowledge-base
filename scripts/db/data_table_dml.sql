@@ -427,7 +427,7 @@ from (
             'knowledge.qa',
             '知识库问答',
             'method',
-            '{"module":"app.agents.knowledge.agent","callable":"run_knowledge_agent","collector":"knowledge_qa_collector","input_mapping":{"kb_id":"args.0.kb_id","tenant_id":"context.tenant_id","purpose":"context.purpose"},"output_mapping":{"duration_ms":"result.duration_ms","hit_count":"result.hit_count","citation_count":"result.citations.length","termination_reason":"result.termination_reason"}}',
+            '{"module":"app.agents.knowledge.agent","callable":"run","collector":"knowledge_qa_collector","input_mapping":{"kb_id":"args.0.kb_id","tenant_id":"context.tenant_id","purpose":"context.purpose"},"output_mapping":{"duration_ms":"result.duration_ms","hit_count":"result.hit_count","citation_count":"result.citations.length","termination_reason":"result.termination_reason"}}',
             true
         ),
         (

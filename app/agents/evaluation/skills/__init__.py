@@ -1,3 +1,5 @@
+"""自主评测 Skill 的完整性校验、内容加载与版本标识。"""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,6 +9,7 @@ from app.schemas.agent import AgentSkillRef
 
 
 def load_evaluation_skill() -> tuple[str, AgentSkillRef]:
+    """读取分析 Skill，并返回内容及可审计哈希版本。"""
     path = Path(__file__).parent / "analysis" / "SKILL.md"
     if not path.is_file():
         raise RuntimeError("自主评测 Agent Skill 不存在")

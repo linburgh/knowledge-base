@@ -1,3 +1,5 @@
+"""知识库问答 Agent 的引用候选整理与来源约束工具。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -17,6 +19,7 @@ from ..state import KnowledgeHarnessContext
 
 
 def _build_candidates(chunks: list[dict[str, Any]]) -> CitationToolOutput:
+    """将原始检索分块转换为客户可展示的引用候选。"""
     candidates: list[CitationCandidate] = []
     seen: set[int] = set()
     for chunk in chunks:
@@ -42,12 +45,14 @@ def validate_citations(
     citations: list[CitationCandidate],
     chunks: list[dict[str, Any]],
 ) -> None:
+    """确认所有引用均来自本轮实际检索结果。"""
     allowed = {int(chunk["id"]) for chunk in chunks if chunk.get("id") is not None}
     if any(citation.chunk_id not in allowed for citation in citations):
         raise ValueError("引用必须来自本次检索结果")
 
 
 async def build_citations_result(call: ToolCall, context: AgentContext) -> ToolResult:
+    """执行引用构建协议并包装为统一工具结果。"""
     del context
     try:
         payload = CitationToolInput.model_validate(call.input)

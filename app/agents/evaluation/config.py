@@ -1,3 +1,5 @@
+"""自主评测配置的文件加载、覆盖合并与安全快照。"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +15,7 @@ SENSITIVE_KEYS = ("password", "token", "api_key", "secret", "authorization")
 
 
 def _redact(value: Any) -> Any:
+    """递归遮蔽配置中的密钥、令牌和密码字段。"""
     if isinstance(value, dict):
         return {
             key: ("***" if any(item in key.lower() for item in SENSITIVE_KEYS) else _redact(item))
@@ -26,6 +29,7 @@ def _redact(value: Any) -> Any:
 def load_config(
     path: str | Path | None = None, overrides: dict[str, Any] | None = None
 ) -> EvaluationConfig:
+    """合并配置文件和显式覆盖项，并校验为评测配置模型。"""
     raw: dict[str, Any] = {}
     if path is not None:
         try:
@@ -70,4 +74,5 @@ def load_config(
 
 
 def config_snapshot(config: EvaluationConfig) -> dict[str, Any]:
+    """生成可用于日志和报告的脱敏配置快照。"""
     return _redact(config.model_dump(mode="json"))

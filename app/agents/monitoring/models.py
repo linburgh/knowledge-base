@@ -1,3 +1,5 @@
+"""自主监控 Agent 的意图、计划、时间范围与结构化输出模型。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class AnalysisIntent(StrEnum):
+    """用于审计统计的稳定分析意图，不作为权限或展示边界。"""
     PLATFORM_HEALTH = "platform_health"
     INCIDENT_CAUSE = "incident_cause"
     IMPACT_SCOPE = "impact_scope"
@@ -21,6 +24,7 @@ class AnalysisIntent(StrEnum):
 
 
 class AnalysisConclusion(StrEnum):
+    """由确定性事实计算得到的监控总体结论。"""
     NORMAL = "normal"
     WARNING = "warning"
     ABNORMAL = "abnormal"
@@ -29,6 +33,7 @@ class AnalysisConclusion(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AnalysisTimeRange:
+    """服务端解析并授权的监控查询时间窗口。"""
     start: datetime
     end: datetime
     timezone: str
@@ -37,6 +42,7 @@ class AnalysisTimeRange:
     limitation: str | None = None
 
     def as_dict(self) -> dict[str, str]:
+        """转换为可序列化且保留时区来源的字典。"""
         return {
             "start": self.start.isoformat(),
             "end": self.end.isoformat(),
@@ -48,6 +54,7 @@ class AnalysisTimeRange:
 
 @dataclass(frozen=True, slots=True)
 class AnalysisPlan:
+    """单轮调查的意图、时间范围、候选工具及规划元数据。"""
     intent: AnalysisIntent
     time_range: AnalysisTimeRange
     tools: tuple[str, ...]
@@ -63,6 +70,7 @@ class AnalysisPlan:
     referenced_fact_ids: tuple[str, ...] = ()
 
     def planning_metadata(self) -> dict[str, object]:
+        """导出用于结果审计的规划信息。"""
         return {
             "mode": self.planning_mode,
             "goal": self.goal,

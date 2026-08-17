@@ -1,3 +1,5 @@
+"""知识库问答 Agent 的授权会话历史读取工具。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -23,6 +25,7 @@ STATUS_DELETED = "deleted"
 
 
 def _history_payload(rows: list[dict[str, Any]], context: AgentContext) -> HistoryToolOutput:
+    """裁剪数据库消息，构造允许提供给模型的历史上下文。"""
     messages: list[dict[str, Any]] = []
     total_chars = 0
     for row in rows[-50:]:
@@ -49,6 +52,7 @@ async def load_conversation_history_result(
     call: ToolCall,
     context: AgentContext,
 ) -> ToolResult:
+    """在当前用户、租户与会话范围内读取历史并返回统一结果。"""
     try:
         payload = HistoryToolInput.model_validate(call.input or {})
     except ValueError as exc:

@@ -1,3 +1,5 @@
+"""自主监控问题的确定性意图识别、时间解析与兜底计划。"""
+
 from __future__ import annotations
 
 import re
@@ -60,6 +62,7 @@ _TOOL_PLANS = {
 
 
 def detect_intent(question: str) -> AnalysisIntent:
+    """按稳定关键词识别基础意图，供模型规划失败时兜底。"""
     normalized = "".join(question.lower().split())
     if any(marker in normalized for marker in ("你是谁", "介绍一下自己", "介绍下自己", "自我介绍")):
         return AnalysisIntent.IDENTITY
@@ -81,6 +84,7 @@ def detect_intent(question: str) -> AnalysisIntent:
 
 
 def _local_now(now: datetime | None) -> datetime:
+    """将当前时间规范化为中国标准时间。"""
     current = now or utils.utc_now()
     if current.tzinfo is None:
         current = current.replace(tzinfo=ZoneInfo(MONITORING_TIMEZONE))
@@ -88,6 +92,7 @@ def _local_now(now: datetime | None) -> datetime:
 
 
 def _natural_day(day, label: str) -> AnalysisTimeRange:
+    """构造指定自然日的左闭右开查询窗口。"""
     timezone = ZoneInfo(MONITORING_TIMEZONE)
     start = datetime.combine(day, time.min, tzinfo=timezone)
     return AnalysisTimeRange(
@@ -105,6 +110,7 @@ def resolve_time_range(
     default_time_range: str = "1h",
     now: datetime | None = None,
 ) -> AnalysisTimeRange:
+    """解析受支持的时间表达，并限制在服务端允许查询的范围。"""
     current = _local_now(now)
     normalized = "".join(question.lower().split())
     time_limitation = None
@@ -188,6 +194,7 @@ def build_plan(
     default_time_range: str = "1h",
     now: datetime | None = None,
 ) -> AnalysisPlan:
+    """构建无需模型参与的安全兜底调查计划。"""
     intent = detect_intent(question)
     time_range = resolve_time_range(
         question,
@@ -205,6 +212,7 @@ def build_plan(
 
 
 def default_tools_for_intent(intent: AnalysisIntent) -> tuple[str, ...]:
+    """返回指定意图默认需要的只读事实工具。"""
     return _TOOL_PLANS.get(intent, _TOOL_PLANS[AnalysisIntent.GENERAL_ANALYSIS])
 
 

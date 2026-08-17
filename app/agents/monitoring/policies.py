@@ -1,3 +1,5 @@
+"""自主监控 Agent 的上下文校验、工具授权与敏感字段脱敏策略。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -21,6 +23,7 @@ TRUSTED_CONTEXT_FIELDS = frozenset({"tenant_id", "user_id", "role"})
 
 
 def validate_context(context: dict[str, Any]) -> None:
+    """校验 Service 注入的用户、租户、角色和监控范围。"""
     role = context.get("role")
     if role not in {"platform_super_admin", "tenant_admin"}:
         raise BusiException("无权使用自主监控分析 Agent", status_code=403)
@@ -42,6 +45,7 @@ def authorize_tool(
     context: dict[str, Any],
     registered_tools: frozenset[str],
 ) -> None:
+    """确认工具已注册且载荷不能覆盖可信作用域与时间范围。"""
     validate_context(context)
     if name not in READ_ONLY_TOOLS or name not in registered_tools:
         raise BusiException("监控分析工具未授权", status_code=403)
@@ -54,6 +58,7 @@ def authorize_tool(
 
 
 def redact_context(context: dict[str, Any]) -> dict[str, Any]:
+    """递归清理监控上下文中不应进入模型或日志的敏感字段。"""
     result = dict(context)
     for key in ("token", "api_key", "password", "secret"):
         result.pop(key, None)

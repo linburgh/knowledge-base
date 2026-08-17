@@ -1,3 +1,5 @@
+"""监控告警的确定性字段关联与分组分析。"""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,6 +9,7 @@ from typing import Any
 
 
 def _value(item: dict[str, Any], field: str) -> str:
+    """将可空分组字段规范化为稳定字符串。"""
     value = item.get(field)
     return "" if value is None else str(value)
 

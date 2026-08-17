@@ -1,3 +1,5 @@
+"""自主监控客户可见回答的确定性内容与引用校验。"""
+
 from __future__ import annotations
 
 import re
@@ -19,6 +21,7 @@ _FORBIDDEN_OUTPUT = (
 
 
 def _internal_codes(value: Any) -> set[str]:
+    """递归提取事实中的内部编码，防止客户回答直接泄露。"""
     codes: set[str] = set()
     if isinstance(value, dict):
         for key, item in value.items():
@@ -32,6 +35,7 @@ def _internal_codes(value: Any) -> set[str]:
 
 
 def _evidence_ids(value: Any) -> set[str]:
+    """递归收集本轮授权事实可引用的证据标识。"""
     identifiers: set[str] = set()
     if isinstance(value, dict):
         identifier = value.get("id")

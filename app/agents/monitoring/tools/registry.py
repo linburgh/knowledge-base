@@ -1,3 +1,5 @@
+"""自主监控 Agent 的显式工具注册、协议校验与展示元数据边界。"""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -22,6 +24,7 @@ class MonitoringToolRegistry:
         self._definitions: dict[str, MonitoringToolDefinition] = {}
 
     def register(self, name: str, handler: MonitoringToolHandler) -> None:
+        """注册只读处理器并绑定对应事实展示定义。"""
         if name in self._tools:
             raise ValueError(f"duplicate monitoring tool: {name}")
         self._tools[name] = handler
@@ -33,14 +36,17 @@ class MonitoringToolRegistry:
         )
 
     def names(self) -> frozenset[str]:
+        """返回不可变的已注册工具名称集合。"""
         return frozenset(self._tools)
 
     def get(self, name: str) -> MonitoringToolHandler:
+        """取得工具处理器，未知名称立即拒绝。"""
         if name not in self._tools:
             raise KeyError(f"monitoring tool is not registered: {name}")
         return self._tools[name]
 
     async def invoke(self, name: str, **kwargs):
+        """校验输入、调用处理器并按结构化输出协议返回结果。"""
         payload = MonitoringToolInput.model_validate(kwargs)
         result = await self.get(name)(**payload.model_dump(exclude_defaults=True))
         definition = self.definition(name)
@@ -53,6 +59,7 @@ class MonitoringToolRegistry:
         ).model_dump()
 
     def definition(self, name: str) -> MonitoringToolDefinition:
+        """返回已注册工具的事实类型与展示元数据。"""
         self.get(name)
         return self._definitions[name]
 
