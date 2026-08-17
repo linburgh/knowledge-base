@@ -12,7 +12,8 @@ from app.core.services.monitoring import mgr as monitoring
 from app.db import api as db_api
 from app.db.base import DB
 from app.schemas.monitoring import MonitorEventRequest
-from app.workers import monitoring_aggregate, monitoring_notify
+from app.workers.monitoring import aggregate as monitoring_aggregate
+from app.workers.monitoring import notify as monitoring_notify
 
 
 class _StaticMonitoringDeepAgent:

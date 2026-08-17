@@ -1,3 +1,5 @@
+"""指标聚合和规则执行 Worker。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,12 +10,12 @@ from typing import Any
 from app.core.monitoring import emit_gather_event
 from app.core.services.monitoring.mgr import apply_rule
 from app.core.services.monitoring.rule import evaluate_rule
+from app.db.api import check_db_connected
+from app.db.base import DB
 from app.db.monitoring import event as event_db
 from app.db.monitoring import metric_definition as definition_db
 from app.db.monitoring import metric_rule as rule_db
 from app.db.monitoring import metric_value as value_db
-from app.db.api import check_db_connected
-from app.db.base import DB
 
 
 @check_db_connected

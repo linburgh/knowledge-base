@@ -1,3 +1,5 @@
+"""监控通知发送和失败重试 Worker。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -5,10 +7,10 @@ import asyncio
 from app.core.common import utils
 from app.core.monitoring import emit_gather_event
 from app.core.services.platform import audit as audit_service
-from app.db.monitoring import notification_channel as channel_db
-from app.db.monitoring import notification_record as record_db
 from app.db.api import check_db_connected
 from app.db.base import DB
+from app.db.monitoring import notification_channel as channel_db
+from app.db.monitoring import notification_record as record_db
 
 
 async def _deliver(channel: dict, record: dict) -> tuple[bool, str | None]:

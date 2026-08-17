@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -8,7 +9,20 @@ from app.core.common.auth import CurrentUser
 from app.core.services.monitoring import mgr as monitoring
 from app.db import api as db_api
 from app.db.base import DB
-from app.workers import monitoring_collect
+from app.workers.monitoring import collect as monitoring_collect
+
+
+def test_monitoring_workers_use_domain_package_without_repeated_prefix():
+    workers_dir = Path(__file__).parents[1] / "app" / "workers"
+    monitoring_dir = workers_dir / "monitoring"
+
+    assert {path.name for path in monitoring_dir.glob("*.py")} == {
+        "__init__.py",
+        "aggregate.py",
+        "collect.py",
+        "notify.py",
+    }
+    assert not list(workers_dir.glob("monitoring_*.py"))
 
 
 @pytest.mark.asyncio

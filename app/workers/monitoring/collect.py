@@ -1,3 +1,5 @@
+"""周期状态和主动探针采集 Worker。"""
+
 from __future__ import annotations
 
 import asyncio

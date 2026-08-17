@@ -19,7 +19,9 @@ from app.db import setup as db_setup
 from app.types import constants
 from app.workers import evaluation as evaluation_worker
 from app.workers import indexing as indexing_worker
-from app.workers import monitoring_aggregate, monitoring_collect, monitoring_notify
+from app.workers.monitoring import aggregate as monitoring_aggregate
+from app.workers.monitoring import collect as monitoring_collect
+from app.workers.monitoring import notify as monitoring_notify
 
 evaluation_stop_event = asyncio.Event()
 monitoring_stop_event = asyncio.Event()
