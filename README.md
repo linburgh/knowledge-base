@@ -4,6 +4,12 @@ Knowledge Base 是一个基于 FastAPI、LangChain 与 PostgreSQL/pgvector 构�
 
 项目已经形成可运行的后端服务，不再只是目录脚手架。配套前端项目为同级目录下的 `knowledge-base-web`。
 
+## 产品演示
+
+[查看或下载《企业知识库问答系统客户介绍》PPT](docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx)
+
+GitLab README 无法直接播放 PowerPoint 幻灯片。点击上方链接后，可以通过 GitLab 文件页面查看文件信息或下载到本地播放。
+
 ## 核心能力
 
 - 知识库管理：知识库、文档、分块、索引版本、问答配置和权限范围管理。
@@ -121,7 +127,6 @@ docker compose exec -T postgres \
   < scripts/db/data_table_dml.sql
 ```
 
-默认测试账号脚本为 `scripts/db/default_acc_dml.sql`。该脚本要求先生成密码哈希，并通过 `psql` 变量注入，具体步骤见[测试账号初始化测试用例](docs/测试用例/测试账号初始化测试用例.md)，不要在脚本或命令历史中保存明文密码。
 
 ### 启动后端
 
@@ -214,11 +219,10 @@ uv run python -m compileall -q app tests
 - 每张表使用自增 `id` 主键，不创建数据库外键和 `CHECK` 约束。
 - 表间完整性、租户边界和删除策略由 Service 与 Repository 保证。
 - 修改数据库结构或配置数据后，应同步更新脚本、文档和对应测试。
-- 
+
 ## 安全说明
 
 - 不要提交真实密码、Token、API Key、Cookie、私有证书或本机绝对路径。
 - 测试账号仅用于受控开发和测试环境，不得复用到生产环境。
 - 上传文件、知识库检索和 Agent 工具调用必须执行租户与组织数据范围校验。
 - 生产部署应使用独立密钥、最小权限账号、受控网络和持久化存储，并关闭调试模式。
->>>>>>> .theirs
