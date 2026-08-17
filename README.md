@@ -6,9 +6,9 @@ Knowledge Base 是一个基于 FastAPI、LangChain 与 PostgreSQL/pgvector 构�
 
 ## 产品演示
 
-[查看或下载《企业知识库问答系统客户介绍》PPT](docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx)
+[![企业知识库问答系统功能演示，点击查看或下载完整 PPT](docs/ppt/images/knowledge-base-demo.gif)](docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx)
 
-GitLab README 无法直接播放 PowerPoint 幻灯片。点击上方链接后，可以通过 GitLab 文件页面查看文件信息或下载到本地播放。
+动态封面展示系统介绍中的代表页面并自动循环播放。点击封面可查看或下载[完整 PPT](docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx)。
 
 ## 核心能力
 
