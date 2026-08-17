@@ -1,0 +1,69 @@
+default:
+  environment: "${KB_DEFAULT_ENVIRONMENT}"
+  debug: "${KB_DEFAULT_DEBUG}"
+  log_dir: ./log
+  log_file: app.log
+  log_level: INFO
+  database_url: "${KB_DEFAULT_DATABASE_URL}"
+  http_trust_env: false
+  request_id_header: X-Request-ID
+  db_connect_on_startup: true
+  allowed_file_extensions:
+    - .pdf
+    - .md
+    - .markdown
+    - .txt
+    - .docx
+  max_upload_size_mb: 100
+  indexing_task_timeout_seconds: 1800
+  scheduler_enabled: true
+  indexing_scheduler_batch_size: 1
+  indexing_stale_after_seconds: 300
+
+rag:
+  chunk_size: 600
+  chunk_overlap: 100
+  retrieval_top_k: 5
+  rerank_enabled: "${KB_RAG_RERANK_ENABLED}"
+  rerank_model: "${KB_RAG_RERANK_MODEL}"
+  rerank_base_url: "${KB_RAG_RERANK_BASE_URL}"
+  rerank_endpoint: "${KB_RAG_RERANK_ENDPOINT}"
+  rerank_api_key: "${KB_RAG_RERANK_API_KEY}"
+  rerank_timeout_seconds: "${KB_RAG_RERANK_TIMEOUT_SECONDS}"
+  rerank_fail_open: "${KB_RAG_RERANK_FAIL_OPEN}"
+  rerank_candidate_multiplier: "${KB_RAG_RERANK_CANDIDATE_MULTIPLIER}"
+  max_context_length: 8000
+
+storage:
+  backend: minio
+  local_dir: ./storage
+  minio_endpoint: "${KB_STORAGE_MINIO_ENDPOINT}"
+  minio_access_key: "${KB_STORAGE_MINIO_ACCESS_KEY}"
+  minio_secret_key: "${KB_STORAGE_MINIO_SECRET_KEY}"
+  minio_bucket: "${KB_STORAGE_MINIO_BUCKET}"
+  minio_secure: false
+
+chat:
+  model: "${KB_CHAT_MODEL}"
+  api_key: "${KB_CHAT_API_KEY}"
+  base_url: "${KB_CHAT_BASE_URL}"
+  timeout_seconds: 30
+
+agent:
+  enabled: true
+  max_steps: 4
+  max_tool_calls: 6
+  tool_timeout_seconds: 10.0
+  total_timeout_seconds: 60.0
+  max_context_chars: 24000
+  max_history_messages: 10
+  max_retries: 1
+
+embedding:
+  model: "${KB_EMBEDDING_MODEL}"
+  api_key: "${KB_EMBEDDING_API_KEY}"
+  base_url: "${KB_EMBEDDING_BASE_URL}"
+  timeout_seconds: 30
+  batch_size: 10
+  concurrency: 4
+  retry_count: 2
