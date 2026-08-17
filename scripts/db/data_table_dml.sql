@@ -8,6 +8,29 @@ set name = excluded.name,
     description = excluded.description,
     status = 'active';
 
+insert into t_tenant_role (code, name, description, status, sort_order)
+values
+    ('tenant_admin', '租户管理员', '负责当前租户范围内的成员、组织和业务资源管理', 'active', 10),
+    ('tenant_member', '租户成员', '访问当前租户授权的业务资源', 'active', 20),
+    ('tenant_guest', '租户访客', '使用当前租户授权的独立问答资源', 'active', 30)
+on conflict (code) do update
+set name = excluded.name,
+    description = excluded.description,
+    status = excluded.status,
+    sort_order = excluded.sort_order,
+    updated_at = now();
+
+insert into t_organization_role (code, name, description, status, sort_order)
+values
+    ('org_admin', '组织管理员', '负责当前组织范围内的成员和业务资源管理', 'active', 10),
+    ('org_member', '组织成员', '访问当前组织授权的业务资源', 'active', 20)
+on conflict (code) do update
+set name = excluded.name,
+    description = excluded.description,
+    status = excluded.status,
+    sort_order = excluded.sort_order,
+    updated_at = now();
+
 insert into t_system_menu (parent_id, code, name, menu_type, route_path, sort_order)
 values
     (null, 'platform', '平台管理', 'directory', null, 10),

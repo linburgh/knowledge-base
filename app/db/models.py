@@ -182,6 +182,52 @@ PlatformRole = sa.Table(
     sa.Column("name", sa.String(128), nullable=False),
     sa.Column("description", sa.String(500), nullable=False, server_default=sa.text("''")),
     sa.Column("status", sa.String(32), nullable=False),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+)
+
+
+TenantRole = sa.Table(
+    "t_tenant_role",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("code", sa.String(64), nullable=False),
+    sa.Column("name", sa.String(128), nullable=False),
+    sa.Column("description", sa.String(500), nullable=False, server_default=sa.text("''")),
+    sa.Column("status", sa.String(32), nullable=False, server_default="active"),
+    sa.Column("sort_order", sa.Integer, nullable=False, server_default="0"),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("u_idx_t_tenant_role_code", "code", unique=True),
+    sa.Index("idx_t_tenant_role_status_sort", "status", "sort_order", "id"),
+)
+
+
+OrganizationRole = sa.Table(
+    "t_organization_role",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("code", sa.String(64), nullable=False),
+    sa.Column("name", sa.String(128), nullable=False),
+    sa.Column("description", sa.String(500), nullable=False, server_default=sa.text("''")),
+    sa.Column("status", sa.String(32), nullable=False, server_default="active"),
+    sa.Column("sort_order", sa.Integer, nullable=False, server_default="0"),
+    sa.Column(
+        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column(
+        "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Index("u_idx_t_organization_role_code", "code", unique=True),
+    sa.Index("idx_t_organization_role_status_sort", "status", "sort_order", "id"),
 )
 
 
