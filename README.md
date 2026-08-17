@@ -6,9 +6,9 @@ Knowledge Base 是一个基于 FastAPI、LangChain 与 PostgreSQL/pgvector 构�
 
 ## 产品演示
 
-[![企业知识库问答系统功能演示，点击查看或下载完整 PPT](https://github.com/user-attachments/assets/ffa4651c-6f2e-4196-92b3-fa548b7f9b1c)](https://github.com/linburgh/knowledge-base/blob/main/docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx?raw=true)
+[![企业知识库问答系统功能演示，点击查看或下载完整 PPT](https://github.com/user-attachments/assets/ffa4651c-6f2e-4196-92b3-fa548b7f9b1c)](https://github.com/linburgh/knowledge-base/raw/refs/heads/main/docs/ppt/%E4%BC%81%E4%B8%9A%E7%9F%A5%E8%AF%86%E5%BA%93%E9%97%AE%E7%AD%94%E7%B3%BB%E7%BB%9F-%E5%AE%A2%E6%88%B7%E4%BB%8B%E7%BB%8D-%E5%85%A8%E5%8A%9F%E8%83%BD%E7%9C%9F%E5%AE%9E%E7%95%8C%E9%9D%A2%E7%89%88.pptx)
 
-动态封面展示系统介绍中的代表页面并自动循环播放。点击封面可查看或下载[完整 PPT](https://github.com/linburgh/knowledge-base/blob/main/docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx?raw=true)。
+动态封面展示系统介绍中的代表页面并自动循环播放。点击封面可查看或下载[完整 PPT](https://github.com/linburgh/knowledge-base/raw/refs/heads/main/docs/ppt/%E4%BC%81%E4%B8%9A%E7%9F%A5%E8%AF%86%E5%BA%93%E9%97%AE%E7%AD%94%E7%B3%BB%E7%BB%9F-%E5%AE%A2%E6%88%B7%E4%BB%8B%E7%BB%8D-%E5%85%A8%E5%8A%9F%E8%83%BD%E7%9C%9F%E5%AE%9E%E7%95%8C%E9%9D%A2%E7%89%88.pptx)。
 
 ## 核心能力
 
