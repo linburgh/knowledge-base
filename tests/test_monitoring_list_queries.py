@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -10,6 +10,61 @@ from app.core.services.monitoring import mgr as monitoring
 from app.db import api as db_api
 from app.db.base import DB
 from app.schemas.monitoring import MetricRuleRequest
+
+
+def test_task_trend_separates_backlog_from_bucket_throughput():
+    start_at = datetime(2026, 8, 17, 10, 0, tzinfo=UTC)
+    end_at = start_at + timedelta(minutes=25)
+    tasks = [
+        {
+            "status": "pending",
+            "created_at": start_at - timedelta(minutes=10),
+            "started_at": None,
+            "finished_at": None,
+        },
+        {
+            "status": "completed",
+            "created_at": start_at + timedelta(minutes=2),
+            "started_at": start_at + timedelta(minutes=6),
+            "finished_at": start_at + timedelta(minutes=12),
+        },
+        {
+            "status": "failed",
+            "created_at": start_at + timedelta(minutes=7),
+            "started_at": start_at + timedelta(minutes=8),
+            "finished_at": start_at + timedelta(minutes=16),
+        },
+        {
+            "status": "timeout",
+            "created_at": start_at + timedelta(minutes=14),
+            "started_at": start_at + timedelta(minutes=15),
+            "finished_at": start_at + timedelta(minutes=19),
+        },
+        {
+            "status": "cancelled",
+            "created_at": start_at + timedelta(minutes=20),
+            "started_at": start_at + timedelta(minutes=21),
+            "finished_at": start_at + timedelta(minutes=22),
+        },
+    ]
+
+    trend = monitoring._task_trend(tasks, start_at, end_at)
+
+    assert len(trend) == 5
+    assert [point["pending_backlog"] for point in trend] == [2, 1, 1, 2, 1]
+    assert [point["created"] for point in trend] == [1, 1, 1, 0, 1]
+    assert [point["completed"] for point in trend] == [0, 0, 1, 0, 0]
+    assert [point["failed"] for point in trend] == [0, 0, 0, 1, 0]
+    assert [point["timeout"] for point in trend] == [0, 0, 0, 1, 0]
+    assert [point["window_end"] for point in trend] == [
+        start_at + timedelta(minutes=offset) for offset in (5, 10, 15, 20, 25)
+    ]
+
+
+def test_task_trend_does_not_create_empty_business_series():
+    start_at = datetime(2026, 8, 17, 10, 0, tzinfo=UTC)
+
+    assert monitoring._task_trend([], start_at, start_at + timedelta(hours=1)) == []
 
 
 @pytest.fixture

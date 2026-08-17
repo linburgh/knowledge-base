@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from bisect import bisect_left, bisect_right
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -971,27 +972,87 @@ def _metric_trend(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{"window_end": bucket, **values} for bucket, values in sorted(buckets.items())]
 
 
-def _task_trend(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    buckets: dict[datetime, dict[str, int]] = {}
-    for event in events:
-        occurred_at = event.get("occurred_at")
-        if not isinstance(occurred_at, datetime):
+def _task_trend(
+    tasks: list[dict[str, Any]], start_at: datetime, end_at: datetime
+) -> list[dict[str, Any]]:
+    """按连续五分钟时间桶返回任务积压存量和吞吐流量。"""
+    bucket_starts: list[datetime] = []
+    cursor = _bucket_5m(start_at)
+    while cursor < end_at:
+        bucket_starts.append(cursor)
+        cursor += timedelta(minutes=5)
+
+    buckets = [
+        {
+            "window_end": min(bucket_start + timedelta(minutes=5), end_at),
+            "pending_backlog": 0,
+            "created": 0,
+            "completed": 0,
+            "failed": 0,
+            "timeout": 0,
+        }
+        for bucket_start in bucket_starts
+    ]
+    bucket_ends = [bucket["window_end"] for bucket in buckets]
+    pending_deltas = [0] * (len(buckets) + 1)
+    has_task_data = False
+
+    for task in tasks:
+        created_at = task.get("created_at")
+        if not isinstance(created_at, datetime) or created_at > end_at:
             continue
-        bucket = _bucket_5m(occurred_at)
-        current = buckets.setdefault(
-            bucket,
-            {"pending": 0, "running": 0, "completed": 0, "failed": 0},
+
+        started_at = task.get("started_at")
+        finished_at = task.get("finished_at")
+        status = _canonical_task_status(task.get("status"))
+
+        # 已开始时间是待处理阶段的正常终点；异常数据缺少开始时间时，使用结束时间收口，
+        # 防止已结束任务在后续时间桶中继续被误算为积压。
+        pending_end = started_at if isinstance(started_at, datetime) else None
+        if pending_end is None and isinstance(finished_at, datetime):
+            pending_end = finished_at
+        if pending_end is None and status != "pending":
+            pending_end = created_at
+
+        pending_overlaps_window = pending_end is None or pending_end > start_at
+        created_in_window = start_at <= created_at < end_at
+        finished_in_window = (
+            isinstance(finished_at, datetime) and start_at <= finished_at < end_at
         )
-        status = str(event.get("status") or "")
-        if status in {"pending", "queued"}:
-            current["pending"] += 1
-        elif status in {"running", "processing"}:
-            current["running"] += 1
-        elif status in {"success", "completed", "succeeded"}:
-            current["completed"] += 1
-        elif status in {"failed", "error", "timeout", "cancelled"}:
-            current["failed"] += 1
-    return [{"window_end": bucket, **values} for bucket, values in sorted(buckets.items())]
+        if not (pending_overlaps_window or created_in_window or finished_in_window):
+            continue
+        has_task_data = True
+
+        created_bucket_index = bisect_right(bucket_ends, created_at)
+        if created_in_window and created_bucket_index < len(buckets):
+            buckets[created_bucket_index]["created"] += 1
+
+        if finished_in_window:
+            finished_bucket_index = bisect_right(bucket_ends, finished_at)
+            if finished_bucket_index < len(buckets) and status in {
+                "completed",
+                "failed",
+                "timeout",
+            }:
+                buckets[finished_bucket_index][status] += 1
+
+        pending_start_index = bisect_left(bucket_ends, created_at)
+        pending_end_index = (
+            bisect_left(bucket_ends, pending_end)
+            if isinstance(pending_end, datetime)
+            else len(buckets)
+        )
+        if pending_start_index < pending_end_index:
+            pending_deltas[pending_start_index] += 1
+            pending_deltas[pending_end_index] -= 1
+
+    if not has_task_data:
+        return []
+    pending_backlog = 0
+    for index, bucket in enumerate(buckets):
+        pending_backlog += pending_deltas[index]
+        bucket["pending_backlog"] = pending_backlog
+    return buckets
 
 
 _TASK_STATUS_NAMES = {
@@ -2269,24 +2330,21 @@ async def tasks_overview(current_user: CurrentUser, time_range: str = "1h") -> d
     await require_monitoring_access(current_user)
     start_at, end_at = _overview_window(time_range)
     scope = await tenant_scope(current_user)
-    tasks = await _task_records(scope)
+    all_tasks = await _task_records(scope)
+    tasks = all_tasks
     tasks = [
         task
         for task in tasks
         if task.get("status") in {"pending", "running"}
-        or (isinstance(task.get("created_at"), datetime) and task["created_at"] >= start_at)
-    ]
-    task_events: list[dict[str, Any]] = []
-    for source_type in ("document_index", "evaluation_agent"):
-        task_events.extend(
-            await event_db.list(
-                DB.get(),
-                **_scope_filter(scope),
-                source_type=source_type,
-                occurred_at__gte=start_at,
-                limit=10000,
-            )
+        or (
+            isinstance(task.get("created_at"), datetime)
+            and task["created_at"] >= start_at
         )
+        or (
+            isinstance(task.get("finished_at"), datetime)
+            and task["finished_at"] >= start_at
+        )
+    ]
     worker_events = await event_db.list(
         DB.get(),
         **_scope_filter(scope),
@@ -2341,7 +2399,7 @@ async def tasks_overview(current_user: CurrentUser, time_range: str = "1h") -> d
             "abnormal": abnormal_workers,
             "consumed": sum(int(worker["consumed_count"]) for worker in workers),
         },
-        "trend": _task_trend(task_events),
+        "trend": _task_trend(all_tasks, start_at, end_at),
         "scope_name": "全平台" if scope is None else "当前租户",
         "time_range": time_range,
         "window_start": start_at,
