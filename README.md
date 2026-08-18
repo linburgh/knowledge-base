@@ -8,7 +8,7 @@ Knowledge Base 是一个基于 FastAPI、LangChain 与 PostgreSQL/pgvector 构�
 
 ![企业知识库问答系统功能演示](https://github.com/user-attachments/assets/ffa4651c-6f2e-4196-92b3-fa548b7f9b1c)
 
-动态封面展示系统介绍中的代表页面并自动循环播放。对应的完整 PPT 文件位于项目目录 `docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx`。
+完整 PPT 文件位于项目目录 `docs/ppt/企业知识库问答系统-客户介绍-全功能真实界面版.pptx`。
 
 ## 核心能力
 
