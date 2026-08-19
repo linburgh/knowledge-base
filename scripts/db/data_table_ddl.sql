@@ -19,9 +19,11 @@ create table if not exists t_user (
     unique (username)
 );
 
-create unique index if not exists uk_t_user_email on t_user (email) where email is not null;
+alter index if exists uk_t_user_email rename to u_idx_t_user_email;
+create unique index if not exists u_idx_t_user_email on t_user (email) where email is not null;
 
-create unique index if not exists uk_t_user_external_subject on t_user (external_subject) where external_subject is not null;
+alter index if exists uk_t_user_external_subject rename to u_idx_t_user_external_subject;
+create unique index if not exists u_idx_t_user_external_subject on t_user (external_subject) where external_subject is not null;
 
 create index if not exists idx_t_user_status on t_user (status);
 
@@ -131,11 +133,12 @@ create table if not exists t_system_menu (
     status varchar(32) not null default 'active',
     meta jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-    check (menu_type in ('directory', 'item'))
+    updated_at timestamptz not null default now()
 );
 
-create unique index if not exists uk_t_system_menu_code on t_system_menu (code);
+alter table t_system_menu drop constraint if exists t_system_menu_menu_type_check;
+alter index if exists uk_t_system_menu_code rename to u_idx_t_system_menu_code;
+create unique index if not exists u_idx_t_system_menu_code on t_system_menu (code);
 
 create index if not exists idx_t_system_menu_parent_sort on t_system_menu (parent_id, sort_order, id);
 
@@ -157,7 +160,7 @@ comment on column t_system_menu.status is '菜单状态：active 启用，disabl
 comment on column t_system_menu.meta is '菜单扩展元数据';
 comment on column t_system_menu.created_at is '创建时间';
 comment on column t_system_menu.updated_at is '更新时间';
-comment on index uk_t_system_menu_code is '菜单编码唯一索引';
+comment on index u_idx_t_system_menu_code is '菜单编码唯一索引';
 comment on index idx_t_system_menu_parent_sort is '按父菜单和排序值查询菜单树';
 comment on index idx_t_system_menu_route_path is '按菜单跳转路径查询';
 comment on index idx_t_system_menu_status_visible is '按菜单状态和显示标记查询';
@@ -170,11 +173,12 @@ create table if not exists t_role_menu (
     status varchar(32) not null default 'active',
     created_at timestamptz not null default now(),
     created_by bigint,
-    updated_at timestamptz not null default now(),
-    check (role_scope in ('platform', 'tenant', 'organization'))
+    updated_at timestamptz not null default now()
 );
 
-create unique index if not exists uk_t_role_menu_role_menu on t_role_menu (role_scope, role_code, menu_id);
+alter table t_role_menu drop constraint if exists t_role_menu_role_scope_check;
+alter index if exists uk_t_role_menu_role_menu rename to u_idx_t_role_menu_role_menu;
+create unique index if not exists u_idx_t_role_menu_role_menu on t_role_menu (role_scope, role_code, menu_id);
 
 create index if not exists idx_t_role_menu_role on t_role_menu (role_scope, role_code, status);
 
@@ -189,7 +193,7 @@ comment on column t_role_menu.status is '关系状态：active 启用，disabled
 comment on column t_role_menu.created_at is '创建时间';
 comment on column t_role_menu.created_by is '创建人用户主键';
 comment on column t_role_menu.updated_at is '更新时间';
-comment on index uk_t_role_menu_role_menu is '同一角色与同一菜单只能建立一条关系';
+comment on index u_idx_t_role_menu_role_menu is '同一角色与同一菜单只能建立一条关系';
 comment on index idx_t_role_menu_role is '按角色查询有效菜单';
 comment on index idx_t_role_menu_menu is '按菜单查询有效角色';
 
@@ -203,13 +207,15 @@ create table if not exists t_system_menu_action (
     status varchar(32) not null default 'active',
     meta jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-    check (action_type in ('button', 'business'))
+    updated_at timestamptz not null default now()
 );
 
-create unique index if not exists uk_t_system_menu_action_code on t_system_menu_action (code);
+alter table t_system_menu_action drop constraint if exists t_system_menu_action_action_type_check;
+alter index if exists uk_t_system_menu_action_code rename to u_idx_t_system_menu_action_code;
+alter index if exists uk_t_system_menu_action_menu_name rename to u_idx_t_system_menu_action_menu_name;
+create unique index if not exists u_idx_t_system_menu_action_code on t_system_menu_action (code);
 
-create unique index if not exists uk_t_system_menu_action_menu_name on t_system_menu_action (menu_id, name);
+create unique index if not exists u_idx_t_system_menu_action_menu_name on t_system_menu_action (menu_id, name);
 
 create index if not exists idx_t_system_menu_action_menu on t_system_menu_action (menu_id, status);
 
@@ -233,11 +239,12 @@ create table if not exists t_role_menu_action (
     status varchar(32) not null default 'active',
     created_at timestamptz not null default now(),
     created_by bigint,
-    updated_at timestamptz not null default now(),
-    check (role_scope in ('platform', 'tenant', 'organization'))
+    updated_at timestamptz not null default now()
 );
 
-create unique index if not exists uk_t_role_menu_action_role_action on t_role_menu_action (role_scope, role_code, action_id);
+alter table t_role_menu_action drop constraint if exists t_role_menu_action_role_scope_check;
+alter index if exists uk_t_role_menu_action_role_action rename to u_idx_t_role_menu_action_role_action;
+create unique index if not exists u_idx_t_role_menu_action_role_action on t_role_menu_action (role_scope, role_code, action_id);
 
 create index if not exists idx_t_role_menu_action_role on t_role_menu_action (role_scope, role_code, status);
 
@@ -429,8 +436,10 @@ create table if not exists t_knowledge_base_qa_config_version (
     unique (kb_id, version_no)
 );
 
-create unique index if not exists uq_t_knowledge_base_qa_config_draft on t_knowledge_base_qa_config_version (kb_id) where status = 'draft';
-create unique index if not exists uq_t_knowledge_base_qa_config_published on t_knowledge_base_qa_config_version (kb_id) where status = 'published';
+alter index if exists uq_t_knowledge_base_qa_config_draft rename to u_idx_t_knowledge_base_qa_config_draft;
+alter index if exists uq_t_knowledge_base_qa_config_published rename to u_idx_t_knowledge_base_qa_config_published;
+create unique index if not exists u_idx_t_knowledge_base_qa_config_draft on t_knowledge_base_qa_config_version (kb_id) where status = 'draft';
+create unique index if not exists u_idx_t_knowledge_base_qa_config_published on t_knowledge_base_qa_config_version (kb_id) where status = 'published';
 create index if not exists idx_t_knowledge_base_qa_config_kb_status on t_knowledge_base_qa_config_version (kb_id, status);
 
 create table if not exists t_knowledge_base_qa_config_audit (
@@ -461,7 +470,8 @@ create table if not exists t_knowledge_base_index_version (
     unique (kb_id, generation)
 );
 
-create unique index if not exists uq_t_knowledge_base_index_active on t_knowledge_base_index_version (kb_id) where status = 'active';
+alter index if exists uq_t_knowledge_base_index_active rename to u_idx_t_knowledge_base_index_active;
+create unique index if not exists u_idx_t_knowledge_base_index_active on t_knowledge_base_index_version (kb_id) where status = 'active';
 create index if not exists idx_t_knowledge_base_index_kb_status on t_knowledge_base_index_version (kb_id, status);
 
 create table if not exists t_document (
